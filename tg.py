@@ -1150,16 +1150,17 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect('fantasy.db')
     c = conn.cursor()
     
-    # Sirf un users ko dikhao jinhone kuch kharida hai
+    # Sirf un users ko dikhao jinhone players kharide hain
+    # Value = players ki total cost (collection value), NOT credits
     c.execute("""
-        SELECT u.name, COUNT(up.player_id) as count, 
-        COALESCE((SELECT SUM(p.price) FROM user_players up2 
-                  JOIN shop p ON up2.player_id = p.id 
-                  WHERE up2.user_id = u.user_id), 0) as total_value
+        SELECT u.name, 
+               COUNT(up.player_id) as count,
+               COALESCE(SUM(s.price), 0) as collection_value
         FROM users u
-        JOIN user_players up ON u.user_id = up.user_id
+        JOIN user_players2 up ON u.user_id = up.user_id
+        JOIN shop2 s ON up.player_id = s.id
         GROUP BY u.user_id
-        ORDER BY total_value DESC
+        ORDER BY collection_value DESC
         LIMIT 10
     """)
     tops = c.fetchall()
@@ -1174,20 +1175,28 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
         medal = "👑" if i==1 else "🥈" if i==2 else "🥉" if i==3 else f"{i}."
         msg += f"{medal} {t[0]} - {t[1]} players ({t[2]:,} 💰)\n"
     
-    # Current user ka data
+    # Current user ka collection value
     c.execute("""
-        SELECT COUNT(up.player_id), 
-        COALESCE((SELECT SUM(p.price) FROM user_players up2 
-                  JOIN shop p ON up2.player_id = p.id 
-                  WHERE up2.user_id = ?), 0)
-        FROM user_players up WHERE user_id = ?
-    """, (user_id, user_id))
+        SELECT COUNT(up.player_id), COALESCE(SUM(s.price), 0)
+        FROM user_players2 up
+        JOIN shop2 s ON up.player_id = s.id
+        WHERE up.user_id = ?
+    """, (user_id,))
     user_data = c.fetchone()
     
     player_count = user_data[0] if user_data and user_data[0] else 0
-    total_value = user_data[1] if user_data and user_data[1] else 0
+    collection_value = user_data[1] if user_data and user_data[1] else 0
     
-    msg += f"\n📊 Your rank: #{len(tops)} | Players: {player_count} | Value: {total_value:,} 💰"
+    # Rank calculate karo
+    rank = 1
+    for i, t in enumerate(tops, 1):
+        if t[0] == update.effective_user.first_name:
+            rank = i
+            break
+    else:
+        rank = len(tops) + 1
+    
+    msg += f"\n📊 Your rank: #{rank} | Players: {player_count} | Collection: {collection_value:,} 💰"
     
     await update.message.reply_text(msg)
     conn.close()
