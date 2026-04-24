@@ -1818,7 +1818,7 @@ def main():
     app.add_handler(CommandHandler("buy", buy))
     app.add_handler(CommandHandler("buyw", buyw))
     app.add_handler(CommandHandler("myteam", myteam))
-    app.add_handler(CommandHandler("top", top_collectors))
+    app.add_handler(CommandHandler("top", top))
     app.add_handler(CallbackQueryHandler(shop_callback, pattern="^shop_"))
     
     # Admin commands
