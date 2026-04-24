@@ -29,6 +29,10 @@ def init_db():
                  (user_id INTEGER, player_id INTEGER, type TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS achievements 
                  (user_id INTEGER, achievement TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS shop2 
+             (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, price INTEGER)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS user_players2 
+             (user_id INTEGER, player_id INTEGER)''')
     conn.commit()
     conn.close()
 
@@ -1493,6 +1497,240 @@ async def setprice2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(f'✅ WOMEN PRICE UPDATED!\n{player[0]}\nNew Price: {new_price:,} 💰')
 
+
+# ============ CHEAP SHOP (SHOP2) ============
+
+async def shop2(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = sqlite3.connect('fantasy.db')
+    c = conn.cursor()
+    c.execute("SELECT id, name, price FROM shop2 ORDER BY price ASC")
+    players = c.fetchall()
+    conn.close()
+    
+    if not players:
+        await update.message.reply_text('🛒 CHEAP SHOP\n\nNo players yet.\n👑 Admin: /addplayer2 <name> <price>')
+        return
+    
+    msg = "🛒 CHEAP PLAYERS SHOP\n\n"
+    for p in players:
+        msg += f"{p[0]}. {p[1]} - {p[2]:,} 💰\n"
+    msg += "\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /buy2 <id> to purchase"
+    
+    await update.message.reply_text(msg)
+
+async def buy2(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text('❌ /buy2 <player_id>\nExample: /buy2 1')
+        return
+    
+    try:
+        player_id = int(args[0])
+    except:
+        await update.message.reply_text('❌ Invalid ID')
+        return
+    
+    conn = sqlite3.connect('fantasy.db')
+    c = conn.cursor()
+    c.execute("SELECT name, price FROM shop2 WHERE id=?", (player_id,))
+    player = c.fetchone()
+    
+    if not player:
+        await update.message.reply_text(f'❌ Player ID {player_id} not found!')
+        conn.close()
+        return
+    
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    balance = c.fetchone()[0]
+    
+    if balance < player[1]:
+        await update.message.reply_text(f'❌ Need {player[1]:,}, have {balance:,}')
+        conn.close()
+        return
+    
+    c.execute("SELECT * FROM user_players2 WHERE user_id=? AND player_id=?", (user_id, player_id))
+    if c.fetchone():
+        await update.message.reply_text(f'❌ You already own {player[0]}!')
+        conn.close()
+        return
+    
+    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (player[1], user_id))
+    c.execute("INSERT INTO user_players2 (user_id, player_id) VALUES (?, ?)", (user_id, player_id))
+    conn.commit()
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    new_bal = c.fetchone()[0]
+    conn.close()
+    
+    await update.message.reply_text(f'✅ PURCHASED!\n\n🏏 {player[0]}\n💰 Price: {player[1]:,} 💰\n📊 New balance: {new_bal:,} 💰')
+
+async def myteam2(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = sqlite3.connect('fantasy.db')
+    c = conn.cursor()
+    c.execute("""
+        SELECT s.name, s.price FROM user_players2 u 
+        JOIN shop2 s ON u.player_id = s.id 
+        WHERE u.user_id = ?
+    """, (user_id,))
+    players = c.fetchall()
+    conn.close()
+    
+    if not players:
+        await update.message.reply_text('📭 No cheap players owned.\nUse /shop2 to buy!')
+        return
+    
+    total = sum(p[1] for p in players)
+    msg = "👤 MY CHEAP PLAYERS\n\n"
+    for i, p in enumerate(players, 1):
+        msg += f"{i}. {p[0]} - {p[1]:,} 💰\n"
+    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💰 Total spent: {total:,} 💰"
+    
+    await update.message.reply_text(msg)
+
+async def top2(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = sqlite3.connect('fantasy.db')
+    c = conn.cursor()
+    c.execute("""
+        SELECT u.name, COUNT(up.player_id) as count, SUM(s.price) as total
+        FROM users u
+        JOIN user_players2 up ON u.user_id = up.user_id
+        JOIN shop2 s ON up.player_id = s.id
+        GROUP BY u.user_id
+        ORDER BY total DESC LIMIT 10
+    """)
+    tops = c.fetchall()
+    
+    if not tops:
+        await update.message.reply_text('🏆 CHEAP PLAYERS TOP\n\nNo one owns any yet!')
+        conn.close()
+        return
+    
+    msg = "🏆 CHEAP PLAYERS TOP\n\n"
+    for i, t in enumerate(tops, 1):
+        medal = "👑" if i==1 else "🥈" if i==2 else "🥉" if i==3 else f"{i}."
+        msg += f"{medal} {t[0]} - {t[1]} players ({t[2]:,} 💰)\n"
+    
+    c.execute("SELECT COUNT(*) FROM user_players2 WHERE user_id=?", (user_id,))
+    my_count = c.fetchone()[0]
+    msg += f"\n📊 You own: {my_count} players"
+    
+    await update.message.reply_text(msg)
+    conn.close()
+
+# ============ ADMIN COMMANDS FOR SHOP2 ============
+
+async def addplayer2(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text('❌ Admin only!')
+        return
+    
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text('❌ /addplayer2 <name> <price>\nExample: /addplayer2 "Navdeep Saini" 8000')
+        return
+    
+    name = ' '.join(args[:-1])
+    try:
+        price = int(args[-1])
+    except:
+        await update.message.reply_text('❌ Invalid price!')
+        return
+    
+    conn = sqlite3.connect('fantasy.db')
+    c = conn.cursor()
+    c.execute("INSERT INTO shop2 (name, price) VALUES (?, ?)", (name, price))
+    conn.commit()
+    player_id = c.lastrowid
+    conn.close()
+    
+    await update.message.reply_text(f'✅ PLAYER ADDED!\n\nID: {player_id} | {name}\n💰 Price: {price:,} 💰')
+
+async def setprice2(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text('❌ Admin only!')
+        return
+    
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text('❌ /setprice2 <id> <new_price>\nExample: /setprice2 1 15000')
+        return
+    
+    try:
+        player_id = int(args[0])
+        new_price = int(args[1])
+    except:
+        await update.message.reply_text('❌ Invalid input!')
+        return
+    
+    conn = sqlite3.connect('fantasy.db')
+    c = conn.cursor()
+    c.execute("SELECT name FROM shop2 WHERE id=?", (player_id,))
+    player = c.fetchone()
+    
+    if not player:
+        await update.message.reply_text(f'❌ Player ID {player_id} not found!')
+        conn.close()
+        return
+    
+    c.execute("UPDATE shop2 SET price = ? WHERE id=?", (new_price, player_id))
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(f'✅ PRICE UPDATED!\n{player[0]}\nNew Price: {new_price:,} 💰')
+
+async def removeplayer2(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text('❌ Admin only!')
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text('❌ /removeplayer2 <id>\nExample: /removeplayer2 1')
+        return
+    
+    try:
+        player_id = int(args[0])
+    except:
+        await update.message.reply_text('❌ Invalid ID!')
+        return
+    
+    conn = sqlite3.connect('fantasy.db')
+    c = conn.cursor()
+    c.execute("SELECT name FROM shop2 WHERE id=?", (player_id,))
+    player = c.fetchone()
+    
+    if not player:
+        await update.message.reply_text(f'❌ Player ID {player_id} not found!')
+        conn.close()
+        return
+    
+    c.execute("DELETE FROM shop2 WHERE id=?", (player_id,))
+    c.execute("DELETE FROM user_players2 WHERE player_id=?", (player_id,))
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(f'✅ PLAYER REMOVED!\n{player[0]} (ID: {player_id})')
+
+
 # ============ MAIN ============
 def main():
     app = Application.builder().token(TOKEN).build()
@@ -1537,6 +1775,16 @@ def main():
     app.add_handler(CommandHandler("achievements", achievements))
     app.add_handler(CommandHandler("achieve", achieve))
     app.add_handler(CommandHandler("rmachieve", rmachieve))
+
+    # Cheap shop handlers
+    app.add_handler(CommandHandler("shop2", shop2))
+    app.add_handler(CommandHandler("buy2", buy2))
+    app.add_handler(CommandHandler("myteam2", myteam2))
+    app.add_handler(CommandHandler("top2", top2))
+    app.add_handler(CommandHandler("addplayer2", addplayer2))
+    app.add_handler(CommandHandler("setprice2", setprice2))
+    app.add_handler(CommandHandler("removeplayer2", removeplayer2))
+
     
     print("🤖 Bot is running...")
     app.run_polling()
