@@ -1071,26 +1071,59 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect('fantasy.db')
     c = conn.cursor()
     
-    c.execute("SELECT p.name, p.price FROM user_players u JOIN shop p ON u.player_id=p.id WHERE u.user_id=? AND u.type='mens'", (user_id,))
+    # Shop (men) players
+    c.execute("""
+        SELECT p.name, p.price FROM user_players u 
+        JOIN shop p ON u.player_id = p.id 
+        WHERE u.user_id = ? AND u.type = 'mens'
+    """, (user_id,))
     mens = c.fetchall()
     
-    c.execute("SELECT w.name, w.price FROM user_players u JOIN shop_women w ON u.player_id=w.id WHERE u.user_id=? AND u.type='women'", (user_id,))
+    # Shop2 (cheap) players
+    c.execute("""
+        SELECT s.name, s.price FROM user_players2 u 
+        JOIN shop2 s ON u.player_id = s.id 
+        WHERE u.user_id = ?
+    """, (user_id,))
+    cheap = c.fetchall()
+    
+    # Women players (if any)
+    c.execute("""
+        SELECT w.name, w.price FROM user_players u 
+        JOIN shop_women w ON u.player_id = w.id 
+        WHERE u.user_id = ? AND u.type = 'women'
+    """, (user_id,))
     women = c.fetchall()
     
     conn.close()
     
     mens_total = sum(p[1] for p in mens)
+    cheap_total = sum(c[1] for c in cheap)
     women_total = sum(w[1] for w in women)
     
-    msg = "🏏 MY CRICKET TEAM\n\n━━━━━━━━━━━━━━━━━━━━━━\n👨 MEN PLAYERS"
+    msg = "🏏 MY CRICKET TEAM\n\n"
+    
+    # MEN PLAYERS
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n👨 MEN PLAYERS"
     if mens:
         msg += f" ({len(mens)})\n\n"
         for i, p in enumerate(mens, 1):
             msg += f"{i}. {p[0]} - {p[1]:,} 💰\n"
         msg += f"\nTotal Value: {mens_total:,} 💰"
     else:
-        msg += "\n\nNo men players yet. Use /shop to buy!"
+        msg += "\n\nNo men players. Use /shop to buy!"
     
+    # CHEAP PLAYERS (SHOP2)
+    msg += "\n\n━━━━━━━━━━━━━━━━━━━━━━\n🤑 CHEAP PLAYERS"
+    if cheap:
+        msg += f" ({len(cheap)})\n\n"
+        for i, c in enumerate(cheap, 1):
+            msg += f"{i}. {c[0]} - {c[1]:,} 💰\n"
+        msg += f"\nTotal Value: {cheap_total:,} 💰"
+    else:
+        msg += "\n\nNo cheap players. Use /shop2 to buy!"
+    
+    # WOMEN PLAYERS
     msg += "\n\n━━━━━━━━━━━━━━━━━━━━━━\n👩 WOMEN PLAYERS"
     if women:
         msg += f" ({len(women)})\n\n"
@@ -1098,14 +1131,17 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg += f"{i}. {w[0]} - {w[1]:,} 💰\n"
         msg += f"\nTotal Value: {women_total:,} 💰"
     else:
-        msg += "\n\nNo women players yet. Use /shop to buy!"
+        msg += "\n\nNo women players. Use /shop to buy!"
     
-    msg += f"\n\n━━━━━━━━━━━━━━━━━━━━━━\n💰 Total Value: {mens_total + women_total:,} 💰\n🏆 Players: {len(mens) + len(women)}"
+    grand_total = mens_total + cheap_total + women_total
+    total_players = len(mens) + len(cheap) + len(women)
+    
+    msg += f"\n\n━━━━━━━━━━━━━━━━━━━━━━\n💰 TOTAL VALUE: {grand_total:,} 💰\n🏆 PLAYERS: {total_players}"
     
     await update.message.reply_text(msg)
 
 # ============ TOP COLLECTORS ============
-async def top_collectors(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
@@ -1114,30 +1150,44 @@ async def top_collectors(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = sqlite3.connect('fantasy.db')
     c = conn.cursor()
     
+    # Sirf un users ko dikhao jinhone kuch kharida hai
     c.execute("""
-        SELECT u.name, COUNT(up.player_id) as count,
-        COALESCE((SELECT SUM(p.price) FROM user_players up2 JOIN shop p ON up2.player_id=p.id WHERE up2.user_id=u.user_id AND up2.type='mens'),0) +
-        COALESCE((SELECT SUM(w.price) FROM user_players up2 JOIN shop_women w ON up2.player_id=w.id WHERE up2.user_id=u.user_id AND up2.type='women'),0) as total_value
+        SELECT u.name, COUNT(up.player_id) as count, 
+        COALESCE((SELECT SUM(p.price) FROM user_players up2 
+                  JOIN shop p ON up2.player_id = p.id 
+                  WHERE up2.user_id = u.user_id), 0) as total_value
         FROM users u
-        JOIN user_players up ON u.user_id=up.user_id
+        JOIN user_players up ON u.user_id = up.user_id
         GROUP BY u.user_id
-        ORDER BY total_value DESC LIMIT 10
+        ORDER BY total_value DESC
+        LIMIT 10
     """)
     tops = c.fetchall()
+    
+    if not tops:
+        await update.message.reply_text('🏆 TOP COLLECTORS\n\nNo one owns any players yet!')
+        conn.close()
+        return
     
     msg = "🏆 TOP COLLECTORS\n\n"
     for i, t in enumerate(tops, 1):
         medal = "👑" if i==1 else "🥈" if i==2 else "🥉" if i==3 else f"{i}."
         msg += f"{medal} {t[0]} - {t[1]} players ({t[2]:,} 💰)\n"
     
-    user = get_user(user_id)
-    c.execute("SELECT COUNT(*) FROM (SELECT user_id FROM user_players GROUP BY user_id HAVING (COALESCE((SELECT SUM(p.price) FROM user_players up JOIN shop p ON up.player_id=p.id WHERE up.user_id=user_players.user_id AND up.type='mens'),0) + COALESCE((SELECT SUM(w.price) FROM user_players up JOIN shop_women w ON up.player_id=w.id WHERE up.user_id=user_players.user_id AND up.type='women'),0)) > ?)", (user[2],))
-    rank = c.fetchone()[0] + 1
+    # Current user ka data
+    c.execute("""
+        SELECT COUNT(up.player_id), 
+        COALESCE((SELECT SUM(p.price) FROM user_players up2 
+                  JOIN shop p ON up2.player_id = p.id 
+                  WHERE up2.user_id = ?), 0)
+        FROM user_players up WHERE user_id = ?
+    """, (user_id, user_id))
+    user_data = c.fetchone()
     
-    c.execute("SELECT COUNT(*) FROM user_players WHERE user_id=?", (user_id,))
-    player_count = c.fetchone()[0]
+    player_count = user_data[0] if user_data and user_data[0] else 0
+    total_value = user_data[1] if user_data and user_data[1] else 0
     
-    msg += f"\n📊 Your rank: #{rank} | Players: {player_count} | Value: {user[2]:,} 💰"
+    msg += f"\n📊 Your rank: #{len(tops)} | Players: {player_count} | Value: {total_value:,} 💰"
     
     await update.message.reply_text(msg)
     conn.close()
