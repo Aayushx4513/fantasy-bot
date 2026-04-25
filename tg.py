@@ -51,8 +51,6 @@ def init_db():
                  (user_id INTEGER, player_id INTEGER)''')
     c.execute('''CREATE TABLE IF NOT EXISTS achievements 
                  (user_id INTEGER, achievement TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS login_streak 
-             (user_id INTEGER PRIMARY KEY, last_login TEXT, streak INTEGER)''')
     conn.commit()
     conn.close()
 
@@ -1557,66 +1555,6 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(msg)
 
-async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = sqlite3.connect('fantasy.db')
-    c = conn.cursor()
-    
-    c.execute("SELECT last_login, streak FROM login_streak WHERE user_id=?", (user_id,))
-    row = c.fetchone()
-    
-    now = datetime.now().date()
-    
-    if not row:
-        # New user
-        c.execute("INSERT INTO login_streak (user_id, last_login, streak) VALUES (?, ?, 1)", (user_id, now.isoformat()))
-        conn.commit()
-        await update.message.reply_text(f"📅 LOGIN\n\nDay 1/7 ✅\nStreak: 1 day")
-        conn.close()
-        return
-    
-    last_login = datetime.fromisoformat(row[0]).date()
-    streak = row[1]
-    
-    # Already logged in today
-    if last_login == now:
-        await update.message.reply_text("⚠️ Already logged in today!\nCome back tomorrow")
-        conn.close()
-        return
-    
-    # Check if consecutive day
-    if (now - last_login).days == 1:
-        streak += 1
-    else:
-        # Streak broken
-        streak = 1
-        await update.message.reply_text("❌ Streak broken!\nStart fresh from Day 1")
-        c.execute("UPDATE login_streak SET last_login = ?, streak = ? WHERE user_id=?", (now.isoformat(), streak, user_id))
-        conn.commit()
-        conn.close()
-        return
-    
-    c.execute("UPDATE login_streak SET last_login = ?, streak = ? WHERE user_id=?", (now.isoformat(), streak, user_id))
-    
-    if streak == 7:
-        # Bonus day!
-        c.execute("UPDATE users SET balance = balance + 10000 WHERE user_id=?", (user_id,))
-        conn.commit()
-        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-        new_bal = c.fetchone()[0]
-        await update.message.reply_text(f"🎉 JACKPOT! 🎉\n\n7 DAYS COMPLETE!\nYou won 10,000 💰\n\n💰 New balance: {new_bal:,} 💰\n\nStreak resets to Day 1")
-        # Reset streak after bonus
-        c.execute("UPDATE login_streak SET streak = 1 WHERE user_id=?", (user_id,))
-        conn.commit()
-    else:
-        await update.message.reply_text(f"📅 LOGIN\n\nDay {streak}/7 ✅\nStreak: {streak} day{'s' if streak > 1 else ''}")
-    
-    conn.close()
-
 
 # ============ MAIN ============
 def main():
@@ -1645,7 +1583,6 @@ def main():
     app.add_handler(CommandHandler("tip", tip))
     app.add_handler(CommandHandler("history", history))
     app.add_handler(CommandHandler("top_fantasy", top_fantasy))
-    app.add_handler(CommandHandler("login", login))
 
     # Shop commands
     app.add_handler(CommandHandler("shop", shop))
