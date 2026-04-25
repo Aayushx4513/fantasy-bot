@@ -7,7 +7,7 @@ import os
 import threading
 from flask import Flask
 
-TOKEN = "8265192837:AAFjO4TNxGDArDiD1_cF4Y0W3W8UDKdm4XM"
+TOKEN = "8265192837:AAEwM57vS_tTQU48iWK1u8c7mCih-5n423g"
 ADMIN_IDS = [7687078555, 1315564307]
 
 # Flask app for Render
