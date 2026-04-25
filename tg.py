@@ -237,7 +237,7 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if diff.total_seconds() < 86400:
             remaining = 24 - diff.seconds // 3600
             rem_min = (86400 - diff.total_seconds()) // 60
-            await update.message.reply_text(f"⏰ ALREADY SPUN\n\nCome back in {remaining}h {int(rem_min%60)}m")
+            await update.message.reply_text(f"⏰ ALREADY SPIN\n\nCome back in {remaining}h {int(rem_min%60)}m")
             conn.close()
             return
     
