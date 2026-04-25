@@ -1480,6 +1480,41 @@ async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(f"❌ CREDITS REMOVED!\n\n👤 User: {old[1]}\n➖ Amount: -{amount:,} 💰\n💰 Balance: {old[0]:,} → {old[0]-amount:,} 💰\n\n👑 Removed by Admin")
 
+async def setprice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text('❌ Admin only!')
+        return
+    
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text('❌ /setprice <player_id> <new_price>\nExample: /setprice 1 1500000')
+        return
+    
+    try:
+        player_id = int(args[0])
+        new_price = int(args[1])
+    except:
+        await update.message.reply_text('❌ Invalid input!')
+        return
+    
+    conn = sqlite3.connect('fantasy.db')
+    c = conn.cursor()
+    c.execute("SELECT name FROM shop WHERE id=?", (player_id,))
+    player = c.fetchone()
+    
+    if not player:
+        await update.message.reply_text(f'❌ Player ID {player_id} not found!')
+        conn.close()
+        return
+    
+    c.execute("UPDATE shop SET price = ? WHERE id=?", (new_price, player_id))
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(f'✅ PRICE UPDATED!\n{player[0]}\nNew Price: {new_price:,} 💰')
+
+
+
 # ============ HELP ============
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -1571,7 +1606,8 @@ def main():
     app.add_handler(CommandHandler("result", result))
     app.add_handler(CommandHandler("add", add))
     app.add_handler(CommandHandler("remove", remove))
-    
+    app.add_handler(CommandHandler("setprice", setprice))
+ 
     # Achievement commands
     app.add_handler(CommandHandler("achievements", achievements))
     app.add_handler(CommandHandler("achieve", achieve))
