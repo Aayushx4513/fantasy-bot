@@ -187,35 +187,35 @@ async def rmpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============ DAILY ============
 async def daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
     conn = sqlite3.connect('fantasy.db')
     c = conn.cursor()
+    
+    # Ensure daily table exists
     c.execute("CREATE TABLE IF NOT EXISTS daily (user_id INTEGER PRIMARY KEY, last_claim TEXT)")
+    
     c.execute("SELECT last_claim FROM daily WHERE user_id=?", (user_id,))
     row = c.fetchone()
     now = datetime.now()
     
+    # Check if already claimed today (using date)
     if row and row[0]:
         last = datetime.fromisoformat(row[0])
-        diff = now - last
-        if diff.total_seconds() < 86400:
-            remaining = 24 - diff.seconds // 3600
-            rem_min = (86400 - diff.total_seconds()) // 60
-            await update.message.reply_text(f"⏰ ALREADY CLAIMED\n\nCome back in {remaining}h {int(rem_min%60)}m")
+        if last.date() == now.date():
+            await update.message.reply_text('⚠️ You already claimed today\'s daily reward!')
             conn.close()
             return
     
+    # Add 500 credits
     c.execute("INSERT OR REPLACE INTO daily (user_id, last_claim) VALUES (?, ?)", (user_id, now.isoformat()))
     c.execute("UPDATE users SET balance = balance + 500 WHERE user_id=?", (user_id,))
     conn.commit()
+    
     c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
     new_bal = c.fetchone()[0]
     conn.close()
     
-    await update.message.reply_text(f"🎁 DAILY REWARD\n\n✅ +500 credits\n💰 New Balance: {new_bal:,} 💰\n\n⏰ Next reward: 23h 59m")
+    await update.message.reply_text(f'🎁 DAILY REWARD\n✅ +500 credits\nNew balance: {new_bal} 💰\nCome back tomorrow!')
+
 
 # ============ SPIN ============
 async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
