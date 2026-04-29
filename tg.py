@@ -24,7 +24,12 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     flask_app.run(host="0.0.0.0", port=port)
 
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
 def get_db():
+    if DATABASE_URL:
+        import psycopg2
+        return psycopg2.connect(DATABASE_URL)
     return sqlite3.connect('fantasy.db')
 
 def init_db():
@@ -199,6 +204,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(f'🏏 CRICKET FANTASY LEAGUE\n\nWelcome back {name}! 👋\n💰 {existing[2]} credits | 🏆 {existing[3]} pts\n\n📌 /login | /spin | /profile | /leaderboard')
     conn.close()
+
+async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("✅ Test command working! No reset!")
+
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -1471,10 +1480,12 @@ def main():
     app.add_handler(CallbackQueryHandler(shop_callback, pattern="^shop_"))
     app.add_handler(CommandHandler("bank", bank))
     app.add_handler(CommandHandler("deposit", deposit))
+    app.add_handler(CommandHandler("test", test))
     app.add_handler(CommandHandler("withdraw", withdraw))
     print("🤖 Bot is running...")
     app.run_polling()
 
 if __name__ == "__main__":
     main()
+
 
