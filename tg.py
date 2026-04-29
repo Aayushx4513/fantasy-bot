@@ -52,8 +52,8 @@ def init_db():
                  (user_id INTEGER, player_id INTEGER)''')
     c.execute('''CREATE TABLE IF NOT EXISTS achievements 
                  (user_id INTEGER, achievement TEXT)''')
-   c.execute('''CREATE TABLE IF NOT EXISTS bank 
-             (user_id INTEGER PRIMARY KEY, balance INTEGER DEFAULT 0)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS bank 
+                 (user_id INTEGER PRIMARY KEY, balance INTEGER DEFAULT 0)''')
  
     # 🇮🇳 INDIA CURRENT (25)
     india_current = [
