@@ -1648,6 +1648,48 @@ async def guess_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
 
+async def guess_num_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    
+    if user_id not in active_games:
+        await query.edit_message_text("❌ No active game!")
+        return
+    
+    game = active_games[user_id]
+    guessed_num = int(query.data.split("_")[2])
+    secret = game['secret']
+    game['attempts'] += 1
+    
+    multipliers = {1:10, 2:7, 3:5, 4:3, 5:2}
+    multiplier = multipliers.get(game['attempts'], 1)
+    win_amount = int(game['bet'] * multiplier)
+    
+    if guessed_num == secret:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (win_amount, user_id))
+        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+        new_bal = c.fetchone()[0]
+        conn.commit()
+        conn.close()
+        
+        await query.edit_message_text(
+            f"🎉 CORRECT! Number was {secret}\n\n"
+            f"Attempts: {game['attempts']}\n"
+            f"Reward: {win_amount:,} 💰 ({multiplier}x)\n"
+            f"💰 New balance: {new_bal:,} 💰"
+        )
+        del active_games[user_id]
+    else:
+        await query.edit_message_text(
+            f"❌ WRONG! {guessed_num} is not correct.\n\n"
+            f"Number is between {game['min_range']} and {game['max_range']}\n"
+            f"Attempts: {game['attempts']}\n\n"
+            f"Game Over! You lost {game['bet']:,} 💰"
+        )
+        del active_games[user_id]
 
 
 def main():
