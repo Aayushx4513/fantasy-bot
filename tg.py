@@ -52,7 +52,9 @@ def init_db():
                  (user_id INTEGER, player_id INTEGER)''')
     c.execute('''CREATE TABLE IF NOT EXISTS achievements 
                  (user_id INTEGER, achievement TEXT)''')
-    
+   c.execute('''CREATE TABLE IF NOT EXISTS bank 
+             (user_id INTEGER PRIMARY KEY, balance INTEGER DEFAULT 0)''')
+ 
     # 🇮🇳 INDIA CURRENT (25)
     india_current = [
         (1, 'Virat Kohli', 1000000, '🇮🇳', 'current', 'India'),
@@ -612,6 +614,150 @@ async def top_fantasy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 Your points: {user[3]} | Rank: #{rank}"
     await update.message.reply_text(msg)
     conn.close()
+
+# ============ BANK SYSTEM ============
+
+async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Ensure bank entry exists
+    c.execute("INSERT OR IGNORE INTO bank (user_id, balance) VALUES (?, 0)", (user_id,))
+    c.execute("SELECT balance FROM bank WHERE user_id=?", (user_id,))
+    bank_bal = c.fetchone()[0]
+    
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    wallet_bal = c.fetchone()[0]
+    
+    conn.close()
+    
+    await update.message.reply_text(
+        f"🏦 MY BANK ACCOUNT\n\n"
+        f"💰 Bank Balance: {bank_bal:,} 💰\n"
+        f"👛 Wallet Balance: {wallet_bal:,} 💰\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💡 /deposit <amount> - Add to bank\n"
+        f"💡 /withdraw <amount> - Take from bank"
+    )
+
+async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text('❌ /deposit <amount>\nExample: /deposit 5000')
+        return
+    
+    try:
+        amount = int(args[0])
+    except:
+        await update.message.reply_text('❌ Invalid amount')
+        return
+    
+    if amount < 100:
+        await update.message.reply_text('❌ Minimum deposit is 100 credits')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Ensure bank entry exists
+    c.execute("INSERT OR IGNORE INTO bank (user_id, balance) VALUES (?, 0)", (user_id,))
+    
+    # Check wallet balance
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    wallet_bal = c.fetchone()[0]
+    
+    if wallet_bal < amount:
+        await update.message.reply_text(f'❌ Insufficient wallet balance!\n\nNeed: {amount:,} 💰\nHave: {wallet_bal:,} 💰')
+        conn.close()
+        return
+    
+    # Transfer to bank
+    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (amount, user_id))
+    c.execute("UPDATE bank SET balance = balance + ? WHERE user_id=?", (amount, user_id))
+    conn.commit()
+    
+    # Get new balances
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    new_wallet = c.fetchone()[0]
+    c.execute("SELECT balance FROM bank WHERE user_id=?", (user_id,))
+    new_bank = c.fetchone()[0]
+    
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✅ DEPOSITED!\n\n"
+        f"Amount: +{amount:,} 💰\n"
+        f"Wallet: {wallet_bal:,} → {new_wallet:,} 💰\n"
+        f"Bank: {new_bank - amount:,} → {new_bank:,} 💰"
+    )
+
+async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text('❌ /withdraw <amount>\nExample: /withdraw 5000')
+        return
+    
+    try:
+        amount = int(args[0])
+    except:
+        await update.message.reply_text('❌ Invalid amount')
+        return
+    
+    if amount < 100:
+        await update.message.reply_text('❌ Minimum withdrawal is 100 credits')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Ensure bank entry exists
+    c.execute("INSERT OR IGNORE INTO bank (user_id, balance) VALUES (?, 0)", (user_id,))
+    
+    # Check bank balance
+    c.execute("SELECT balance FROM bank WHERE user_id=?", (user_id,))
+    bank_bal = c.fetchone()[0]
+    
+    if bank_bal < amount:
+        await update.message.reply_text(f'❌ Insufficient bank balance!\n\nNeed: {amount:,} 💰\nHave: {bank_bal:,} 💰')
+        conn.close()
+        return
+    
+    # Transfer from bank
+    c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount, user_id))
+    c.execute("UPDATE bank SET balance = balance - ? WHERE user_id=?", (amount, user_id))
+    conn.commit()
+    
+    # Get new balances
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    new_wallet = c.fetchone()[0]
+    c.execute("SELECT balance FROM bank WHERE user_id=?", (user_id,))
+    new_bank = c.fetchone()[0]
+    
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✅ WITHDRAWN!\n\n"
+        f"Amount: -{amount:,} 💰\n"
+        f"Bank: {bank_bal:,} → {new_bank:,} 💰\n"
+        f"Wallet: {new_wallet - amount:,} → {new_wallet:,} 💰"
+    )
+
+
 
 async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -1323,6 +1469,9 @@ def main():
     app.add_handler(CommandHandler("setprice", setprice))
     app.add_handler(CommandHandler("rmachieve", rmachieve))
     app.add_handler(CallbackQueryHandler(shop_callback, pattern="^shop_"))
+    app.add_handler(CommandHandler("bank", bank))
+    app.add_handler(CommandHandler("deposit", deposit))
+    app.add_handler(CommandHandler("withdraw", withdraw))
     print("🤖 Bot is running...")
     app.run_polling()
 
