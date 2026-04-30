@@ -1665,7 +1665,7 @@ def main():
     app.add_handler(CommandHandler("deposit", deposit))
     app.add_handler(CommandHandler("test", test))
     app.add_handler(CommandHandler("guess", guess))
-    app.add_handler(CallbackQueryHandler(guess_callback, pattern="^guess_"))
+    app.add_handler(CallbackQueryHandler(guess_num_callback, pattern="^guess_"))
     app.add_handler(CommandHandler("withdraw", withdraw))
     print("🤖 Bot is running...")
     app.run_polling()
