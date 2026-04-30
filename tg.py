@@ -1,3 +1,4 @@
+import re
 import sqlite3
 import random
 from datetime import datetime, timedelta
