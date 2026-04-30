@@ -1572,145 +1572,231 @@ async def guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
-async def guess_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def guess_num_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
     
     if user_id not in active_games:
-        await query.edit_message_text("❌ No active game! Start with /guess")
+        await query.edit_message_text("❌ No active game!")
         return
     
     game = active_games[user_id]
-    data = query.data
-    parts = data.split("_")
+    guessed_num = int(query.data.split("_")[2])
+    secret = game['secret']
+    game['attempts'] += 1
     
-    # Handle number button click
-    if data.startswith("guess_num_"):
-        guessed_num = int(parts[2])
-        secret = game['secret']
-        game['attempts'] += 1
+    multipliers = {1:10, 2:7, 3:5, 4:3, 5:2}
+    multiplier = multipliers.get(game['attempts'], 1)
+    win_amount = int(game['bet'] * multiplier)
+    
+    if guessed_num == secret:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (win_amount, user_id))
+        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+        new_bal = c.fetchone()[0]
+        conn.commit()
+        conn.close()
         
-        multipliers = {1:10, 2:7, 3:5, 4:3, 5:2}
-        multiplier = multipliers.get(game['attempts'], 1)
-        win_amount = int(game['bet'] * multiplier)
-        
-        if guessed_num == secret:
-            conn = get_db()
-            c = conn.cursor()
-            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (win_amount, user_id))
-            c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-            new_bal = c.fetchone()[0]
-            conn.commit()
-            conn.close()
-            
-            await query.edit_message_text(
-                f"🎉 CORRECT! Number was {secret}\n\n"
-                f"Attempts: {game['attempts']}\n"
-                f"Reward: {win_amount:,} 💰 ({multiplier}x)\n"
-                f"💰 New balance: {new_bal:,} 💰"
-            )
-            del active_games[user_id]
-        else:
-            await query.edit_message_text(
-                f"❌ WRONG! {guessed_num} is not correct.\n\n"
-                f"Number is between {game['min_range']} and {game['max_range']}\n"
-                f"Attempts: {game['attempts']}\n\n"
-                f"Game Over! You lost {game['bet']:,} 💰"
-            )
-            del active_games[user_id]
+        await query.edit_message_text(
+            f"🎉 CORRECT! Number was {secret}\n\n"
+            f"Attempts: {game['attempts']}\n"
+            f"Reward: {win_amount:,} 💰 ({multiplier}x)\n"
+            f"💰 New balance: {new_bal:,} 💰"
+        )
+        del active_games[user_id]
+    else:
+        await query.edit_message_text(
+            f"❌ WRONG! {guessed_num} is not correct.\n"
+            f"✅ CORRECT NUMBER was {secret}\n\n"
+            f"Attempts: {game['attempts']}\n"
+            f"You lost {game['bet']:,} 💰"
+        )
+        del active_games[user_id]
+
+# ============ WORD SCRAMBLE GAME ============
+
+import random
+from datetime import datetime
+
+active_scramble_games = {}
+
+def scramble_word(word):
+    word_list = list(word)
+    random.shuffle(word_list)
+    return ''.join(word_list)
+
+async def scramble(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    
+    if chat_id in active_scramble_games:
+        await update.message.reply_text("⚠️ A game is already active! Finish it first.")
         return
     
-    # Handle range selection
-    low = int(parts[1])
-    high = int(parts[2])
-    secret = game['secret']
+    conn = get_db()
+    c = conn.cursor()
+    
+    c.execute("SELECT COUNT(*) FROM scramble_words WHERE used = 0")
+    count = c.fetchone()[0]
+    
+    if count == 0:
+        c.execute("UPDATE scramble_words SET used = 0")
+        conn.commit()
+    
+    c.execute("SELECT word FROM scramble_words WHERE used = 0 ORDER BY RANDOM() LIMIT 1")
+    word_row = c.fetchone()
+    
+    if not word_row:
+        await update.message.reply_text("❌ No words available!")
+        conn.close()
+        return
+    
+    original_word = word_row[0].upper()
+    c.execute("UPDATE scramble_words SET used = 1 WHERE word = ?", (original_word,))
+    conn.commit()
+    conn.close()
+    
+    scrambled = scramble_word(original_word)
+    
+    active_scramble_games[chat_id] = {
+        'original': original_word,
+        'scrambled': scrambled,
+        'attempts': 0,
+        'max_attempts': 30,
+        'started_by': update.effective_user.id,
+        'started_at': datetime.now()
+    }
+    
+    await update.message.reply_text(
+        f"🔀 WORD SCRAMBLE!\n\n"
+        f"Scrambled: `{scrambled}`\n\n"
+        f"📊 Attempts: 0/30\n\n"
+        f"Type the correct word to win!\n"
+        f"✅ Winner: +2 points + 200 credits"
+    )
+
+async def end_scramble(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+    
+    if chat_id not in active_scramble_games:
+        await update.message.reply_text("❌ No active game to end!")
+        return
+    
+    # Check if user is group admin
+    try:
+        chat_member = await context.bot.get_chat_member(chat_id, user_id)
+        if chat_member.status not in ['administrator', 'creator']:
+            await update.message.reply_text("❌ Only group admins can end the game!")
+            return
+    except:
+        await update.message.reply_text("❌ Unable to verify admin status!")
+        return
+    
+    game = active_scramble_games[chat_id]
+    await update.message.reply_text(
+        f"🔚 GAME ENDED BY ADMIN!\n\n"
+        f"Correct word was: `{game['original']}`\n"
+        f"Total attempts: {game['attempts']}/{game['max_attempts']}\n\n"
+        f"Type /scramble to start a new game!"
+    )
+    del active_scramble_games[chat_id]
+
+async def scramble_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT name, points FROM scramble_leaderboard ORDER BY points DESC LIMIT 10")
+    leaders = c.fetchall()
+    conn.close()
+    
+    if not leaders:
+        await update.message.reply_text("📭 No one has played yet!\nType /scramble to start!")
+        return
+    
+    msg = "🏆 WORD SCRAMBLE LEADERBOARD\n\n"
+    for i, (name, points) in enumerate(leaders, 1):
+        medal = "👑" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+        msg += f"{medal} {name} - {points} pts\n"
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT points FROM scramble_leaderboard WHERE user_id=?", (update.effective_user.id,))
+    user_points = c.fetchone()
+    conn.close()
+    
+    if user_points:
+        conn = get_db()
+        c = conn.cursor()
+        rank = c.execute("SELECT COUNT(*) + 1 FROM scramble_leaderboard WHERE points > ?", (user_points[0],)).fetchone()[0]
+        conn.close()
+        msg += f"\n📊 Your points: {user_points[0]} | Rank: #{rank}"
+    else:
+        msg += "\n📊 You haven't played yet! Type /scramble to start."
+    
+    await update.message.reply_text(msg)
+
+async def handle_scramble_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+    message_text = update.message.text.strip().upper()
+    
+    if chat_id not in active_scramble_games:
+        return
+    
+    if message_text.startswith('/'):
+        return
+    
+    game = active_scramble_games[chat_id]
+    
+    if len(message_text) != len(game['original']):
+        return
     
     game['attempts'] += 1
     
-    if low <= secret <= high:
-        game['min_range'] = low
-        game['max_range'] = high
-        range_size = high - low + 1
+    if message_text == game['original']:
+        points = 2
+        credits = 200
         
-        if range_size <= 5:
-            # Show single number buttons
-            keyboard = []
-            row = []
-            for i in range(low, high + 1):
-                row.append(InlineKeyboardButton(str(i), callback_data=f"guess_num_{i}"))
-                if len(row) == 5:
-                    keyboard.append(row)
-                    row = []
-            if row:
-                keyboard.append(row)
-            
-            await query.edit_message_text(
-                f"🔢 HIDDEN NUMBER GAME\n\n"
-                f"Bet: {game['bet']} 💰\n"
-                f"Range: {low}-{high}\n"
-                f"Attempts: {game['attempts']}\n\n"
-                f"Choose the exact number:",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-        else:
-            # Show range buttons (4 parts)
-            step = (range_size + 3) // 4
-            keyboard = []
-            for i in range(4):
-                r_low = low + i * step
-                r_high = min(low + (i + 1) * step - 1, high)
-                if r_low <= r_high:
-                    keyboard.append([InlineKeyboardButton(f"{r_low}-{r_high}", callback_data=f"guess_{r_low}_{r_high}")])
-            
-            await query.edit_message_text(
-                f"🔢 HIDDEN NUMBER GAME\n\n"
-                f"Bet: {game['bet']} 💰\n"
-                f"Range: {low}-{high}\n"
-                f"Attempts: {game['attempts']}\n\n"
-                f"Select a range:",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO scramble_leaderboard (user_id, name, points) VALUES (?, ?, COALESCE((SELECT points FROM scramble_leaderboard WHERE user_id=?), 0) + ?)",
+                  (user_id, update.effective_user.first_name, user_id, points))
+        conn.commit()
+        
+        c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (credits, user_id))
+        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+        new_bal = c.fetchone()[0]
+        conn.commit()
+        conn.close()
+        
+        await update.message.reply_text(
+            f"🎉 CORRECT! Word was `{game['original']}`\n\n"
+            f"🏆 Winner: {update.effective_user.first_name}\n"
+            f"✅ +{points} pts | +{credits} credits\n"
+            f"💰 New balance: {new_bal:,} 💰\n\n"
+            f"Type /scramble to play again!"
+        )
+        del active_scramble_games[chat_id]
     else:
-        if high < secret:
-            game['min_range'] = high + 1
-            hint = f"🔼 HIGHER! Number is greater than {high}"
-        else:
-            game['max_range'] = low - 1
-            hint = f"🔽 LOWER! Number is less than {low}"
+        remaining = game['max_attempts'] - game['attempts']
         
-        low = game['min_range']
-        high = game['max_range']
-        range_size = high - low + 1
-        
-        if range_size <= 5:
-            keyboard = []
-            row = []
-            for i in range(low, high + 1):
-                row.append(InlineKeyboardButton(str(i), callback_data=f"guess_num_{i}"))
-                if len(row) == 5:
-                    keyboard.append(row)
-                    row = []
-            if row:
-                keyboard.append(row)
-            
-            await query.edit_message_text(
-                f"{hint}\n\nRange: {low}-{high}\nAttempts: {game['attempts']}",
-                reply_markup=InlineKeyboardMarkup(keyboard)
+        if game['attempts'] >= game['max_attempts']:
+            await update.message.reply_text(
+                f"❌ GAME OVER!\n\n"
+                f"Correct word was: `{game['original']}`\n"
+                f"Nobody guessed it in {game['max_attempts']} attempts.\n\n"
+                f"Type /scramble to start new game!"
             )
+            del active_scramble_games[chat_id]
         else:
-            step = (range_size + 3) // 4
-            keyboard = []
-            for i in range(4):
-                r_low = low + i * step
-                r_high = min(low + (i + 1) * step - 1, high)
-                if r_low <= r_high:
-                    keyboard.append([InlineKeyboardButton(f"{r_low}-{r_high}", callback_data=f"guess_{r_low}_{r_high}")])
-            
-            await query.edit_message_text(
-                f"{hint}\n\nRange: {low}-{high}\nAttempts: {game['attempts']}",
-                reply_markup=InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text(
+                f"❌ Wrong guess!\n"
+                f"📊 Attempts: {game['attempts']}/{game['max_attempts']}\n"
+                f"💡 Keep trying!"
             )
+
+
 
 
 def main():
@@ -1761,6 +1847,10 @@ def main():
     app.add_handler(CommandHandler("test", test))
     app.add_handler(CommandHandler("guess", guess))
     app.add_handler(CallbackQueryHandler(guess_callback, pattern="^guess_"))
+    app.add_handler(CommandHandler("scramble", scramble))
+    app.add_handler(CommandHandler("end_scramble", end_scramble))
+    app.add_handler(CommandHandler("scramble_leaderboard", scramble_leaderboard))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_scramble_guess))
     app.add_handler(CommandHandler("withdraw", withdraw))
     print("🤖 Bot is running...")
     app.run_polling()
