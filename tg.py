@@ -278,21 +278,25 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
+    
     conn = get_db()
     c = conn.cursor()
-    c.execute("CREATE TABLE IF NOT EXISTS login_streak (user_id INTEGER PRIMARY KEY, streak INTEGER, last_login TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS login_streak (user_id INTEGER PRIMARY KEY, streak INTEGER, last_login DATE)")
     c.execute("SELECT streak, last_login FROM login_streak WHERE user_id=?", (user_id,))
     row = c.fetchone()
+    
     today = datetime.now().date()
+    yesterday = today - timedelta(days=1)
+    
     if row:
         streak, last_login = row
         if last_login:
             last = datetime.fromisoformat(last_login).date()
             if last == today:
-                await update.message.reply_text('⚠️ Already logged in today!\nCome back tomorrow.')
+                await update.message.reply_text('⚠️ Already logged in today!\nCome back tomorrow at 12 AM.')
                 conn.close()
                 return
-            elif (today - last).days == 1:
+            elif last == yesterday:
                 streak += 1
             else:
                 streak = 1
@@ -300,7 +304,9 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
             streak = 1
     else:
         streak = 1
+    
     c.execute("INSERT OR REPLACE INTO login_streak (user_id, streak, last_login) VALUES (?, ?, ?)", (user_id, streak, today.isoformat()))
+    
     if streak == 7:
         c.execute("UPDATE users SET balance = balance + 10000 WHERE user_id=?", (user_id,))
         conn.commit()
@@ -311,6 +317,7 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit()
     else:
         await update.message.reply_text(f'📅 LOGIN\n\nDay {streak}/7 ✅\nStreak: {streak} day(s)')
+    
     conn.close()
 
 async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
