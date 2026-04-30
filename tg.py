@@ -1586,47 +1586,9 @@ async def guess_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     parts = data.split("_")
     
-    # Handle number button click
-    if data.startswith("guess_num_"):
-        guessed_num = int(parts[2])
-        secret = game['secret']
-        game['attempts'] += 1
-        
-        multipliers = {1:10, 2:7, 3:5, 4:3, 5:2}
-        multiplier = multipliers.get(game['attempts'], 1)
-        win_amount = int(game['bet'] * multiplier)
-        
-        if guessed_num == secret:
-            conn = get_db()
-            c = conn.cursor()
-            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (win_amount, user_id))
-            c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-            new_bal = c.fetchone()[0]
-            conn.commit()
-            conn.close()
-            
-            await query.edit_message_text(
-                f"🎉 CORRECT! Number was {secret}\n\n"
-                f"Attempts: {game['attempts']}\n"
-                f"Reward: {win_amount:,} 💰 ({multiplier}x)\n"
-                f"💰 New balance: {new_bal:,} 💰"
-            )
-            del active_games[user_id]
-        else:
-            await query.edit_message_text(
-                f"❌ WRONG! {guessed_num} is not correct.\n"
-                f"✅ CORRECT NUMBER was {secret}\n\n"
-                f"Attempts: {game['attempts']}\n"
-                f"You lost {game['bet']:,} 💰"
-            )
-            del active_games[user_id]
-        return
-    
-    # Handle range selection
     low = int(parts[1])
     high = int(parts[2])
     secret = game['secret']
-    
     game['attempts'] += 1
     
     if low <= secret <= high:
@@ -1635,7 +1597,6 @@ async def guess_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         range_size = high - low + 1
         
         if range_size <= 5:
-            # Show individual number buttons
             keyboard = []
             row = []
             for i in range(low, high + 1):
@@ -1645,17 +1606,11 @@ async def guess_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     row = []
             if row:
                 keyboard.append(row)
-            
             await query.edit_message_text(
-                f"🔢 HIDDEN NUMBER GAME\n\n"
-                f"Bet: {game['bet']} 💰\n"
-                f"Range: {low}-{high}\n"
-                f"Attempts: {game['attempts']}\n\n"
-                f"Choose the exact number:",
+                f"🔢 HIDDEN NUMBER GAME\n\nBet: {game['bet']} 💰\nRange: {low}-{high}\nAttempts: {game['attempts']}\n\nChoose the exact number:",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
         else:
-            # Show range buttons
             step = (range_size + 3) // 4
             keyboard = []
             for i in range(4):
@@ -1663,55 +1618,93 @@ async def guess_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 r_high = min(low + (i + 1) * step - 1, high)
                 if r_low <= r_high:
                     keyboard.append([InlineKeyboardButton(f"{r_low}-{r_high}", callback_data=f"guess_{r_low}_{r_high}")])
-            
             await query.edit_message_text(
-                f"🔢 HIDDEN NUMBER GAME\n\n"
-                f"Bet: {game['bet']} 💰\n"
-                f"Range: {low}-{high}\n"
-                f"Attempts: {game['attempts']}\n\n"
-                f"Select a range:",
+                f"🔢 HIDDEN NUMBER GAME\n\nBet: {game['bet']} 💰\nRange: {low}-{high}\nAttempts: {game['attempts']}\n\nSelect a range:",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
     else:
         if high < secret:
-            game['min_range'] = high + 1
+            new_low = high + 1
+            new_high = game['max_range']
             hint = f"🔼 HIGHER! Number is greater than {high}"
         else:
-            game['max_range'] = low - 1
+            new_low = game['min_range']
+            new_high = low - 1
             hint = f"🔽 LOWER! Number is less than {low}"
         
-        low = game['min_range']
-        high = game['max_range']
-        range_size = high - low + 1
+        game['min_range'] = new_low
+        game['max_range'] = new_high
+        range_size = new_high - new_low + 1
         
         if range_size <= 5:
             keyboard = []
             row = []
-            for i in range(low, high + 1):
+            for i in range(new_low, new_high + 1):
                 row.append(InlineKeyboardButton(str(i), callback_data=f"guess_num_{i}"))
                 if len(row) == 5:
                     keyboard.append(row)
                     row = []
             if row:
                 keyboard.append(row)
-            
             await query.edit_message_text(
-                f"{hint}\n\nRange: {low}-{high}\nAttempts: {game['attempts']}",
+                f"{hint}\n\nRange: {new_low}-{new_high}\nAttempts: {game['attempts']}",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
         else:
             step = (range_size + 3) // 4
             keyboard = []
             for i in range(4):
-                r_low = low + i * step
-                r_high = min(low + (i + 1) * step - 1, high)
+                r_low = new_low + i * step
+                r_high = min(new_low + (i + 1) * step - 1, new_high)
                 if r_low <= r_high:
                     keyboard.append([InlineKeyboardButton(f"{r_low}-{r_high}", callback_data=f"guess_{r_low}_{r_high}")])
-            
             await query.edit_message_text(
-                f"{hint}\n\nRange: {low}-{high}\nAttempts: {game['attempts']}",
+                f"{hint}\n\nRange: {new_low}-{new_high}\nAttempts: {game['attempts']}",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
+
+async def guess_num_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    
+    if user_id not in active_games:
+        await query.edit_message_text("❌ No active game!")
+        return
+    
+    game = active_games[user_id]
+    guessed_num = int(query.data.split("_")[2])
+    secret = game['secret']
+    game['attempts'] += 1
+    
+    multipliers = {1:10, 2:7, 3:5, 4:3, 5:2}
+    multiplier = multipliers.get(game['attempts'], 1)
+    win_amount = int(game['bet'] * multiplier)
+    
+    if guessed_num == secret:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (win_amount, user_id))
+        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+        new_bal = c.fetchone()[0]
+        conn.commit()
+        conn.close()
+        
+        await query.edit_message_text(
+            f"🎉 CORRECT! Number was {secret}\n\n"
+            f"Attempts: {game['attempts']}\n"
+            f"Reward: {win_amount:,} 💰 ({multiplier}x)\n"
+            f"💰 New balance: {new_bal:,} 💰"
+        )
+        del active_games[user_id]
+    else:
+        await query.edit_message_text(
+            f"❌ WRONG! {guessed_num} is not correct.\n"
+            f"✅ CORRECT NUMBER was {secret}\n\n"
+            f"Attempts: {game['attempts']}\n"
+            f"You lost {game['bet']:,} 💰"
+        )
+        del active_games[user_id]
 
 
 
