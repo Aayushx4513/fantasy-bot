@@ -1504,6 +1504,74 @@ async def guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
+# ============ GUESS GAME ============
+
+active_games = {}
+
+async def guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text('🔢 /guess <amount>\nExample: /guess 500')
+        return
+    
+    try:
+        amount = int(args[0])
+    except:
+        await update.message.reply_text('❌ Invalid amount')
+        return
+    
+    if amount < 100:
+        await update.message.reply_text('❌ Minimum bet is 100 credits')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    balance = c.fetchone()[0]
+    
+    if balance < amount:
+        await update.message.reply_text(f'❌ Need {amount:,}, have {balance:,}')
+        conn.close()
+        return
+    
+    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (amount, user_id))
+    conn.commit()
+    conn.close()
+    
+    secret = random.randint(1, 100)
+    
+    active_games[user_id] = {
+        'secret': secret,
+        'bet': amount,
+        'attempts': 0,
+        'min_range': 1,
+        'max_range': 100
+    }
+    
+    keyboard = [
+        [InlineKeyboardButton("1-10", callback_data="guess_1_10"),
+         InlineKeyboardButton("11-20", callback_data="guess_11_20"),
+         InlineKeyboardButton("21-30", callback_data="guess_21_30"),
+         InlineKeyboardButton("31-40", callback_data="guess_31_40")],
+        [InlineKeyboardButton("41-50", callback_data="guess_41_50"),
+         InlineKeyboardButton("51-60", callback_data="guess_51_60"),
+         InlineKeyboardButton("61-70", callback_data="guess_61_70"),
+         InlineKeyboardButton("71-80", callback_data="guess_71_80")],
+        [InlineKeyboardButton("81-90", callback_data="guess_81_90"),
+         InlineKeyboardButton("91-100", callback_data="guess_91_100")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        f"🔢 HIDDEN NUMBER GAME\n\nBet: {amount} 💰\nGuess the number (1-100):",
+        reply_markup=reply_markup
+    )
+
 async def guess_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1563,12 +1631,10 @@ async def guess_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if low <= secret <= high:
         game['min_range'] = low
         game['max_range'] = high
-        
-        # Calculate range size
         range_size = high - low + 1
         
         if range_size <= 5:
-            # Show individual number buttons
+            # Show single number buttons
             keyboard = []
             row = []
             for i in range(low, high + 1):
@@ -1588,7 +1654,7 @@ async def guess_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
         else:
-            # Show range buttons (split into 4 parts)
+            # Show range buttons (4 parts)
             step = (range_size + 3) // 4
             keyboard = []
             for i in range(4):
@@ -1618,7 +1684,6 @@ async def guess_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         range_size = high - low + 1
         
         if range_size <= 5:
-            # Show individual number buttons
             keyboard = []
             row = []
             for i in range(low, high + 1):
@@ -1634,7 +1699,6 @@ async def guess_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
         else:
-            # Show range buttons
             step = (range_size + 3) // 4
             keyboard = []
             for i in range(4):
@@ -1647,49 +1711,6 @@ async def guess_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{hint}\n\nRange: {low}-{high}\nAttempts: {game['attempts']}",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
-
-async def guess_num_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    user_id = query.from_user.id
-    
-    if user_id not in active_games:
-        await query.edit_message_text("❌ No active game!")
-        return
-    
-    game = active_games[user_id]
-    guessed_num = int(query.data.split("_")[2])
-    secret = game['secret']
-    game['attempts'] += 1
-    
-    multipliers = {1:10, 2:7, 3:5, 4:3, 5:2}
-    multiplier = multipliers.get(game['attempts'], 1)
-    win_amount = int(game['bet'] * multiplier)
-    
-    if guessed_num == secret:
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (win_amount, user_id))
-        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-        new_bal = c.fetchone()[0]
-        conn.commit()
-        conn.close()
-        
-        await query.edit_message_text(
-            f"🎉 CORRECT! Number was {secret}\n\n"
-            f"Attempts: {game['attempts']}\n"
-            f"Reward: {win_amount:,} 💰 ({multiplier}x)\n"
-            f"💰 New balance: {new_bal:,} 💰"
-        )
-        del active_games[user_id]
-    else:
-        await query.edit_message_text(
-            f"❌ WRONG! {guessed_num} is not correct.\n\n"
-            f"Number is between {game['min_range']} and {game['max_range']}\n"
-            f"Attempts: {game['attempts']}\n\n"
-            f"Game Over! You lost {game['bet']:,} 💰"
-        )
-        del active_games[user_id]
 
 
 def main():
@@ -1739,8 +1760,7 @@ def main():
     app.add_handler(CommandHandler("deposit", deposit))
     app.add_handler(CommandHandler("test", test))
     app.add_handler(CommandHandler("guess", guess))
-    app.add_handler(CallbackQueryHandler(guess_callback, pattern="^guess_\\d+_\\d+$"))
-    app.add_handler(CallbackQueryHandler(guess_num_callback, pattern="^guess_num_"))
+    app.add_handler(CallbackQueryHandler(guess_callback, pattern="^guess_"))
     app.add_handler(CommandHandler("withdraw", withdraw))
     print("🤖 Bot is running...")
     app.run_polling()
