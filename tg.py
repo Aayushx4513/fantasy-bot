@@ -714,6 +714,8 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ============ BANK SYSTEM ============
 
+# ============ BANK SYSTEM ==========
+
 async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
@@ -725,13 +727,18 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     c.execute("INSERT OR IGNORE INTO bank (user_id, balance, last_interest) VALUES (?, 0, ?)", (user_id, datetime.now().isoformat()))
     c.execute("SELECT balance, last_interest FROM bank WHERE user_id=?", (user_id,))
-    bank_bal, last_interest = c.fetchone()
+    row = c.fetchone()
+    
+    if row:
+        bank_bal, last_interest = row
+    else:
+        bank_bal, last_interest = 0, None
     
     c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
     wallet_bal = c.fetchone()[0]
     
-    # Calculate next interest time
-    next_interest = "Available now"
+    # Next interest time
+    next_time_str = "Available now"
     if last_interest:
         last = datetime.fromisoformat(last_interest)
         next_time = last + timedelta(hours=24)
@@ -740,7 +747,7 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
             remaining = next_time - now
             hours = remaining.seconds // 3600
             mins = (remaining.seconds % 3600) // 60
-            next_interest = f"{hours}h {mins}m"
+            next_time_str = f"{hours}h {mins}m"
     
     conn.close()
     
@@ -749,11 +756,160 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💰 Bank Balance: {bank_bal:,} 💰\n"
         f"👛 Wallet Balance: {wallet_bal:,} 💰\n"
         f"📈 Interest Rate: 5% daily\n"
-        f"⏰ Next interest: {next_interest}\n\n"
+        f"⏰ Next interest: {next_time_str}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
         f"💡 /deposit <amount>\n"
         f"💡 /withdraw <amount>\n"
         f"💡 /claim_interest"
+    )
+
+async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text('❌ /deposit <amount>\nExample: /deposit 5000')
+        return
+    
+    try:
+        amount = int(args[0])
+    except:
+        await update.message.reply_text('❌ Invalid amount')
+        return
+    
+    if amount < 100:
+        await update.message.reply_text('❌ Minimum deposit is 100 credits')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    c.execute("INSERT OR IGNORE INTO bank (user_id, balance, last_interest) VALUES (?, 0, ?)", (user_id, datetime.now().isoformat()))
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    wallet_bal = c.fetchone()[0]
+    
+    if wallet_bal < amount:
+        await update.message.reply_text(f'❌ Insufficient wallet balance!\n\nNeed: {amount:,} 💰\nHave: {wallet_bal:,} 💰')
+        conn.close()
+        return
+    
+    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (amount, user_id))
+    c.execute("UPDATE bank SET balance = balance + ? WHERE user_id=?", (amount, user_id))
+    conn.commit()
+    
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    new_wallet = c.fetchone()[0]
+    c.execute("SELECT balance FROM bank WHERE user_id=?", (user_id,))
+    new_bank = c.fetchone()[0]
+    
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✅ DEPOSITED!\n\n"
+        f"Amount: +{amount:,} 💰\n"
+        f"Wallet: {wallet_bal:,} → {new_wallet:,} 💰\n"
+        f"Bank: {new_bank - amount:,} → {new_bank:,} 💰"
+    )
+
+async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text('❌ /withdraw <amount>\nExample: /withdraw 5000')
+        return
+    
+    try:
+        amount = int(args[0])
+    except:
+        await update.message.reply_text('❌ Invalid amount')
+        return
+    
+    if amount < 100:
+        await update.message.reply_text('❌ Minimum withdrawal is 100 credits')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    c.execute("INSERT OR IGNORE INTO bank (user_id, balance, last_interest) VALUES (?, 0, ?)", (user_id, datetime.now().isoformat()))
+    c.execute("SELECT balance FROM bank WHERE user_id=?", (user_id,))
+    bank_bal = c.fetchone()[0]
+    
+    if bank_bal < amount:
+        await update.message.reply_text(f'❌ Insufficient bank balance!\n\nNeed: {amount:,} 💰\nHave: {bank_bal:,} 💰')
+        conn.close()
+        return
+    
+    c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount, user_id))
+    c.execute("UPDATE bank SET balance = balance - ? WHERE user_id=?", (amount, user_id))
+    conn.commit()
+    
+    c.execute("SELECT balance FROM bank WHERE user_id=?", (user_id,))
+    new_bank = c.fetchone()[0]
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    new_wallet = c.fetchone()[0]
+    
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✅ WITHDRAWN!\n\n"
+        f"Amount: -{amount:,} 💰\n"
+        f"Bank: {bank_bal:,} → {new_bank:,} 💰\n"
+        f"Wallet: {new_wallet - amount:,} → {new_wallet:,} 💰"
+    )
+
+async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    c.execute("INSERT OR IGNORE INTO bank (user_id, balance, last_interest) VALUES (?, 0, ?)", (user_id, datetime.now().isoformat()))
+    c.execute("SELECT balance, last_interest FROM bank WHERE user_id=?", (user_id,))
+    row = c.fetchone()
+    
+    if not row:
+        await update.message.reply_text("❌ No bank account found! Use /bank first.")
+        conn.close()
+        return
+    
+    bank_bal, last_interest = row
+    now = datetime.now()
+    
+    if last_interest:
+        last = datetime.fromisoformat(last_interest)
+        next_time = last + timedelta(hours=24)
+        if now < next_time:
+            remaining = next_time - now
+            hours = remaining.seconds // 3600
+            mins = (remaining.seconds % 3600) // 60
+            await update.message.reply_text(f"⏰ Interest not ready yet!\n\nCome back in {hours}h {mins}m")
+            conn.close()
+            return
+    
+    interest = int(bank_bal * 0.05)
+    new_bank = bank_bal + interest
+    
+    c.execute("UPDATE bank SET balance = ?, last_interest = ? WHERE user_id=?", (new_bank, now.isoformat(), user_id))
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(
+        f"💰 INTEREST CLAIMED!\n\n"
+        f"Rate: 5%\n"
+        f"Interest: +{interest:,} 💰\n"
+        f"New Bank Balance: {new_bank:,} 💰\n\n"
+        f"⏰ Next interest: 24h"
     )
 
 async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
