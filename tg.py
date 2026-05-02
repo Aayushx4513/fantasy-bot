@@ -711,6 +711,7 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💰 TOTAL PAYOUT: {total_paid:,} 💰"
     await update.message.reply_text(msg)
 
+# ============ BANK SYSTEM ==========
 
 async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -756,6 +757,106 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💡 /deposit <amount>\n"
         f"💡 /withdraw <amount>\n"
         f"💡 /claim_interest"
+    )
+
+async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text('❌ /deposit <amount>\nExample: /deposit 5000')
+        return
+    
+    try:
+        amount = int(args[0])
+    except:
+        await update.message.reply_text('❌ Invalid amount')
+        return
+    
+    if amount < 100:
+        await update.message.reply_text('❌ Minimum deposit is 100 credits')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    c.execute("INSERT OR IGNORE INTO bank (user_id, balance, last_interest) VALUES (?, 0, ?)", (user_id, datetime.now().isoformat()))
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    wallet_bal = c.fetchone()[0]
+    
+    if wallet_bal < amount:
+        await update.message.reply_text(f'❌ Insufficient wallet balance!\n\nNeed: {amount:,} 💰\nHave: {wallet_bal:,} 💰')
+        conn.close()
+        return
+    
+    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (amount, user_id))
+    c.execute("UPDATE bank SET balance = balance + ? WHERE user_id=?", (amount, user_id))
+    conn.commit()
+    
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    new_wallet = c.fetchone()[0]
+    c.execute("SELECT balance FROM bank WHERE user_id=?", (user_id,))
+    new_bank = c.fetchone()[0]
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✅ DEPOSITED!\n\n"
+        f"Amount: +{amount:,} 💰\n"
+        f"Wallet: {wallet_bal:,} → {new_wallet:,} 💰\n"
+        f"Bank: {new_bank - amount:,} → {new_bank:,} 💰"
+    )
+
+async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text('❌ /withdraw <amount>\nExample: /withdraw 5000')
+        return
+    
+    try:
+        amount = int(args[0])
+    except:
+        await update.message.reply_text('❌ Invalid amount')
+        return
+    
+    if amount < 100:
+        await update.message.reply_text('❌ Minimum withdrawal is 100 credits')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    c.execute("INSERT OR IGNORE INTO bank (user_id, balance, last_interest) VALUES (?, 0, ?)", (user_id, datetime.now().isoformat()))
+    c.execute("SELECT balance FROM bank WHERE user_id=?", (user_id,))
+    bank_bal = c.fetchone()[0]
+    
+    if bank_bal < amount:
+        await update.message.reply_text(f'❌ Insufficient bank balance!\n\nNeed: {amount:,} 💰\nHave: {bank_bal:,} 💰')
+        conn.close()
+        return
+    
+    c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount, user_id))
+    c.execute("UPDATE bank SET balance = balance - ? WHERE user_id=?", (amount, user_id))
+    conn.commit()
+    
+    c.execute("SELECT balance FROM bank WHERE user_id=?", (user_id,))
+    new_bank = c.fetchone()[0]
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    new_wallet = c.fetchone()[0]
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✅ WITHDRAWN!\n\n"
+        f"Amount: -{amount:,} 💰\n"
+        f"Bank: {bank_bal:,} → {new_bank:,} 💰\n"
+        f"Wallet: {new_wallet - amount:,} → {new_wallet:,} 💰"
     )
 
 async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
