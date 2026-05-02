@@ -173,17 +173,24 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     c = conn.cursor()
     c.execute("SELECT balance, points, won, total, photo FROM users WHERE user_id=?", (user_id,))
     data = c.fetchone()
+    
+    # Get bank balance
+    c.execute("SELECT balance FROM bank WHERE user_id=?", (user_id,))
+    bank_row = c.fetchone()
+    bank_bal = bank_row[0] if bank_row else 0
+    
     conn.close()
     
-    balance, points, won, total, photo = data
+    wallet_bal, points, won, total, photo = data
+    total_wealth = wallet_bal + bank_bal
     win_rate = int(won/total*100) if total > 0 else 0
     
     if photo:
         await update.message.reply_photo(photo=photo, 
-            caption=f"👤 PROFILE\n\n{name}\n💰 {balance:,} | 🏆 {points} | 📊 {won}/{total} ({win_rate}%)\n\n🔄 /setpfp | ❌ /rmpfp")
+            caption=f"👤 PROFILE\n\n{name}\n💰 Wallet: {wallet_bal:,} | 🏦 Bank: {bank_bal:,}\n💰 Total: {total_wealth:,}\n🏆 Points: {points}\n📊 Bets: {won}/{total} ({win_rate}%)\n\n🔄 /setpfp | ❌ /rmpfp")
     else:
         await update.message.reply_text(
-            f"👤 PROFILE\n\n{name}\n💰 {balance:,} | 🏆 {points} | 📊 {won}/{total} ({win_rate}%)\n\n🔄 /setpfp | ❌ /rmpfp")
+            f"👤 PROFILE\n\n{name}\n💰 Wallet: {wallet_bal:,} | 🏦 Bank: {bank_bal:,}\n💰 Total: {total_wealth:,}\n🏆 Points: {points}\n📊 Bets: {won}/{total} ({win_rate}%)\n\n🔄 /setpfp | ❌ /rmpfp")
 
 # ============ SETPFP ============
 async def setpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -600,17 +607,41 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT name, balance FROM users ORDER BY balance DESC LIMIT 10")
+    
+    # Total wealth = wallet + bank
+    c.execute("""
+        SELECT u.name, u.balance + COALESCE(b.balance, 0) as total_wealth
+        FROM users u
+        LEFT JOIN bank b ON u.user_id = b.user_id
+        ORDER BY total_wealth DESC
+        LIMIT 10
+    """)
     users_data = c.fetchall()
     
-    msg = "🏆 TOP 10 RICHEST\n\n"
+    msg = "🏆 TOP 10 RICHEST (Wallet + Bank)\n\n"
     for i, u in enumerate(users_data, 1):
         medal = "👑" if i==1 else "🥈" if i==2 else "🥉" if i==3 else f"{i}."
         msg += f"{medal} {u[0]} - {u[1]:,} 💰\n"
     
-    user = get_user(user_id)
-    rank = c.execute("SELECT COUNT(*) FROM users WHERE balance > ?", (user[2],)).fetchone()[0] + 1
-    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 Your rank: #{rank}\n💰 Your balance: {user[2]:,} 💰"
+    # Current user total wealth
+    c.execute("""
+        SELECT u.balance + COALESCE(b.balance, 0)
+        FROM users u
+        LEFT JOIN bank b ON u.user_id = b.user_id
+        WHERE u.user_id = ?
+    """, (user_id,))
+    user_total = c.fetchone()[0]
+    
+    rank = c.execute("""
+        SELECT COUNT(*) + 1 FROM (
+            SELECT u.balance + COALESCE(b.balance, 0) as total
+            FROM users u
+            LEFT JOIN bank b ON u.user_id = b.user_id
+        ) WHERE total > ?
+    """, (user_total,)).fetchone()[0]
+    
+    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 Your rank: #{rank}\n💰 Total wealth: {user_total:,} 💰"
+    
     await update.message.reply_text(msg)
     conn.close()
 
