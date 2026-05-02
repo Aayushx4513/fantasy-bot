@@ -605,6 +605,96 @@ async def top_fantasy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
     conn.close()
 
+
+async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text('❌ Admin only!')
+        return
+    
+    args = context.args
+    if len(args) < 4:
+        await update.message.reply_text('❌ /result TEAM1 vs TEAM2 WINNER')
+        return
+    
+    team1 = args[0].upper()
+    team2 = args[2].upper()
+    winner = args[3].upper()
+    
+    if winner not in [team1, team2]:
+        await update.message.reply_text(f'❌ Winner must be {team1} or {team2}!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT id, team1, team2 FROM matches WHERE (team1=? AND team2=?)", (team1, team2))
+    match = c.fetchone()
+    
+    if not match:
+        await update.message.reply_text(f'❌ Match not found!')
+        conn.close()
+        return
+    
+    c.execute("SELECT user_id, amount, team FROM bets WHERE match_id=?", (match[0],))
+    bets = c.fetchall()
+    
+    winners = 0
+    losers = 0
+    total_paid = 0
+    winner_list = []
+    loser_list = []
+    points_given = {}
+    
+    for bet in bets:
+        user_id = bet[0]
+        amount = bet[1]
+        bet_team = bet[2].upper()
+        
+        c.execute("SELECT balance, won, points, name FROM users WHERE user_id=?", (user_id,))
+        u = c.fetchone()
+        
+        if bet_team == winner:
+            win_amount = amount * 2
+            new_balance = u[0] + win_amount
+            new_won = u[1] + 1
+            
+            new_points = u[2]
+            if user_id not in points_given:
+                new_points = u[2] + 10
+                points_given[user_id] = True
+            
+            c.execute("UPDATE users SET balance = ?, won = ?, points = ? WHERE user_id=?", 
+                     (new_balance, new_won, new_points, user_id))
+            total_paid += win_amount
+            winners += 1
+            winner_list.append(f"{u[3]} - {amount} → {win_amount} (+{amount})")
+        else:
+            new_points = u[2] - 5
+            c.execute("UPDATE users SET points = ? WHERE user_id=?", (new_points, user_id))
+            losers += 1
+            loser_list.append(f"{u[3]} - {amount} → 0 (-{amount})")
+    
+    c.execute("DELETE FROM bets WHERE match_id=?", (match[0],))
+    c.execute("DELETE FROM matches WHERE id=?", (match[0],))
+    conn.commit()
+    conn.close()
+    
+    msg = f"📢 MATCH RESULT!\n\n🏏 {match[1]} vs {match[2]}\n🏆 WINNER: {winner}\n\n"
+    msg += f"✅ WINNERS (max +10 pts each): {winners} users\n"
+    for w in winner_list[:5]:
+        msg += f"   • {w}\n"
+    if len(winner_list) > 5:
+        msg += f"   • +{len(winner_list)-5} more\n"
+    
+    msg += f"\n❌ LOSERS (-5 pts): {losers} users\n"
+    for l in loser_list[:5]:
+        msg += f"   • {l}\n"
+    if len(loser_list) > 5:
+        msg += f"   • +{len(loser_list)-5} more\n"
+    
+    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💰 TOTAL PAYOUT: {total_paid:,} 💰"
+    await update.message.reply_text(msg)
+
+
 # ============ BANK SYSTEM ============
 
 async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
