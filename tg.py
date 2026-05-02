@@ -1952,91 +1952,80 @@ async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     user_name = query.from_user.first_name
     data = query.data
-    
-if data == "rps_join":
-    if chat_id not in active_rps_games:
-        await query.edit_message_text("❌ Game expired! Start a new one with /rps")
-        return
-    
-    game = active_rps_games[chat_id]
-    
-    if game['opponent'] is not None:
-        await query.answer("Game already has an opponent!", show_alert=True)
-        return
-    
-    if user_id == game['challenger']:
-        await query.answer("You cannot play against yourself!", show_alert=True)
-        return
-    
-    # Check if opponent has enough credits for bet mode
-    if game['bet_mode']:
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-        balance = c.fetchone()[0]
-        if balance < game['bet']:
-            # 🔥 SIRF USKO ALERT, MESSAGE CHANGE NAHI HOTA 🔥
-            await query.answer(f"❌ You need {game['bet']:,} credits to join!\nYou have {balance:,}", show_alert=True)
-            conn.close()
+
+    if data == "rps_join":
+        if chat_id not in active_rps_games:
+            await query.edit_message_text("❌ Game expired! Start a new one with /rps")
             return
-        conn.close()
-    
-    game['opponent'] = user_id
-    game['opponent_name'] = user_name
-    
-    # Deduct bets if bet mode
-    if game['bet_mode']:
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (game['bet'], game['challenger']))
-        c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (game['bet'], user_id))
-        conn.commit()
-        conn.close()
-    
-    # Ask challenger to choose first
-    keyboard = [
-        [InlineKeyboardButton("✊ ROCK", callback_data="rps_choice_rock"),
-         InlineKeyboardButton("✋ PAPER", callback_data="rps_choice_paper"),
-         InlineKeyboardButton("✌️ SCISSORS", callback_data="rps_choice_scissors")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(
-        f"✅ MATCH STARTED!\n\n"
-        f"{game['challenger_name']} vs {game['opponent_name']}\n"
-        + (f"Bet: {game['bet']:,} 💰\n" if game['bet_mode'] else "") +
-        f"\n{game['challenger_name']}'s turn (choose first):",
-        reply_markup=reply_markup
-    )
-    return
-    
+
+        game = active_rps_games[chat_id]
+
+        if game['opponent'] is not None:
+            await query.answer("Game already has an opponent!", show_alert=True)
+            return
+
+        if user_id == game['challenger']:
+            await query.answer("You cannot play against yourself!", show_alert=True)
+            return
+
+        if game['bet_mode']:
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+            balance = c.fetchone()[0]
+            if balance < game['bet']:
+                await query.answer(f"❌ You need {game['bet']:,} credits to join!\nYou have {balance:,}", show_alert=True)
+                conn.close()
+                return
+            conn.close()
+
+        game['opponent'] = user_id
+        game['opponent_name'] = user_name
+
+        if game['bet_mode']:
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (game['bet'], game['challenger']))
+            c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (game['bet'], user_id))
+            conn.commit()
+            conn.close()
+
+        keyboard = [
+            [InlineKeyboardButton("✊ ROCK", callback_data="rps_choice_rock"),
+             InlineKeyboardButton("✋ PAPER", callback_data="rps_choice_paper"),
+             InlineKeyboardButton("✌️ SCISSORS", callback_data="rps_choice_scissors")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        await query.edit_message_text(
+            f"✅ MATCH STARTED!\n\n"
+            f"{game['challenger_name']} vs {game['opponent_name']}\n"
+            + (f"Bet: {game['bet']:,} 💰\n" if game['bet_mode'] else "") +
+            f"\n{game['challenger_name']}'s turn (choose first):",
+            reply_markup=reply_markup
+        )
+        return
+
     if data.startswith("rps_choice_"):
         choice = data.split("_")[2]
-        
+
         if chat_id not in active_rps_games:
             await query.edit_message_text("❌ Game expired!")
             return
-        
+
         game = active_rps_games[chat_id]
-        
+
         if not game['active']:
             await query.answer("Game already finished!")
             return
-        
-        # Determine who is choosing
+
         if user_id == game['challenger']:
             if game['challenger_choice'] is not None:
                 await query.answer("You already chose!")
                 return
             game['challenger_choice'] = choice
-            
             if game['opponent_choice'] is None:
-                # Wait for opponent
-                await query.edit_message_text(
-                    f"✅ You chose {choice.upper()}\n\n"
-                    f"⏳ Waiting for {game['opponent_name']} to choose..."
-                )
-                # Send buttons to opponent
+                await query.edit_message_text(f"✅ You chose {choice.upper()}\n\n⏳ Waiting for {game['opponent_name']} to choose...")
                 keyboard = [
                     [InlineKeyboardButton("✊ ROCK", callback_data="rps_choice_rock"),
                      InlineKeyboardButton("✋ PAPER", callback_data="rps_choice_paper"),
@@ -2054,58 +2043,35 @@ if data == "rps_join":
                 await query.answer("You already chose!")
                 return
             game['opponent_choice'] = choice
-        
-        # Both have chosen - determine winner
+
         if game['challenger_choice'] is not None and game['opponent_choice'] is not None:
             c_choice = game['challenger_choice']
             o_choice = game['opponent_choice']
-            
-            # Determine winner
-            winner = None
-            if c_choice == o_choice:
-                winner = "draw"
-            elif (c_choice == "rock" and o_choice == "scissors") or \
-                 (c_choice == "paper" and o_choice == "rock") or \
-                 (c_choice == "scissors" and o_choice == "paper"):
-                winner = "challenger"
-            else:
-                winner = "opponent"
-            
-            # Map choices to emoji
             choice_emoji = {"rock": "✊", "paper": "✋", "scissors": "✌️"}
-            
             conn = get_db()
             c = conn.cursor()
-            
-            if winner == "draw":
+            if c_choice == o_choice:
                 if game['bet_mode']:
-                    # Refund both players
                     c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game['bet'], game['challenger']))
                     c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game['bet'], game['opponent']))
                     refund_msg = f"\n💰 Refund: {game['bet']:,} 💰 to both players!"
                 else:
                     refund_msg = ""
-                
-                await query.edit_message_text(
-                    f"{choice_emoji[c_choice]} vs {choice_emoji[o_choice]}\n\n"
-                    f"🤝 DRAW!\n{refund_msg}"
-                )
+                await query.edit_message_text(f"{choice_emoji[c_choice]} vs {choice_emoji[o_choice]}\n\n🤝 DRAW!\n{refund_msg}")
                 conn.commit()
                 conn.close()
                 del active_rps_games[chat_id]
                 return
-            
-            if winner == "challenger":
+
+            if (c_choice == "rock" and o_choice == "scissors") or \
+               (c_choice == "paper" and o_choice == "rock") or \
+               (c_choice == "scissors" and o_choice == "paper"):
                 winner_id = game['challenger']
                 winner_name = game['challenger_name']
-                loser_id = game['opponent']
-                loser_name = game['opponent_name']
             else:
                 winner_id = game['opponent']
                 winner_name = game['opponent_name']
-                loser_id = game['challenger']
-                loser_name = game['challenger_name']
-            
+
             if game['bet_mode']:
                 win_amount = game['bet'] * 2
                 c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (win_amount, winner_id))
@@ -2113,13 +2079,12 @@ if data == "rps_join":
             else:
                 c.execute("UPDATE users SET balance = balance + 100 WHERE user_id=?", (winner_id,))
                 prize_msg = f"\n💰 {winner_name} wins 100 💰!"
-            
-            # Update stats
+
             c.execute("INSERT INTO rps_stats (user_id, name, wins, losses) VALUES (?, ?, 1, 0) ON CONFLICT(user_id) DO UPDATE SET wins = wins + 1", (winner_id, winner_name))
-            c.execute("INSERT INTO rps_stats (user_id, name, wins, losses) VALUES (?, ?, 0, 1) ON CONFLICT(user_id) DO UPDATE SET losses = losses + 1", (loser_id, loser_name))
+            c.execute("INSERT INTO rps_stats (user_id, name, wins, losses) VALUES (?, ?, 0, 1) ON CONFLICT(user_id) DO UPDATE SET losses = losses + 1", (game['opponent'] if winner_id == game['challenger'] else game['challenger'], winner_name))
             conn.commit()
             conn.close()
-            
+
             await query.edit_message_text(
                 f"{choice_emoji[c_choice]} vs {choice_emoji[o_choice]}\n\n"
                 f"🏆 {winner_name} wins!\n{prize_msg}\n"
