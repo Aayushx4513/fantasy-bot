@@ -1660,65 +1660,66 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = query.from_user.first_name
     data = query.data
     
-    if data == "ttt_join":
-        if chat_id not in active_ttt_games:
-            await query.edit_message_text("❌ Game expired! Start a new one with /ttt")
-            return
-        
-        game = active_ttt_games[chat_id]
-        
-        if game['opponent'] is not None:
-            await query.answer("Game already has an opponent!")
-            return
-        
-        if user_id == game['challenger']:
-            await query.answer("You cannot play against yourself!")
-            return
-        
-        # Check if opponent has enough credits for bet mode
-        if game['bet_mode']:
-            conn = get_db()
-            c = conn.cursor()
-            c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-            balance = c.fetchone()[0]
-            if balance < game['bet']:
-                await query.edit_message_text(f"❌ You need {game['bet']:,} credits to join this game!\nYou have {balance:,}")
-                conn.close()
-                return
-            conn.close()
-        
-        game['opponent'] = user_id
-        game['opponent_name'] = user_name
-        
-        # Deduct bets if bet mode
-        if game['bet_mode']:
-            conn = get_db()
-            c = conn.cursor()
-            c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (game['bet'], game['challenger']))
-            c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (game['bet'], user_id))
-            conn.commit()
-            conn.close()
-        
-        # Create board buttons
-        keyboard = []
-        for i in range(0, 9, 3):
-            row = []
-            for j in range(3):
-                row.append(InlineKeyboardButton(str(i+j+1), callback_data=f"ttt_move_{i+j}"))
-            keyboard.append(row)
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        board_text = get_board_text(game['board'])
-        
-        await query.edit_message_text(
-            f"✅ MATCH STARTED!\n\n"
-            f"{game['challenger_name']} = ❌ | {game['opponent_name']} = ⭕\n"
-            + (f"Bet: {game['bet']:,} 💰\n" if game['bet_mode'] else "") +
-            f"\n{board_text}\n\n"
-            f"{game['challenger_name']}'s turn (❌)",
-            reply_markup=reply_markup
-        )
+if data == "ttt_join":
+    if chat_id not in active_ttt_games:
+        await query.edit_message_text("❌ Game expired! Start a new one with /ttt")
         return
+    
+    game = active_ttt_games[chat_id]
+    
+    if game['opponent'] is not None:
+        await query.answer("Game already has an opponent!", show_alert=True)
+        return
+    
+    if user_id == game['challenger']:
+        await query.answer("You cannot play against yourself!", show_alert=True)
+        return
+    
+    # Check if opponent has enough credits for bet mode
+    if game['bet_mode']:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+        balance = c.fetchone()[0]
+        if balance < game['bet']:
+            # 🔥 SIRF USKO ALERT, MESSAGE CHANGE NAHI HOTA 🔥
+            await query.answer(f"❌ You need {game['bet']:,} credits to join!\nYou have {balance:,}", show_alert=True)
+            conn.close()
+            return
+        conn.close()
+    
+    game['opponent'] = user_id
+    game['opponent_name'] = user_name
+    
+    # Deduct bets if bet mode
+    if game['bet_mode']:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (game['bet'], game['challenger']))
+        c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (game['bet'], user_id))
+        conn.commit()
+        conn.close()
+    
+    # Create board buttons
+    keyboard = []
+    for i in range(0, 9, 3):
+        row = []
+        for j in range(3):
+            row.append(InlineKeyboardButton(str(i+j+1), callback_data=f"ttt_move_{i+j}"))
+        keyboard.append(row)
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    board_text = get_board_text(game['board'])
+    
+    await query.edit_message_text(
+        f"✅ MATCH STARTED!\n\n"
+        f"{game['challenger_name']} = ❌ | {game['opponent_name']} = ⭕\n"
+        + (f"Bet: {game['bet']:,} 💰\n" if game['bet_mode'] else "") +
+        f"\n{board_text}\n\n"
+        f"{game['challenger_name']}'s turn (❌)",
+        reply_markup=reply_markup
+    )
+    return
     
     if data.startswith("ttt_move_"):
         position = int(data.split("_")[2])
@@ -1951,61 +1952,62 @@ async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = query.from_user.first_name
     data = query.data
     
-    if data == "rps_join":
-        if chat_id not in active_rps_games:
-            await query.edit_message_text("❌ Game expired! Start a new one with /rps")
-            return
-        
-        game = active_rps_games[chat_id]
-        
-        if game['opponent'] is not None:
-            await query.answer("Game already has an opponent!")
-            return
-        
-        if user_id == game['challenger']:
-            await query.answer("You cannot play against yourself!")
-            return
-        
-        # Check if opponent has enough credits for bet mode
-        if game['bet_mode']:
-            conn = get_db()
-            c = conn.cursor()
-            c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-            balance = c.fetchone()[0]
-            if balance < game['bet']:
-                await query.edit_message_text(f"❌ You need {game['bet']:,} credits to join this game!\nYou have {balance:,}")
-                conn.close()
-                return
-            conn.close()
-        
-        game['opponent'] = user_id
-        game['opponent_name'] = user_name
-        
-        # Deduct bets if bet mode
-        if game['bet_mode']:
-            conn = get_db()
-            c = conn.cursor()
-            c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (game['bet'], game['challenger']))
-            c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (game['bet'], user_id))
-            conn.commit()
-            conn.close()
-        
-        # Ask challenger to choose first
-        keyboard = [
-            [InlineKeyboardButton("✊ ROCK", callback_data="rps_choice_rock"),
-             InlineKeyboardButton("✋ PAPER", callback_data="rps_choice_paper"),
-             InlineKeyboardButton("✌️ SCISSORS", callback_data="rps_choice_scissors")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await query.edit_message_text(
-            f"✅ MATCH STARTED!\n\n"
-            f"{game['challenger_name']} vs {game['opponent_name']}\n"
-            + (f"Bet: {game['bet']:,} 💰\n" if game['bet_mode'] else "") +
-            f"\n{game['challenger_name']}'s turn (choose first):",
-            reply_markup=reply_markup
-        )
+if data == "rps_join":
+    if chat_id not in active_rps_games:
+        await query.edit_message_text("❌ Game expired! Start a new one with /rps")
         return
+    
+    game = active_rps_games[chat_id]
+    
+    if game['opponent'] is not None:
+        await query.answer("Game already has an opponent!", show_alert=True)
+        return
+    
+    if user_id == game['challenger']:
+        await query.answer("You cannot play against yourself!", show_alert=True)
+        return
+    
+    # Check if opponent has enough credits for bet mode
+    if game['bet_mode']:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+        balance = c.fetchone()[0]
+        if balance < game['bet']:
+            # 🔥 SIRF USKO ALERT, MESSAGE CHANGE NAHI HOTA 🔥
+            await query.answer(f"❌ You need {game['bet']:,} credits to join!\nYou have {balance:,}", show_alert=True)
+            conn.close()
+            return
+        conn.close()
+    
+    game['opponent'] = user_id
+    game['opponent_name'] = user_name
+    
+    # Deduct bets if bet mode
+    if game['bet_mode']:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (game['bet'], game['challenger']))
+        c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (game['bet'], user_id))
+        conn.commit()
+        conn.close()
+    
+    # Ask challenger to choose first
+    keyboard = [
+        [InlineKeyboardButton("✊ ROCK", callback_data="rps_choice_rock"),
+         InlineKeyboardButton("✋ PAPER", callback_data="rps_choice_paper"),
+         InlineKeyboardButton("✌️ SCISSORS", callback_data="rps_choice_scissors")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        f"✅ MATCH STARTED!\n\n"
+        f"{game['challenger_name']} vs {game['opponent_name']}\n"
+        + (f"Bet: {game['bet']:,} 💰\n" if game['bet_mode'] else "") +
+        f"\n{game['challenger_name']}'s turn (choose first):",
+        reply_markup=reply_markup
+    )
+    return
     
     if data.startswith("rps_choice_"):
         choice = data.split("_")[2]
