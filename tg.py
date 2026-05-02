@@ -2142,7 +2142,7 @@ async def shop3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     
     if not players:
-        await update.message.reply_text('🛒 SHOP3 (Under 10k)\n\nNo players yet.\n👑 Admin: /addplayer3 <name> <price>')
+        await update.message.reply_text('🛒 SHOP3\n\nNo players yet.\n👑 Admin: /addplayer3 <name> <price>')
         return
     
     msg = "🛒 SHOP3 - UNDER 10k CREDITS\n\n"
