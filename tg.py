@@ -1652,279 +1652,7 @@ async def ttt(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
 
-# ============ TTT GAME ==========
-
-active_ttt_games = {}
-
-def check_winner(board):
-    win_combos = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]]
-    for combo in win_combos:
-        if board[combo[0]] == board[combo[1]] == board[combo[2]] != " ":
-            return board[combo[0]]
-    if " " not in board:
-        return "draw"
-    return None
-
-def get_board_text(board):
-    return f"┌───┬───┬───┐\n│ {board[0]} │ {board[1]} │ {board[2]} │\n├───┼───┼───┤\n│ {board[3]} │ {board[4]} │ {board[5]} │\n├───┼───┼───┤\n│ {board[6]} │ {board[7]} │ {board[8]} │\n└───┴───┴───┘"
-
-async def ttt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    user_id = update.effective_user.id
-    user_name = update.effective_user.first_name
-    
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    args = context.args
-    amount = 0
-    bet_mode = False
-    
-    if len(args) >= 1:
-        try:
-            amount = int(args[0])
-            if amount < 100:
-                await update.message.reply_text('❌ Minimum bet is 100 credits')
-                return
-            bet_mode = True
-        except:
-            pass
-    
-    if bet_mode:
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-        balance = c.fetchone()[0]
-        if balance < amount:
-            await update.message.reply_text(f'❌ Need {amount:,} credits!\nYou have {balance:,}')
-            conn.close()
-            return
-        conn.close()
-    
-    game_id = str(uuid.uuid4())[:8]
-    
-    active_ttt_games[game_id] = {
-        'challenger': user_id,
-        'challenger_name': user_name,
-        'opponent': None,
-        'opponent_name': None,
-        'board': [" "] * 9,
-        'turn': user_id,
-        'bet': amount,
-        'bet_mode': bet_mode,
-        'active': True,
-        'chat_id': chat_id
-    }
-    
-    keyboard = [[InlineKeyboardButton("⚔️ JOIN", callback_data=f"ttt_join_{game_id}")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    if bet_mode:
-        await update.message.reply_text(
-            f"❌ TIC TAC TOE\n\n{user_name} is looking for an opponent!\n💰 Bet: {amount:,} credits\n🏆 Winner gets: {amount*2:,} credits\n\nTap JOIN to play!",
-            reply_markup=reply_markup
-        )
-    else:
-        await update.message.reply_text(
-            f"❌ TIC TAC TOE\n\n{user_name} is looking for an opponent!\n🎁 Free game! Winner gets 100 credits\n\nTap JOIN to play!",
-            reply_markup=reply_markup
-        )
-
-async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-    user_id = query.from_user.id
-    user_name = query.from_user.first_name
-    
-    if data.startswith("ttt_join_"):
-        game_id = data.split("_")[2]
-        
-        if game_id not in active_ttt_games:
-            await query.edit_message_text("❌ Game expired! Start a new one with /ttt")
-            return
-        
-        game = active_ttt_games[game_id]
-        
-        if game['opponent'] is not None:
-            await query.answer("Game already has an opponent!", show_alert=True)
-            return
-        
-        if user_id == game['challenger']:
-            await query.answer("You cannot play against yourself!", show_alert=True)
-            return
-        
-        if game['bet_mode']:
-            conn = get_db()
-            c = conn.cursor()
-            c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-            balance = c.fetchone()[0]
-            if balance < game['bet']:
-                await query.answer(f"❌ Need {game['bet']:,} credits to join!\nYou have {balance:,}", show_alert=True)
-                conn.close()
-                return
-            conn.close()
-        
-        game['opponent'] = user_id
-        game['opponent_name'] = user_name
-        
-        if game['bet_mode']:
-            conn = get_db()
-            c = conn.cursor()
-            c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (game['bet'], game['challenger']))
-            c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (game['bet'], user_id))
-            conn.commit()
-            conn.close()
-        
-        # Create board buttons
-        keyboard = []
-        for i in range(0, 9, 3):
-            row = []
-            for j in range(3):
-                pos = i + j
-                row.append(InlineKeyboardButton(str(pos + 1), callback_data=f"ttt_move_{game_id}_{pos}"))
-            keyboard.append(row)
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        board_text = get_board_text(game['board'])
-        
-        await query.edit_message_text(
-            f"❌ TIC TAC TOE\n\n{game['challenger_name']} = ❌ | {game['opponent_name']} = ⭕\n"
-            + (f"💰 Bet: {game['bet']:,} credits\n" if game['bet_mode'] else "🎁 Free game\n") +
-            f"\n{board_text}\n\n{game['challenger_name']}'s turn (❌)",
-            reply_markup=reply_markup
-        )
-        return
-    
-    if data.startswith("ttt_move_"):
-        parts = data.split("_")
-        game_id = parts[2]
-        position = int(parts[3])
-        
-        if game_id not in active_ttt_games:
-            await query.edit_message_text("❌ Game expired!")
-            return
-        
-        game = active_ttt_games[game_id]
-        
-        if not game['active']:
-            await query.answer("Game already finished!", show_alert=True)
-            return
-        
-        if user_id != game['turn']:
-            await query.answer("Not your turn!", show_alert=True)
-            return
-        
-        if game['board'][position] != " ":
-            await query.answer("Position already taken!", show_alert=True)
-            return
-        
-        symbol = "❌" if user_id == game['challenger'] else "⭕"
-        game['board'][position] = symbol
-        
-        winner = check_winner(game['board'])
-        
-        if winner:
-            game['active'] = False
-            conn = get_db()
-            c = conn.cursor()
-            
-            if winner == "draw":
-                if game['bet_mode']:
-                    c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game['bet'], game['challenger']))
-                    c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game['bet'], game['opponent']))
-                    result_text = f"🤝 DRAW!\n\n{get_board_text(game['board'])}\n💰 Refund: {game['bet']:,} credits"
-                else:
-                    result_text = f"🤝 DRAW!\n\n{get_board_text(game['board'])}"
-                conn.commit()
-                conn.close()
-                await query.edit_message_text(result_text)
-                del active_ttt_games[game_id]
-                return
-            
-            winner_id = game['challenger'] if winner == "❌" else game['opponent']
-            loser_id = game['opponent'] if winner == "❌" else game['challenger']
-            winner_name = game['challenger_name'] if winner == "❌" else game['opponent_name']
-            
-            if game['bet_mode']:
-                win_amount = game['bet'] * 2
-                c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (win_amount, winner_id))
-                prize = f"💰 {winner_name} wins {win_amount:,} credits!"
-            else:
-                c.execute("UPDATE users SET balance = balance + 100 WHERE user_id=?", (winner_id,))
-                prize = f"💰 {winner_name} wins 100 credits!"
-            
-            # Update stats
-            c.execute("INSERT INTO ttt_stats (user_id, name, wins, losses, draws) VALUES (?, ?, 1, 0, 0) ON CONFLICT(user_id) DO UPDATE SET wins = wins + 1", (winner_id, winner_name))
-            c.execute("INSERT INTO ttt_stats (user_id, name, wins, losses, draws) VALUES (?, ?, 0, 1, 0) ON CONFLICT(user_id) DO UPDATE SET losses = losses + 1", (loser_id, winner_name))
-            conn.commit()
-            conn.close()
-            
-            await query.edit_message_text(f"🏆 {winner_name} wins!\n\n{get_board_text(game['board'])}\n{prize}")
-            del active_ttt_games[game_id]
-            return
-        
-        # Switch turn
-        game['turn'] = game['opponent'] if user_id == game['challenger'] else game['challenger']
-        
-        # Update board buttons
-        keyboard = []
-        for i in range(0, 9, 3):
-            row = []
-            for j in range(3):
-                pos = i + j
-                if game['board'][pos] == " ":
-                    row.append(InlineKeyboardButton(str(pos + 1), callback_data=f"ttt_move_{game_id}_{pos}"))
-                else:
-                    row.append(InlineKeyboardButton(game['board'][pos], callback_data="ttt_taken"))
-            keyboard.append(row)
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        current_player_name = game['challenger_name'] if game['turn'] == game['challenger'] else game['opponent_name']
-        current_symbol = "❌" if game['turn'] == game['challenger'] else "⭕"
-        
-        await query.edit_message_text(
-            f"❌ TIC TAC TOE\n\n{game['challenger_name']} = ❌ | {game['opponent_name']} = ⭕\n"
-            + (f"💰 Bet: {game['bet']:,} credits\n" if game['bet_mode'] else "🎁 Free game\n") +
-            f"\n{get_board_text(game['board'])}\n\n{current_player_name}'s turn ({current_symbol})",
-            reply_markup=reply_markup
-        )
-
-async def ttt_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT name, wins, losses, draws FROM ttt_stats ORDER BY wins DESC LIMIT 10")
-    leaders = c.fetchall()
-    
-    if not leaders:
-        await update.message.reply_text("📭 No one has played Tic Tac Toe yet!\nType /ttt to start a game!")
-        return
-    
-    msg = "🏆 TIC TAC TOE LEADERBOARD\n\n"
-    for i, (name, wins, losses, draws) in enumerate(leaders, 1):
-        medal = "👑" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
-        msg += f"{medal} {name} - {wins}W/{losses}L/{draws}D\n"
-    
-    c.execute("SELECT wins, losses, draws FROM ttt_stats WHERE user_id=?", (user_id,))
-    user_stats = c.fetchone()
-    conn.close()
-    
-    if user_stats:
-        wins, losses, draws = user_stats
-        msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 Your stats: {wins}W/{losses}L/{draws}D"
-    else:
-        msg += "\n📊 You haven't played Tic Tac Toe yet! Type /ttt to start."
-    
-    await update.message.reply_text(msg)
-
-
-# ============ RPS GAME ==========
+# ============ RPS GAME (Single Message) ==========
 import uuid
 
 active_rps_games = {}
@@ -2034,6 +1762,7 @@ async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         game['opponent'] = user_id
         game['opponent_name'] = user_name
         
+        # Deduct bets immediately
         if game['bet_mode']:
             conn = get_db()
             c = conn.cursor()
@@ -2042,7 +1771,7 @@ async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.commit()
             conn.close()
         
-        # Send choice buttons to challenger
+        # Show choice buttons to challenger (in same message)
         keyboard = [
             [InlineKeyboardButton("✊ ROCK", callback_data=f"rps_choice_{game_id}_rock"),
              InlineKeyboardButton("✋ PAPER", callback_data=f"rps_choice_{game_id}_paper"),
@@ -2074,9 +1803,15 @@ async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.answer("You already chose!", show_alert=True)
                 return
             game['challenger_choice'] = choice
-            await query.edit_message_text(f"✅ You chose {choice.upper()}!\n\n⏳ Waiting for {game['opponent_name']} to choose...")
             
-            # Send choice buttons to opponent
+            # Show waiting message
+            await query.edit_message_text(
+                f"✊ RPS MATCH!\n\n{game['challenger_name']} vs {game['opponent_name']}\n"
+                + (f"💰 Bet: {game['bet']:,} credits\n" if game['bet_mode'] else "🎁 Free game\n") +
+                f"\n✅ {game['challenger_name']} chose {choice.upper()}\n⏳ Waiting for {game['opponent_name']} to choose..."
+            )
+            
+            # Send choice buttons to opponent in NEW message (NOT editing original)
             keyboard = [
                 [InlineKeyboardButton("✊ ROCK", callback_data=f"rps_choice_{game_id}_rock"),
                  InlineKeyboardButton("✋ PAPER", callback_data=f"rps_choice_{game_id}_paper"),
@@ -2089,7 +1824,8 @@ async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=reply_markup
             )
             return
-        else:
+        
+        else:  # opponent's turn
             if game['opponent_choice'] is not None:
                 await query.answer("You already chose!", show_alert=True)
                 return
@@ -2105,6 +1841,7 @@ async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             c = conn.cursor()
             
             if c_choice == o_choice:
+                # Draw - refund if bet mode
                 if game['bet_mode']:
                     c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game['bet'], game['challenger']))
                     c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game['bet'], game['opponent']))
@@ -2113,12 +1850,19 @@ async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     result_text = f"{emoji[c_choice]} vs {emoji[o_choice]}\n\n🤝 DRAW!"
                 conn.commit()
                 conn.close()
+                
+                # Update original message
+                await context.bot.edit_message_text(
+                    chat_id=game['chat_id'],
+                    message_id=game['message_id'],
+                    text=result_text
+                )
+                # Also update opponent's message
                 await query.edit_message_text(result_text)
-                # Also update opponent's message if needed
-                await context.bot.send_message(chat_id=chat_id, text=result_text)
                 del active_rps_games[game_id]
                 return
             
+            # Determine winner
             if (c_choice == "rock" and o_choice == "scissors") or \
                (c_choice == "paper" and o_choice == "rock") or \
                (c_choice == "scissors" and o_choice == "paper"):
@@ -2136,15 +1880,23 @@ async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 c.execute("UPDATE users SET balance = balance + 100 WHERE user_id=?", (winner_id,))
                 prize = f"💰 {winner_name} wins 100 credits!"
             
-            # Update stats
+            # Update stats - FIX: Use winner_id and loser_id properly
+            loser_id = game['opponent'] if winner_id == game['challenger'] else game['challenger']
             c.execute("INSERT INTO rps_stats (user_id, name, wins, losses) VALUES (?, ?, 1, 0) ON CONFLICT(user_id) DO UPDATE SET wins = wins + 1", (winner_id, winner_name))
-            c.execute("INSERT INTO rps_stats (user_id, name, wins, losses) VALUES (?, ?, 0, 1) ON CONFLICT(user_id) DO UPDATE SET losses = losses + 1", (game['opponent'] if winner_id == game['challenger'] else game['challenger'], winner_name))
+            c.execute("INSERT INTO rps_stats (user_id, name, wins, losses) VALUES (?, ?, 0, 1) ON CONFLICT(user_id) DO UPDATE SET losses = losses + 1", (loser_id, winner_name))
             conn.commit()
             conn.close()
             
             result_text = f"{emoji[c_choice]} vs {emoji[o_choice]}\n\n🏆 {winner_name} wins!\n{prize}"
+            
+            # Update original message
+            await context.bot.edit_message_text(
+                chat_id=game['chat_id'],
+                message_id=game['message_id'],
+                text=result_text
+            )
+            # Also update opponent's message
             await query.edit_message_text(result_text)
-            await context.bot.send_message(chat_id=chat_id, text=result_text)
             del active_rps_games[game_id]
 
 async def rps_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2159,11 +1911,17 @@ async def rps_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     leaders = c.fetchall()
     
     if not leaders:
-        await update.message.reply_text("📭 No one has played RPS yet!\nType /rps to start a game!")
+        await update.message.reply_text("📭 No RPS games played yet!\nType /rps to start!")
         return
     
+    # Remove duplicate names - keep highest wins
+    unique_leaders = {}
+    for name, wins, losses in leaders:
+        if name not in unique_leaders or wins > unique_leaders[name][0]:
+            unique_leaders[name] = (wins, losses)
+    
     msg = "🏆 RPS LEADERBOARD\n\n"
-    for i, (name, wins, losses) in enumerate(leaders, 1):
+    for i, (name, (wins, losses)) in enumerate(sorted(unique_leaders.items(), key=lambda x: x[1][0], reverse=True)[:10], 1):
         medal = "👑" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
         total = wins + losses
         win_rate = int(wins/total*100) if total > 0 else 0
@@ -2179,7 +1937,7 @@ async def rps_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         win_rate = int(wins/total*100) if total > 0 else 0
         msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 Your stats: {wins}W/{losses}L ({win_rate}%)"
     else:
-        msg += "\n📊 You haven't played RPS yet! Type /rps to start."
+        msg += "\n📊 You haven't played RPS yet!"
     
     await update.message.reply_text(msg)
 
@@ -2230,9 +1988,6 @@ def main():
     app.add_handler(CommandHandler("bank", bank))
     app.add_handler(CommandHandler("deposit", deposit))
     app.add_handler(CommandHandler("claim", claim))
-    app.add_handler(CommandHandler("ttt", ttt))
-    app.add_handler(CommandHandler("ttt_leaderboard", ttt_leaderboard))
-    app.add_handler(CallbackQueryHandler(ttt_callback, pattern="^ttt_"))
     app.add_handler(CommandHandler("rps", rps))
     app.add_handler(CommandHandler("rps_leaderboard", rps_leaderboard))
     app.add_handler(CallbackQueryHandler(rps_callback, pattern="^rps_"))
