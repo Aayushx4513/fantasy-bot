@@ -140,6 +140,7 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🛒 SHOP:\n"
         "   /shop - Buy players\n"
         "   /shop2 - Cheap players\n"
+        "   /shop3 - Some players\n"
         "   /buy /buyw /buy2 - Purchase\n"
         "   /myteam - Your collection\n"
         "   /top - Top collectors\n\n"
