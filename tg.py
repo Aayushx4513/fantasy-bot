@@ -60,6 +60,12 @@ def init_db():
                  (user_id INTEGER, achievement TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS bank 
                  (user_id INTEGER PRIMARY KEY, balance INTEGER DEFAULT 0)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS ttt_stats
+                 (user_id INTEGER PRIMARY KEY, name TEXT, wins INTEGER DEFAULT 0, losses INTEGER DEFAULT 0, draws INTEGER DEFAULT 0)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS rps_stats
+                 (user_id INTEGER PRIMARY KEY, name TEXT, wins INTEGER DEFAULT 0, losses INTEGER DEFAULT 0)''')
+
+
  
     # 🇮🇳 INDIA CURRENT (25)
     india_current = [
@@ -569,17 +575,30 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
+    
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT name, balance FROM users ORDER BY balance DESC LIMIT 10")
+    
+    c.execute("""
+        SELECT u.name, u.balance + COALESCE(b.balance, 0) as total_wealth
+        FROM users u
+        LEFT JOIN bank b ON u.user_id = b.user_id
+        ORDER BY total_wealth DESC
+        LIMIT 10
+    """)
     users_data = c.fetchall()
-    msg = "🏆 TOP 10 RICHEST\n\n"
+    
+    msg = "🏆 TOP 10 RICHEST (Wallet + Bank)\n\n"
     for i, u in enumerate(users_data, 1):
         medal = "👑" if i==1 else "🥈" if i==2 else "🥉" if i==3 else f"{i}."
         msg += f"{medal} {u[0]} - {u[1]:,} 💰\n"
-    user = get_user(user_id)
-    rank = c.execute("SELECT COUNT(*) FROM users WHERE balance > ?", (user[2],)).fetchone()[0] + 1
-    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 Your rank: #{rank}\n💰 Your balance: {user[2]:,} 💰"
+    
+    c.execute("SELECT u.balance + COALESCE(b.balance, 0) FROM users u LEFT JOIN bank b ON u.user_id = b.user_id WHERE u.user_id = ?", (user_id,))
+    user_total = c.fetchone()[0]
+    rank = c.execute("SELECT COUNT(*) + 1 FROM (SELECT u.balance + COALESCE(b.balance, 0) as total FROM users u LEFT JOIN bank b ON u.user_id = b.user_id) WHERE total > ?", (user_total,)).fetchone()[0]
+    
+    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 Your rank: #{rank}\n💰 Total wealth: {user_total:,} 💰"
+    
     await update.message.reply_text(msg)
     conn.close()
 
@@ -706,23 +725,37 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = get_db()
     c = conn.cursor()
     
-    # Ensure bank entry exists
-    c.execute("INSERT OR IGNORE INTO bank (user_id, balance) VALUES (?, 0)", (user_id,))
-    c.execute("SELECT balance FROM bank WHERE user_id=?", (user_id,))
-    bank_bal = c.fetchone()[0]
+    c.execute("INSERT OR IGNORE INTO bank (user_id, balance, last_interest) VALUES (?, 0, ?)", (user_id, datetime.now().isoformat()))
+    c.execute("SELECT balance, last_interest FROM bank WHERE user_id=?", (user_id,))
+    bank_bal, last_interest = c.fetchone()
     
     c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
     wallet_bal = c.fetchone()[0]
+    
+    # Calculate next interest time
+    next_interest = "Available now"
+    if last_interest:
+        last = datetime.fromisoformat(last_interest)
+        next_time = last + timedelta(hours=24)
+        now = datetime.now()
+        if now < next_time:
+            remaining = next_time - now
+            hours = remaining.seconds // 3600
+            mins = (remaining.seconds % 3600) // 60
+            next_interest = f"{hours}h {mins}m"
     
     conn.close()
     
     await update.message.reply_text(
         f"🏦 MY BANK ACCOUNT\n\n"
         f"💰 Bank Balance: {bank_bal:,} 💰\n"
-        f"👛 Wallet Balance: {wallet_bal:,} 💰\n\n"
+        f"👛 Wallet Balance: {wallet_bal:,} 💰\n"
+        f"📈 Interest Rate: 5% daily\n"
+        f"⏰ Next interest: {next_interest}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"💡 /deposit <amount> - Add to bank\n"
-        f"💡 /withdraw <amount> - Take from bank"
+        f"💡 /deposit <amount>\n"
+        f"💡 /withdraw <amount>\n"
+        f"💡 /claim_interest"
     )
 
 async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -749,10 +782,7 @@ async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = get_db()
     c = conn.cursor()
     
-    # Ensure bank entry exists
     c.execute("INSERT OR IGNORE INTO bank (user_id, balance) VALUES (?, 0)", (user_id,))
-    
-    # Check wallet balance
     c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
     wallet_bal = c.fetchone()[0]
     
@@ -761,12 +791,10 @@ async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
         return
     
-    # Transfer to bank
     c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (amount, user_id))
     c.execute("UPDATE bank SET balance = balance + ? WHERE user_id=?", (amount, user_id))
     conn.commit()
     
-    # Get new balances
     c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
     new_wallet = c.fetchone()[0]
     c.execute("SELECT balance FROM bank WHERE user_id=?", (user_id,))
@@ -805,10 +833,7 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = get_db()
     c = conn.cursor()
     
-    # Ensure bank entry exists
     c.execute("INSERT OR IGNORE INTO bank (user_id, balance) VALUES (?, 0)", (user_id,))
-    
-    # Check bank balance
     c.execute("SELECT balance FROM bank WHERE user_id=?", (user_id,))
     bank_bal = c.fetchone()[0]
     
@@ -817,16 +842,14 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
         return
     
-    # Transfer from bank
     c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount, user_id))
     c.execute("UPDATE bank SET balance = balance - ? WHERE user_id=?", (amount, user_id))
     conn.commit()
     
-    # Get new balances
-    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-    new_wallet = c.fetchone()[0]
     c.execute("SELECT balance FROM bank WHERE user_id=?", (user_id,))
     new_bank = c.fetchone()[0]
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    new_wallet = c.fetchone()[0]
     
     conn.close()
     
@@ -835,6 +858,46 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Amount: -{amount:,} 💰\n"
         f"Bank: {bank_bal:,} → {new_bank:,} 💰\n"
         f"Wallet: {new_wallet - amount:,} → {new_wallet:,} 💰"
+    )
+
+async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    c.execute("INSERT OR IGNORE INTO bank (user_id, balance, last_interest) VALUES (?, 0, ?)", (user_id, datetime.now().isoformat()))
+    c.execute("SELECT balance, last_interest FROM bank WHERE user_id=?", (user_id,))
+    bank_bal, last_interest = c.fetchone()
+    
+    now = datetime.now()
+    if last_interest:
+        last = datetime.fromisoformat(last_interest)
+        next_time = last + timedelta(hours=24)
+        if now < next_time:
+            remaining = next_time - now
+            hours = remaining.seconds // 3600
+            mins = (remaining.seconds % 3600) // 60
+            await update.message.reply_text(f"⏰ Interest not ready yet!\n\nCome back in {hours}h {mins}m")
+            conn.close()
+            return
+    
+    interest = int(bank_bal * 0.05)
+    new_bank = bank_bal + interest
+    
+    c.execute("UPDATE bank SET balance = ?, last_interest = ? WHERE user_id=?", (new_bank, now.isoformat(), user_id))
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(
+        f"💰 INTEREST CLAIMED!\n\n"
+        f"Rate: 5%\n"
+        f"Interest: +{interest:,} 💰\n"
+        f"New Bank Balance: {new_bank:,} 💰\n\n"
+        f"⏰ Next interest: 24h"
     )
 
 
@@ -1490,6 +1553,613 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📅 Next claim: tomorrow"
     )
 
+# ============ TIC TAC TOE ==========
+
+active_ttt_games = {}
+
+def check_winner(board):
+    win_combos = [
+        [0,1,2], [3,4,5], [6,7,8],
+        [0,3,6], [1,4,7], [2,5,8],
+        [0,4,8], [2,4,6]
+    ]
+    for combo in win_combos:
+        if board[combo[0]] == board[combo[1]] == board[combo[2]] != " ":
+            return board[combo[0]]
+    if " " not in board:
+        return "draw"
+    return None
+
+def get_board_text(board):
+    return (
+        f"┌───┬───┬───┐\n"
+        f"│ {board[0]} │ {board[1]} │ {board[2]} │\n"
+        f"├───┼───┼───┤\n"
+        f"│ {board[3]} │ {board[4]} │ {board[5]} │\n"
+        f"├───┼───┼───┤\n"
+        f"│ {board[6]} │ {board[7]} │ {board[8]} │\n"
+        f"└───┴───┴───┘"
+    )
+
+async def ttt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    amount = 0
+    bet_mode = False
+    
+    if len(args) >= 1:
+        try:
+            amount = int(args[0])
+            if amount < 100:
+                await update.message.reply_text('❌ Minimum bet is 100 credits')
+                return
+            bet_mode = True
+        except:
+            pass
+    
+    if bet_mode:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+        balance = c.fetchone()[0]
+        if balance < amount:
+            await update.message.reply_text(f'❌ Need {amount:,} credits!\nYou have {balance:,}')
+            conn.close()
+            return
+        conn.close()
+    
+    if chat_id in active_ttt_games:
+        await update.message.reply_text("⚠️ A game is already active! Wait for it to finish.")
+        return
+    
+    active_ttt_games[chat_id] = {
+        'challenger': user_id,
+        'challenger_name': user_name,
+        'opponent': None,
+        'opponent_name': None,
+        'board': [" "] * 9,
+        'turn': user_id,
+        'bet': amount,
+        'bet_mode': bet_mode,
+        'active': True
+    }
+    
+    keyboard = [[InlineKeyboardButton("⚔️ JOIN", callback_data="ttt_join")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if bet_mode:
+        await update.message.reply_text(
+            f"❌ TIC TAC TOE\n\n"
+            f"{user_name} is looking for an opponent!\n"
+            f"Bet: {amount:,} 💰\n"
+            f"Winner gets: {amount*2:,} 💰\n\n"
+            f"Click JOIN to play!",
+            reply_markup=reply_markup
+        )
+    else:
+        await update.message.reply_text(
+            f"❌ TIC TAC TOE\n\n"
+            f"{user_name} is looking for an opponent!\n"
+            f"Free game! Winner gets 100 💰\n\n"
+            f"Click JOIN to play!",
+            reply_markup=reply_markup
+        )
+
+async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    chat_id = query.message.chat_id
+    user_id = query.from_user.id
+    user_name = query.from_user.first_name
+    data = query.data
+    
+    if data == "ttt_join":
+        if chat_id not in active_ttt_games:
+            await query.edit_message_text("❌ Game expired! Start a new one with /ttt")
+            return
+        
+        game = active_ttt_games[chat_id]
+        
+        if game['opponent'] is not None:
+            await query.answer("Game already has an opponent!")
+            return
+        
+        if user_id == game['challenger']:
+            await query.answer("You cannot play against yourself!")
+            return
+        
+        # Check if opponent has enough credits for bet mode
+        if game['bet_mode']:
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+            balance = c.fetchone()[0]
+            if balance < game['bet']:
+                await query.edit_message_text(f"❌ You need {game['bet']:,} credits to join this game!\nYou have {balance:,}")
+                conn.close()
+                return
+            conn.close()
+        
+        game['opponent'] = user_id
+        game['opponent_name'] = user_name
+        
+        # Deduct bets if bet mode
+        if game['bet_mode']:
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (game['bet'], game['challenger']))
+            c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (game['bet'], user_id))
+            conn.commit()
+            conn.close()
+        
+        # Create board buttons
+        keyboard = []
+        for i in range(0, 9, 3):
+            row = []
+            for j in range(3):
+                row.append(InlineKeyboardButton(str(i+j+1), callback_data=f"ttt_move_{i+j}"))
+            keyboard.append(row)
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        board_text = get_board_text(game['board'])
+        
+        await query.edit_message_text(
+            f"✅ MATCH STARTED!\n\n"
+            f"{game['challenger_name']} = ❌ | {game['opponent_name']} = ⭕\n"
+            + (f"Bet: {game['bet']:,} 💰\n" if game['bet_mode'] else "") +
+            f"\n{board_text}\n\n"
+            f"{game['challenger_name']}'s turn (❌)",
+            reply_markup=reply_markup
+        )
+        return
+    
+    if data.startswith("ttt_move_"):
+        position = int(data.split("_")[2])
+        
+        if chat_id not in active_ttt_games:
+            await query.edit_message_text("❌ Game expired!")
+            return
+        
+        game = active_ttt_games[chat_id]
+        
+        if not game['active']:
+            await query.answer("Game already finished!")
+            return
+        
+        if user_id != game['turn']:
+            await query.answer("Not your turn!")
+            return
+        
+        if game['board'][position] != " ":
+            await query.answer("Position already taken!")
+            return
+        
+        # Make move
+        symbol = "❌" if user_id == game['challenger'] else "⭕"
+        game['board'][position] = symbol
+        
+        winner = check_winner(game['board'])
+        
+        if winner:
+            game['active'] = False
+            
+            if winner == "draw":
+                # Refund both players if bet mode
+                if game['bet_mode']:
+                    conn = get_db()
+                    c = conn.cursor()
+                    c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game['bet'], game['challenger']))
+                    c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game['bet'], game['opponent']))
+                    conn.commit()
+                    conn.close()
+                    refund_msg = f"\n💰 Refund: {game['bet']:,} 💰 to both players!"
+                else:
+                    refund_msg = ""
+                
+                await query.edit_message_text(
+                    f"🤝 DRAW!\n\n"
+                    f"{get_board_text(game['board'])}\n"
+                    f"{refund_msg}\n\n"
+                    f"No credits awarded. Good game!"
+                )
+                del active_ttt_games[chat_id]
+                return
+            
+            winner_id = game['challenger'] if winner == "❌" else game['opponent']
+            loser_id = game['opponent'] if winner == "❌" else game['challenger']
+            winner_name = game['challenger_name'] if winner == "❌" else game['opponent_name']
+            
+            conn = get_db()
+            c = conn.cursor()
+            
+            if game['bet_mode']:
+                # Winner gets 2x bet (already deducted from both)
+                win_amount = game['bet'] * 2
+                c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (win_amount, winner_id))
+                prize_msg = f"\n💰 {winner_name} wins {win_amount:,} 💰!"
+            else:
+                # Free game: winner gets 100
+                c.execute("UPDATE users SET balance = balance + 100 WHERE user_id=?", (winner_id,))
+                prize_msg = f"\n💰 {winner_name} wins 100 💰!"
+            
+            # Update stats
+            c.execute("INSERT INTO ttt_stats (user_id, name, wins, losses, draws) VALUES (?, ?, 1, 0, 0) ON CONFLICT(user_id) DO UPDATE SET wins = wins + 1", (winner_id, winner_name))
+            c.execute("INSERT INTO ttt_stats (user_id, name, wins, losses, draws) VALUES (?, ?, 0, 1, 0) ON CONFLICT(user_id) DO UPDATE SET losses = losses + 1", (loser_id, winner_name))
+            conn.commit()
+            conn.close()
+            
+            await query.edit_message_text(
+                f"🏆 {winner_name} wins!\n\n"
+                f"{get_board_text(game['board'])}\n"
+                f"{prize_msg}\n"
+                f"📊 Record updated!"
+            )
+            del active_ttt_games[chat_id]
+            return
+        
+        # Switch turn
+        game['turn'] = game['opponent'] if user_id == game['challenger'] else game['challenger']
+        
+        # Update board buttons
+        keyboard = []
+        for i in range(0, 9, 3):
+            row = []
+            for j in range(3):
+                pos = i + j
+                if game['board'][pos] == " ":
+                    row.append(InlineKeyboardButton(str(pos+1), callback_data=f"ttt_move_{pos}"))
+                else:
+                    row.append(InlineKeyboardButton(game['board'][pos], callback_data="ttt_taken"))
+            keyboard.append(row)
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        current_player_name = game['challenger_name'] if game['turn'] == game['challenger'] else game['opponent_name']
+        current_symbol = "❌" if game['turn'] == game['challenger'] else "⭕"
+        
+        await query.edit_message_text(
+            f"❌ TIC TAC TOE\n\n"
+            f"{game['challenger_name']} = ❌ | {game['opponent_name']} = ⭕\n"
+            + (f"Bet: {game['bet']:,} 💰\n" if game['bet_mode'] else "") +
+            f"\n{get_board_text(game['board'])}\n\n"
+            f"{current_player_name}'s turn ({current_symbol})",
+            reply_markup=reply_markup
+        )
+
+async def ttt_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT name, wins, losses, draws FROM ttt_stats ORDER BY wins DESC LIMIT 10")
+    leaders = c.fetchall()
+    
+    if not leaders:
+        await update.message.reply_text("📭 No one has played yet!\nType /ttt to start a game!")
+        return
+    
+    msg = "🏆 TIC TAC TOE LEADERBOARD\n\n"
+    for i, (name, wins, losses, draws) in enumerate(leaders, 1):
+        medal = "👑" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+        total = wins + losses + draws
+        win_rate = int(wins/total*100) if total > 0 else 0
+        msg += f"{medal} {name} - {wins}W/{losses}L/{draws}D ({win_rate}%)\n"
+    
+    c.execute("SELECT wins, losses, draws FROM ttt_stats WHERE user_id=?", (user_id,))
+    user_stats = c.fetchone()
+    conn.close()
+    
+    if user_stats:
+        wins, losses, draws = user_stats
+        total = wins + losses + draws
+        win_rate = int(wins/total*100) if total > 0 else 0
+        msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 Your stats: {wins}W/{losses}L/{draws}D ({win_rate}%)"
+    else:
+        msg += "\n📊 You haven't played yet! Type /ttt to start."
+    
+    await update.message.reply_text(msg)
+# ============ ROCK PAPER SCISSORS (WITH BET) ==========
+
+active_rps_games = {}
+rps_choices = {}
+
+async def rps(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    amount = 0
+    bet_mode = False
+    
+    if len(args) >= 1:
+        try:
+            amount = int(args[0])
+            if amount < 100:
+                await update.message.reply_text('❌ Minimum bet is 100 credits')
+                return
+            bet_mode = True
+        except:
+            pass
+    
+    if bet_mode:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+        balance = c.fetchone()[0]
+        if balance < amount:
+            await update.message.reply_text(f'❌ Need {amount:,} credits!\nYou have {balance:,}')
+            conn.close()
+            return
+        conn.close()
+    
+    if chat_id in active_rps_games:
+        await update.message.reply_text("⚠️ A game is already active! Wait for it to finish.")
+        return
+    
+    active_rps_games[chat_id] = {
+        'challenger': user_id,
+        'challenger_name': user_name,
+        'opponent': None,
+        'opponent_name': None,
+        'challenger_choice': None,
+        'opponent_choice': None,
+        'bet': amount,
+        'bet_mode': bet_mode,
+        'active': True
+    }
+    
+    keyboard = [[InlineKeyboardButton("⚔️ JOIN", callback_data="rps_join")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if bet_mode:
+        await update.message.reply_text(
+            f"✊ ROCK PAPER SCISSORS\n\n"
+            f"{user_name} is looking for an opponent!\n"
+            f"Bet: {amount:,} 💰\n"
+            f"Winner gets: {amount*2:,} 💰\n\n"
+            f"Click JOIN to play!",
+            reply_markup=reply_markup
+        )
+    else:
+        await update.message.reply_text(
+            f"✊ ROCK PAPER SCISSORS\n\n"
+            f"{user_name} is looking for an opponent!\n"
+            f"Free game! Winner gets 100 💰\n\n"
+            f"Click JOIN to play!",
+            reply_markup=reply_markup
+        )
+
+async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    chat_id = query.message.chat_id
+    user_id = query.from_user.id
+    user_name = query.from_user.first_name
+    data = query.data
+    
+    if data == "rps_join":
+        if chat_id not in active_rps_games:
+            await query.edit_message_text("❌ Game expired! Start a new one with /rps")
+            return
+        
+        game = active_rps_games[chat_id]
+        
+        if game['opponent'] is not None:
+            await query.answer("Game already has an opponent!")
+            return
+        
+        if user_id == game['challenger']:
+            await query.answer("You cannot play against yourself!")
+            return
+        
+        # Check if opponent has enough credits for bet mode
+        if game['bet_mode']:
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+            balance = c.fetchone()[0]
+            if balance < game['bet']:
+                await query.edit_message_text(f"❌ You need {game['bet']:,} credits to join this game!\nYou have {balance:,}")
+                conn.close()
+                return
+            conn.close()
+        
+        game['opponent'] = user_id
+        game['opponent_name'] = user_name
+        
+        # Deduct bets if bet mode
+        if game['bet_mode']:
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (game['bet'], game['challenger']))
+            c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (game['bet'], user_id))
+            conn.commit()
+            conn.close()
+        
+        # Ask challenger to choose first
+        keyboard = [
+            [InlineKeyboardButton("✊ ROCK", callback_data="rps_choice_rock"),
+             InlineKeyboardButton("✋ PAPER", callback_data="rps_choice_paper"),
+             InlineKeyboardButton("✌️ SCISSORS", callback_data="rps_choice_scissors")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            f"✅ MATCH STARTED!\n\n"
+            f"{game['challenger_name']} vs {game['opponent_name']}\n"
+            + (f"Bet: {game['bet']:,} 💰\n" if game['bet_mode'] else "") +
+            f"\n{game['challenger_name']}'s turn (choose first):",
+            reply_markup=reply_markup
+        )
+        return
+    
+    if data.startswith("rps_choice_"):
+        choice = data.split("_")[2]
+        
+        if chat_id not in active_rps_games:
+            await query.edit_message_text("❌ Game expired!")
+            return
+        
+        game = active_rps_games[chat_id]
+        
+        if not game['active']:
+            await query.answer("Game already finished!")
+            return
+        
+        # Determine who is choosing
+        if user_id == game['challenger']:
+            if game['challenger_choice'] is not None:
+                await query.answer("You already chose!")
+                return
+            game['challenger_choice'] = choice
+            
+            if game['opponent_choice'] is None:
+                # Wait for opponent
+                await query.edit_message_text(
+                    f"✅ You chose {choice.upper()}\n\n"
+                    f"⏳ Waiting for {game['opponent_name']} to choose..."
+                )
+                # Send buttons to opponent
+                keyboard = [
+                    [InlineKeyboardButton("✊ ROCK", callback_data="rps_choice_rock"),
+                     InlineKeyboardButton("✋ PAPER", callback_data="rps_choice_paper"),
+                     InlineKeyboardButton("✌️ SCISSORS", callback_data="rps_choice_scissors")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=f"{game['challenger_name']} has chosen.\n\nYour turn ({game['opponent_name']}):",
+                    reply_markup=reply_markup
+                )
+                return
+        else:
+            if game['opponent_choice'] is not None:
+                await query.answer("You already chose!")
+                return
+            game['opponent_choice'] = choice
+        
+        # Both have chosen - determine winner
+        if game['challenger_choice'] is not None and game['opponent_choice'] is not None:
+            c_choice = game['challenger_choice']
+            o_choice = game['opponent_choice']
+            
+            # Determine winner
+            winner = None
+            if c_choice == o_choice:
+                winner = "draw"
+            elif (c_choice == "rock" and o_choice == "scissors") or \
+                 (c_choice == "paper" and o_choice == "rock") or \
+                 (c_choice == "scissors" and o_choice == "paper"):
+                winner = "challenger"
+            else:
+                winner = "opponent"
+            
+            # Map choices to emoji
+            choice_emoji = {"rock": "✊", "paper": "✋", "scissors": "✌️"}
+            
+            conn = get_db()
+            c = conn.cursor()
+            
+            if winner == "draw":
+                if game['bet_mode']:
+                    # Refund both players
+                    c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game['bet'], game['challenger']))
+                    c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game['bet'], game['opponent']))
+                    refund_msg = f"\n💰 Refund: {game['bet']:,} 💰 to both players!"
+                else:
+                    refund_msg = ""
+                
+                await query.edit_message_text(
+                    f"{choice_emoji[c_choice]} vs {choice_emoji[o_choice]}\n\n"
+                    f"🤝 DRAW!\n{refund_msg}"
+                )
+                conn.commit()
+                conn.close()
+                del active_rps_games[chat_id]
+                return
+            
+            if winner == "challenger":
+                winner_id = game['challenger']
+                winner_name = game['challenger_name']
+                loser_id = game['opponent']
+                loser_name = game['opponent_name']
+            else:
+                winner_id = game['opponent']
+                winner_name = game['opponent_name']
+                loser_id = game['challenger']
+                loser_name = game['challenger_name']
+            
+            if game['bet_mode']:
+                win_amount = game['bet'] * 2
+                c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (win_amount, winner_id))
+                prize_msg = f"\n💰 {winner_name} wins {win_amount:,} 💰!"
+            else:
+                c.execute("UPDATE users SET balance = balance + 100 WHERE user_id=?", (winner_id,))
+                prize_msg = f"\n💰 {winner_name} wins 100 💰!"
+            
+            # Update stats
+            c.execute("INSERT INTO rps_stats (user_id, name, wins, losses) VALUES (?, ?, 1, 0) ON CONFLICT(user_id) DO UPDATE SET wins = wins + 1", (winner_id, winner_name))
+            c.execute("INSERT INTO rps_stats (user_id, name, wins, losses) VALUES (?, ?, 0, 1) ON CONFLICT(user_id) DO UPDATE SET losses = losses + 1", (loser_id, loser_name))
+            conn.commit()
+            conn.close()
+            
+            await query.edit_message_text(
+                f"{choice_emoji[c_choice]} vs {choice_emoji[o_choice]}\n\n"
+                f"🏆 {winner_name} wins!\n{prize_msg}\n"
+                f"📊 Record updated!"
+            )
+            del active_rps_games[chat_id]
+
+async def rps_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT name, wins, losses FROM rps_stats ORDER BY wins DESC LIMIT 10")
+    leaders = c.fetchall()
+    
+    if not leaders:
+        await update.message.reply_text("📭 No one has played yet!\nType /rps to start a game!")
+        return
+    
+    msg = "🏆 RPS LEADERBOARD\n\n"
+    for i, (name, wins, losses) in enumerate(leaders, 1):
+        medal = "👑" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f"{i}."
+        total = wins + losses
+        win_rate = int(wins/total*100) if total > 0 else 0
+        msg += f"{medal} {name} - {wins}W/{losses}L ({win_rate}%)\n"
+    
+    c.execute("SELECT wins, losses FROM rps_stats WHERE user_id=?", (user_id,))
+    user_stats = c.fetchone()
+    conn.close()
+    
+    if user_stats:
+        wins, losses = user_stats
+        total = wins + losses
+        win_rate = int(wins/total*100) if total > 0 else 0
+        msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 Your stats: {wins}W/{losses}L ({win_rate}%)"
+    else:
+        msg += "\n📊 You haven't played yet! Type /rps to start."
+    
+    await update.message.reply_text(msg)
+
 
 
 def main():
@@ -1537,6 +2207,12 @@ def main():
     app.add_handler(CommandHandler("bank", bank))
     app.add_handler(CommandHandler("deposit", deposit))
     app.add_handler(CommandHandler("claim", claim))
+    app.add_handler(CommandHandler("ttt", ttt))
+    app.add_handler(CommandHandler("ttt_leaderboard", ttt_leaderboard))
+    app.add_handler(CallbackQueryHandler(ttt_callback, pattern="^ttt_"))
+    app.add_handler(CommandHandler("rps", rps))
+    app.add_handler(CommandHandler("rps_leaderboard", rps_leaderboard))
+    app.add_handler(CallbackQueryHandler(rps_callback, pattern="^rps_"))
     app.add_handler(CommandHandler("withdraw", withdraw))
     print("🤖 Bot is running...")
     app.run_polling()
