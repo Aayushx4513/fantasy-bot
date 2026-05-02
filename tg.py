@@ -460,39 +460,57 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
+    
     args = context.args
     if len(args) < 2:
         await update.message.reply_text('❌ /bet TEAM AMOUNT\nExample: /bet KKR 1000')
         return
+    
     team = args[0].upper()
     try:
         amount = int(args[1])
     except:
         await update.message.reply_text('❌ Invalid amount')
         return
+    
     if amount < 100:
         await update.message.reply_text('❌ Minimum 100 credits')
         return
+    
     user = get_user(user_id)
     if user[2] < amount:
         await update.message.reply_text(f'❌ Need {amount:,}, have {user[2]:,}')
         return
+    
     conn = get_db()
     c = conn.cursor()
     c.execute("SELECT id, team1, team2, locked FROM matches WHERE (team1=? OR team2=?) AND locked=0", (team, team))
     match = c.fetchone()
+    
     if not match:
         await update.message.reply_text(f'❌ Match with {team} not found!')
         conn.close()
         return
+    
     if match[3] == 1:
         await update.message.reply_text(f'🔒 Betting closed!')
         conn.close()
         return
+    
+    # 🔥 MAX 2 BETS CHECK 🔥
+    c.execute("SELECT COUNT(*) FROM bets WHERE user_id = ? AND match_id = ?", (user_id, match[0]))
+    bet_count = c.fetchone()[0]
+    
+    if bet_count >= 2:
+        await update.message.reply_text("❌ You can only place up to 2 bets per match!")
+        conn.close()
+        return
+    
     c.execute("INSERT INTO bets (user_id, match_id, team, amount) VALUES (?, ?, ?, ?)", (user_id, match[0], team, amount))
     c.execute("UPDATE users SET balance = balance - ?, total = total + 1 WHERE user_id=?", (amount, user_id))
     conn.commit()
     conn.close()
+    
     await update.message.reply_text(f"✅ BET PLACED!\n\n🏏 {match[1]} vs {match[2]}\n🎯 {team}\n💰 {amount:,} 💰\n\n📊 New balance: {user[2]-amount:,} 💰\n💡 /mybets to check")
 
 async def mybets(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1195,59 +1213,6 @@ async def lockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f'🔒 MATCH LOCKED!\n{team1} vs {team2}\nBets: {count}\nPool: {total} 💰')
     conn.close()
 
-async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    args = context.args
-    if len(args) < 4:
-        await update.message.reply_text('❌ /result TEAM1 vs TEAM2 WINNER')
-        return
-    team1, vs, team2, winner = args[0], args[1], args[2], args[3]
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT id FROM matches WHERE team1=? AND team2=?", (team1, team2))
-    match = c.fetchone()
-    if not match:
-        await update.message.reply_text('❌ Match not found')
-        conn.close()
-        return
-    c.execute("SELECT user_id, amount, team FROM bets WHERE match_id=?", (match[0],))
-    bets = c.fetchall()
-    winners = 0
-    losers = 0
-    total_paid = 0
-    winner_list = []
-    loser_list = []
-    for bet in bets:
-        c.execute("SELECT balance, won, points, name FROM users WHERE user_id=?", (bet[0],))
-        u = c.fetchone()
-        if bet[2].upper() == winner.upper():
-            win_amount = bet[1] * 2
-            c.execute("UPDATE users SET balance = ?, won = ?, points = points + 10 WHERE user_id=?", (u[0] + win_amount, u[1] + 1, bet[0]))
-            total_paid += win_amount
-            winners += 1
-            winner_list.append(f"{u[3]} - {bet[1]} → {win_amount}")
-        else:
-            c.execute("UPDATE users SET points = points - 5 WHERE user_id=?", (bet[0],))
-            losers += 1
-            loser_list.append(f"{u[3]} - {bet[1]} → 0")
-    c.execute("DELETE FROM bets WHERE match_id=?", (match[0],))
-    c.execute("DELETE FROM matches WHERE id=?", (match[0],))
-    conn.commit()
-    msg = f"📢 MATCH RESULT!\n\n🏏 {team1} vs {team2}\n🏆 WINNER: {winner}\n\n✅ WINNERS (+10 pts): {winners}\n"
-    for w in winner_list[:5]:
-        msg += f"   • {w}\n"
-    if len(winner_list) > 5:
-        msg += f"   • +{len(winner_list)-5} more\n"
-    msg += f"\n❌ LOSERS (-5 pts): {losers}\n"
-    for l in loser_list[:5]:
-        msg += f"   • {l}\n"
-    if len(loser_list) > 5:
-        msg += f"   • +{len(loser_list)-5} more\n"
-    msg += f"\n💰 TOTAL PAYOUT: {total_paid} 💰"
-    await update.message.reply_text(msg)
-    conn.close()
 
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
