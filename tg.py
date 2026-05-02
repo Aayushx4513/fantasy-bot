@@ -1086,7 +1086,15 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     rank = 1
     for i, t in enumerate(tops, 1):
-        if t[0] == update.effective_user.first_name:
+        if t[0] == update.effective_user.first_name:  # ← Ab colon hai
+            rank = i
+            break
+    else:
+        rank = len(tops) + 1
+    
+    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 Your rank: #{rank}\n💰 Collection value: {total_value:,} 💰\n🏆 Players: {player_count}"
+    await update.message.reply_text(msg)
+    conn.close()
 
 # ============ SHOP ============
 async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
