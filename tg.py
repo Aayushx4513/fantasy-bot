@@ -1659,18 +1659,19 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     user_name = query.from_user.first_name
     data = query.data
-    
-if data == "ttt_join":
-    if chat_id not in active_ttt_games:
-        await query.edit_message_text("❌ Game expired! Start a new one with /ttt")
-        return
-    
-    game = active_ttt_games[chat_id]
-    
-    if game['opponent'] is not None:
-        await query.answer("Game already has an opponent!", show_alert=True)
-        return
-    
+
+    if data == "ttt_join":
+        # Yeh saari lines 4 spaces se indent honi chahiye
+        if chat_id not in active_ttt_games:
+            await query.edit_message_text("❌ Game expired! Start a new one with /ttt")
+            return
+        
+        game = active_ttt_games[chat_id]
+        
+        if game['opponent'] is not None:
+            await query.answer("Game already has an opponent!", show_alert=True)
+            return
+            
     if user_id == game['challenger']:
         await query.answer("You cannot play against yourself!", show_alert=True)
         return
