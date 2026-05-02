@@ -218,7 +218,7 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
         "📋 COMMAND LIST\n\n"
         "👤 PROFILE:\n   /profile - Your profile\n   /setpfp - Set photo\n   /rmpfp - Remove photo\n\n"
-        "🎁 EARN:\n   /login - Daily streak (Day 7 = 10k)\n   /spin - Daily spin (1k-10k)\n   /dice - Dice game\n   /flip - Heads/Tails\n\n"
+        "🎁 EARN:\n   /claim - Daily credits\n   /spin - Daily spin (1k-10k)\n   /dice - Dice game\n   /flip - Heads/Tails\n\n"
         "🏏 CRICKET:\n   /matches - Live matches\n   /bet - Place bet\n   /mybets - Your bets\n   /cancel - Cancel bet\n   /allbets - All bets\n\n"
         "🛒 SHOP:\n   /shop - Buy players\n   /shop2 - Cheap players\n   /buy /buyw /buy2 - Purchase\n   /myteam - Your collection\n   /top - Top collectors\n\n"
         "📊 STATS:\n   /leaderboard - Rich list\n   /top_fantasy - Points ranking\n   /history - Bet history\n\n"
@@ -273,52 +273,6 @@ async def rmpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     await update.message.reply_text('❌ Profile photo removed!')
 
-async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("CREATE TABLE IF NOT EXISTS login_streak (user_id INTEGER PRIMARY KEY, streak INTEGER, last_login DATE)")
-    c.execute("SELECT streak, last_login FROM login_streak WHERE user_id=?", (user_id,))
-    row = c.fetchone()
-    
-    today = datetime.now().date()
-    yesterday = today - timedelta(days=1)
-    
-    if row:
-        streak, last_login = row
-        if last_login:
-            last = datetime.fromisoformat(last_login).date()
-            if last == today:
-                await update.message.reply_text('⚠️ Already logged in today!\nCome back tomorrow at 12 AM.')
-                conn.close()
-                return
-            elif last == yesterday:
-                streak += 1
-            else:
-                streak = 1
-        else:
-            streak = 1
-    else:
-        streak = 1
-    
-    c.execute("INSERT OR REPLACE INTO login_streak (user_id, streak, last_login) VALUES (?, ?, ?)", (user_id, streak, today.isoformat()))
-    
-    if streak == 7:
-        c.execute("UPDATE users SET balance = balance + 10000 WHERE user_id=?", (user_id,))
-        conn.commit()
-        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-        new_bal = c.fetchone()[0]
-        await update.message.reply_text(f'🎉 LOGIN BONUS! 🎉\n\n7 DAYS COMPLETE!\nYou won 10,000 💰\n💰 New balance: {new_bal:,} 💰\n\nStreak resets to Day 1')
-        c.execute("UPDATE login_streak SET streak = 1 WHERE user_id=?", (user_id,))
-        conn.commit()
-    else:
-        await update.message.reply_text(f'📅 LOGIN\n\nDay {streak}/7 ✅\nStreak: {streak} day(s)')
-    
-    conn.close()
 
 async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -1408,73 +1362,42 @@ async def rmachieve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.commit()
     await update.message.reply_text(f'✅ Achievement removed: {removed[1]}')
     conn.close()
-
-# ============ HIDDEN NUMBER GAME ============
-
-active_games = {}
-
-async def guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ============ CLAIM DAILY REWARD ============
+async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
     
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text('🔢 /guess <amount>\nExample: /guess 500')
-        return
-    
-    try:
-        amount = int(args[0])
-    except:
-        await update.message.reply_text('❌ Invalid amount')
-        return
-    
-    if amount < 100:
-        await update.message.reply_text('❌ Minimum bet is 100 credits')
-        return
-    
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-    balance = c.fetchone()[0]
+    c.execute("CREATE TABLE IF NOT EXISTS claims (user_id INTEGER PRIMARY KEY, last_claim DATE)")
+    c.execute("SELECT last_claim FROM claims WHERE user_id=?", (user_id,))
+    row = c.fetchone()
     
-    if balance < amount:
-        await update.message.reply_text(f'❌ Need {amount:,}, have {balance:,}')
-        conn.close()
-        return
+    today = datetime.now().date()
+    today_str = today.strftime("%m/%d/%y")
     
-    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (amount, user_id))
+    if row and row[0]:
+        last = datetime.fromisoformat(row[0]).date()
+        if last == today:
+            await update.message.reply_text("⚠️ You already claimed today's reward!\nCome back tomorrow.")
+            conn.close()
+            return
+    
+    c.execute("INSERT OR REPLACE INTO claims (user_id, last_claim) VALUES (?, ?)", (user_id, today.isoformat()))
+    c.execute("UPDATE users SET balance = balance + 500 WHERE user_id=?", (user_id,))
     conn.commit()
+    
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    new_bal = c.fetchone()[0]
     conn.close()
     
-    secret = random.randint(1, 100)
-    
-    active_games[user_id] = {
-        'secret': secret,
-        'bet': amount,
-        'attempts': 0,
-        'min_range': 1,
-        'max_range': 100
-    }
-    
-    keyboard = [
-        [InlineKeyboardButton("1-10", callback_data="guess_1_10"),
-         InlineKeyboardButton("11-20", callback_data="guess_11_20"),
-         InlineKeyboardButton("21-30", callback_data="guess_21_30"),
-         InlineKeyboardButton("31-40", callback_data="guess_31_40")],
-        [InlineKeyboardButton("41-50", callback_data="guess_41_50"),
-         InlineKeyboardButton("51-60", callback_data="guess_51_60"),
-         InlineKeyboardButton("61-70", callback_data="guess_61_70"),
-         InlineKeyboardButton("71-80", callback_data="guess_71_80")],
-        [InlineKeyboardButton("81-90", callback_data="guess_81_90"),
-         InlineKeyboardButton("91-100", callback_data="guess_91_100")],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
     await update.message.reply_text(
-        f"🔢 HIDDEN NUMBER GAME\n\nBet: {amount} 💰\nGuess the number (1-100):",
-        reply_markup=reply_markup
+        f"✅ Claimed Daily Rewards of 500 Credits\n"
+        f"at {today_str}\n\n"
+        f"💰 New balance: {new_bal:,} 💰\n"
+        f"📅 Next claim: tomorrow"
     )
 
 
@@ -1487,7 +1410,6 @@ def main():
     app.add_handler(CommandHandler("profile", profile))
     app.add_handler(CommandHandler("setpfp", setpfp))
     app.add_handler(CommandHandler("rmpfp", rmpfp))
-    app.add_handler(CommandHandler("login", login))
     app.add_handler(CommandHandler("spin", spin))
     app.add_handler(CommandHandler("dice", dice))
     app.add_handler(CommandHandler("flip", flip))
@@ -1524,6 +1446,7 @@ def main():
     app.add_handler(CallbackQueryHandler(shop_callback, pattern="^shop_"))
     app.add_handler(CommandHandler("bank", bank))
     app.add_handler(CommandHandler("deposit", deposit))
+    app.add_handler(CommandHandler("claim", claim))
     app.add_handler(CommandHandler("withdraw", withdraw))
     print("🤖 Bot is running...")
     app.run_polling()
