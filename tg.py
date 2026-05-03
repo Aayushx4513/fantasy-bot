@@ -281,7 +281,7 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         last = datetime.fromisoformat(row[0])
         if (now - last).total_seconds() < 86400:
             remaining = 24 - (now - last).seconds // 3600
-            await update.message.reply_text(f'⏰ Already spun today!\nCome back in {remaining}h')
+            await update.message.reply_text(f'⏰ Already spin today!\nCome back in {remaining}h')
             conn.close()
             return
     
