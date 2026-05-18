@@ -2387,6 +2387,135 @@ async def removeplayer3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(f"✅ PLAYER REMOVED FROM SHOP3!\n{player[0]}")
 
+import asyncio
+from telegram import Update
+from telegram.ext import ContextTypes
+
+# Admin IDs - tune jo diye
+ADMIN_IDS = [1315564307, 7687078555]
+
+async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    
+    # Admin check
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Only admin can use this command.")
+        return
+    
+    msg = update.message
+    
+    # Get all users, groups, and chats
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Users table se saare users
+    c.execute("SELECT user_id FROM users")
+    users = [row[0] for row in c.fetchall()]
+    
+    # Groups table se saare groups (agar table hai toh)
+    c.execute("CREATE TABLE IF NOT EXISTS groups (group_id INTEGER PRIMARY KEY)")
+    c.execute("SELECT group_id FROM groups")
+    groups = [row[0] for row in c.fetchall()]
+    
+    # All chats table (jin logon ne bot use kiya)
+    c.execute("CREATE TABLE IF NOT EXISTS all_chats (chat_id INTEGER PRIMARY KEY, chat_type TEXT)")
+    c.execute("SELECT chat_id FROM all_chats")
+    all_chats = [row[0] for row in c.fetchall()]
+    
+    conn.close()
+    
+    # Sabko ek list me merge kar (duplicate hatao)
+    all_targets = list(set(users + groups + all_chats))
+    
+    # Content prepare karo
+    if msg.reply_to_message:
+        # Photo broadcast
+        if msg.reply_to_message.photo:
+            photo = msg.reply_to_message.photo[-1].file_id
+            caption = msg.reply_to_message.caption or ""
+            
+            sent = 0
+            failed = 0
+            
+            for target in all_targets:
+                try:
+                    await context.bot.send_photo(
+                        chat_id=target,
+                        photo=photo,
+                        caption=caption
+                    )
+                    sent += 1
+                    await asyncio.sleep(0.1)  # Rate limit bachane ke liye
+                except Exception as e:
+                    failed += 1
+                    print(f"Failed to send to {target}: {e}")
+            
+            await update.message.reply_text(
+                f"✅ Photo broadcast complete!\n"
+                f"📨 Sent to: {sent} chats\n"
+                f"❌ Failed: {failed}"
+            )
+            return
+        
+        # Text broadcast (reply to message)
+        content = msg.reply_to_message.text or msg.reply_to_message.caption or ""
+        
+    else:
+        # Direct text broadcast
+        if not context.args:
+            await msg.reply_text(
+                "📢 **Usage:**\n"
+                "• `/broadcast <message>` - Send text to all\n"
+                "• Reply to a photo + `/broadcast` - Send photo to all\n"
+                "• Reply to a message + `/broadcast` - Forward message to all",
+                parse_mode='Markdown'
+            )
+            return
+        content = " ".join(context.args)
+    
+    # Send text broadcast
+    sent = 0
+    failed = 0
+    
+    for target in all_targets:
+        try:
+            await context.bot.send_message(
+                chat_id=target,
+                text=content,
+                parse_mode='Markdown'  # Formatting ke liye
+            )
+            sent += 1
+            await asyncio.sleep(0.1)  # Har message ke beech 0.1 sec gap
+        except Exception as e:
+            failed += 1
+            print(f"Failed to send to {target}: {e}")
+    
+    await update.message.reply_text(
+        f"✅ **Broadcast Complete!**\n\n"
+        f"📨 Sent to: {sent} chats\n"
+        f"❌ Failed: {failed}\n"
+        f"👥 Total targets: {len(all_targets)}",
+        parse_mode='Markdown'
+    )
+
+
+# Function to track all chats (har message aane par call karo)
+async def track_all_chats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Har message ya command aane par chat ID save karo"""
+    if update.effective_chat:
+        chat_id = update.effective_chat.id
+        chat_type = update.effective_chat.type
+        
+        conn = get_db()
+        c = conn.cursor()
+        c.execute(
+            "INSERT OR IGNORE INTO all_chats (chat_id, chat_type) VALUES (?, ?)",
+            (chat_id, chat_type)
+        )
+        conn.commit()
+        conn.close()
+
+
 
 # ============ MAIN ==========
 def main():
@@ -2457,6 +2586,11 @@ def main():
     app.add_handler(CommandHandler("addplayer3", addplayer3))
     app.add_handler(CommandHandler("setprice3", setprice3))
     app.add_handler(CommandHandler("removeplayer3", removeplayer3))
+# Jab app ban raha ho toh ye add karo
+    application.add_handler(CommandHandler("broadcast", broadcast_cmd))
+
+# Har message track karne ke liye (optional - saare chats capture karne ke liye)
+    application.add_handler(MessageHandler(filters.ALL, track_all_chats), group=1)
 
 
 
