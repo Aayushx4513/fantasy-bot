@@ -1,13 +1,16 @@
+from telegram.ext.filters import UpdateType
+import string
 import sqlite3
 import random
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler, MessageHandler, filters
 import os
 import threading
 from flask import Flask
 
-TOKEN = "8265192837:AAEwM57vS_tTQU48iWK1u8c7mCih-5n423g"
+
+TOKEN = "8533156744:AAE2Fesm35bggPg47V2UBjJolJnRsJ-pjVA"
 ADMIN_IDS = [7687078555, 1315564307]
 
 flask_app = Flask(__name__)
@@ -20,8 +23,9 @@ def home():
 def health():
     return "OK", 200
 
+# In run_flask():
 def run_flask():
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", 8000))  # Changed to 8000
     flask_app.run(host="0.0.0.0", port=port)
 
 def get_db():
@@ -30,35 +34,56 @@ def get_db():
 def init_db():
     conn = get_db()
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS users 
-                 (user_id INTEGER PRIMARY KEY, name TEXT, balance INTEGER, points INTEGER, won INTEGER, total INTEGER, photo TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS matches 
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS users
+                 (user_id INTEGER PRIMARY KEY, name TEXT, balance INTEGER, points INTEGER, won INTEGER, total INTEGER)''')
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS matches
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, team1 TEXT, team2 TEXT, date TEXT, status TEXT, locked INTEGER DEFAULT 0)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS bets 
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS bets
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, match_id INTEGER, team TEXT, amount INTEGER)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS claim 
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS claim
                  (user_id INTEGER PRIMARY KEY, last_claim DATE)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS spin 
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS spin
                  (user_id INTEGER PRIMARY KEY, last_claim TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS shop 
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS shop
                  (id INTEGER PRIMARY KEY, name TEXT, price INTEGER, country TEXT, type TEXT, category TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS shop_women 
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS shop_women
                  (id INTEGER PRIMARY KEY, name TEXT, price INTEGER, country TEXT, type TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS user_players 
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS user_players
                  (user_id INTEGER, player_id INTEGER, type TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS shop2 
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS shop2
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, price INTEGER)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS user_players2 
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS user_players2
                  (user_id INTEGER, player_id INTEGER)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS achievements 
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS achievements
                  (user_id INTEGER, achievement TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS bank 
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS bank
                  (user_id INTEGER PRIMARY KEY, balance INTEGER DEFAULT 0, last_interest TEXT)''')
+    
     c.execute('''CREATE TABLE IF NOT EXISTS shop3
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, price INTEGER)''')
+    
     c.execute('''CREATE TABLE IF NOT EXISTS user_players3
                  (user_id INTEGER, player_id INTEGER)''')
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS group_drops
+                 (group_id INTEGER PRIMARY KEY, drop_rate INTEGER DEFAULT 40, last_code TEXT, claimed_by INTEGER, claimed_by_name TEXT)''')
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS group_msgs
+                 (group_id INTEGER PRIMARY KEY, msg_count INTEGER DEFAULT 0)''')
 
+    c.execute("ALTER TABLE users ADD COLUMN photo TEXT")
     conn.commit()
     conn.close()
 
@@ -2515,14 +2540,145 @@ async def track_all_chats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit()
         conn.close()
 
+# ============ IMPORTS ============
+import string
+
+# ============ GLOBAL STORAGE ============
+global_code = {"code": None, "claimed_by": [], "max_claims": 5}
+known_groups = set()
+
+# ============ HELPER ============
+def generate_code():
+    chars = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+    return ''.join(random.choice(chars) for _ in range(8))
+
+# ============ TRACK GROUPS ============
+async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message and update.message.chat:
+        chat_type = update.message.chat.type
+        if chat_type in ['group', 'supergroup']:
+            known_groups.add(update.message.chat.id)
+
+# ============ SENDCODE ============
+async def sendcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("Admin only!")
+        return
+    
+    if len(context.args) < 1:
+        await update.message.reply_text("Usage: /Sendcode CODE")
+        return
+    
+    code = context.args[0].strip().upper()
+    
+    global_code["code"] = code
+    global_code["claimed_by"] = []
+    global_code["max_claims"] = 5
+    
+    msg = (
+        f"🎁 CODE DROPPED!\n\n"
+        f"Code: <code>{code}</code>\n\n"
+        f"/Claimcode {code}\n\n"
+        f"Reward: 1000-8000 Credits\n"
+        f"Max Claims: 5"
+    )
+    
+    # Drop in current group too
+    if update.message and update.message.chat:
+        current_group = update.message.chat.id
+        known_groups.add(current_group)
+        try:
+            await context.bot.send_message(chat_id=current_group, text=msg, parse_mode='HTML')
+        except:
+            pass
+    
+    # Send to all known groups
+    sent_count = 0
+    for group_id in known_groups:
+        try:
+            await context.bot.send_message(chat_id=group_id, text=msg, parse_mode='HTML')
+            sent_count += 1
+        except:
+            pass
+    
+    await update.message.reply_text(
+        f"✅ Code Sent to {sent_count} Groups!\n\n"
+        f"Code: {code}\n"
+        f"Max Claims: 5"
+    )
+
+# ============ CLAIMCODE ============
+async def claimcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
+    
+    if len(context.args) < 1:
+        await update.message.reply_text("Usage: /Claimcode CODE")
+        return
+    
+    code = context.args[0].strip().upper()
+    user = update.effective_user
+    user_id = user.id
+    user_name = user.first_name if user.first_name else "User"
+    
+    if not is_registered(user_id):
+        await update.message.reply_text("Send /start first!")
+        return
+    
+    if not global_code["code"]:
+        await update.message.reply_text("No active code!")
+        return
+    
+    if code != global_code["code"]:
+        await update.message.reply_text("Invalid code!")
+        return
+    
+    if user_name in global_code["claimed_by"]:
+        await update.message.reply_text("You already claimed!")
+        return
+    
+    if len(global_code["claimed_by"]) >= global_code["max_claims"]:
+        await update.message.reply_text("Max claims reached!")
+        return
+    
+    global_code["claimed_by"].append(user_name)
+    
+    reward = random.randint(1000, 8000)
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (reward, user_id))
+    conn.commit()
+    conn.close()
+    
+    claimed_list = "\n".join([f"✓ {name}" for name in global_code["claimed_by"]])
+    remaining = global_code["max_claims"] - len(global_code["claimed_by"])
+    
+    await update.message.reply_text(
+        f"✅ CLAIMED!\n\n"
+        f"Winner: {user_name}\n"
+        f"Reward: {reward:,} Credits\n\n"
+        f"━━━━ CLAIMED ━━━━\n{claimed_list}\n\n"
+        f"Remaining: {remaining}"
+    )
+
+# ============ TRACK GROUPS (Add in existing handlers) ============
+# Add this at start of any message handler that works in groups:
+async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message and update.message.chat:
+        chat_type = update.message.chat.type
+        if chat_type in ['group', 'supergroup']:
+            known_groups.add(update.message.chat.id)
 
 
 # ============ MAIN ==========
 def main():
     threading.Thread(target=run_flask, daemon=True).start()
-    
+
     app = Application.builder().token(TOKEN).build()
-    
+
     # User commands
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help))
@@ -2543,7 +2699,7 @@ def main():
     app.add_handler(CommandHandler("history", history))
     app.add_handler(CommandHandler("tip", tip))
     app.add_handler(CommandHandler("achievements", achievements))
-    
+
     # Shop commands
     app.add_handler(CommandHandler("shop", shop))
     app.add_handler(CommandHandler("buy", buy))
@@ -2551,7 +2707,7 @@ def main():
     app.add_handler(CommandHandler("myteam", myteam))
     app.add_handler(CommandHandler("top", top))
     app.add_handler(CallbackQueryHandler(shop_callback, pattern="^shop_"))
-    
+
     # Shop2 commands
     app.add_handler(CommandHandler("shop2", shop2))
     app.add_handler(CommandHandler("buy2", buy2))
@@ -2560,13 +2716,13 @@ def main():
     app.add_handler(CommandHandler("addplayer2", addplayer2))
     app.add_handler(CommandHandler("setprice2", setprice2))
     app.add_handler(CommandHandler("removeplayer2", removeplayer2))
-    
+
     # Bank commands
     app.add_handler(CommandHandler("bank", bank))
     app.add_handler(CommandHandler("deposit", deposit))
     app.add_handler(CommandHandler("withdraw", withdraw))
     app.add_handler(CommandHandler("claim_interest", claim_interest))
-    
+
     # Admin commands
     app.add_handler(CommandHandler("addmatch", addmatch))
     app.add_handler(CommandHandler("deletematch", deletematch))
@@ -2577,7 +2733,7 @@ def main():
     app.add_handler(CommandHandler("setprice", setprice))
     app.add_handler(CommandHandler("achieve", achieve))
     app.add_handler(CommandHandler("rmachieve", rmachieve))
-    
+
     # Shop3 commands
     app.add_handler(CommandHandler("shop3", shop3))
     app.add_handler(CommandHandler("buy3", buy3))
@@ -2586,19 +2742,17 @@ def main():
     app.add_handler(CommandHandler("addplayer3", addplayer3))
     app.add_handler(CommandHandler("setprice3", setprice3))
     app.add_handler(CommandHandler("removeplayer3", removeplayer3))
-# Jab app ban raha ho toh ye add karo
-    application.add_handler(CommandHandler("broadcast", broadcast_cmd))
 
-# Har message track karne ke liye (optional - saare chats capture karne ke liye)
-    application.add_handler(MessageHandler(filters.ALL, track_all_chats), group=1)
+    # Broadcast
+    app.add_handler(CommandHandler("broadcast", broadcast_cmd))
 
-
-
+    # Drop code system
+    app.add_handler(CommandHandler("sendcode", sendcode))
+    app.add_handler(CommandHandler("claimcode", claimcode))
+    app.add_handler(MessageHandler(is_group_message, track_group), group=3)
 
     print("🤖 Bot is running...")
     app.run_polling()
 
 if __name__ == "__main__":
     main()
-
-
