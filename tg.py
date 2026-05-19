@@ -262,6 +262,7 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ============ SPIN ============
+# ============ SPIN (Updated - Claim Style) ============
 async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
@@ -273,13 +274,18 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     c.execute("CREATE TABLE IF NOT EXISTS spin (user_id INTEGER PRIMARY KEY, last_claim TEXT)")
     c.execute("SELECT last_claim FROM spin WHERE user_id=?", (user_id,))
     row = c.fetchone()
+    
     now = datetime.now()
+    today_str = now.strftime("%m/%d/%y")
     
     if row and row[0]:
         last = datetime.fromisoformat(row[0])
-        if (now - last).total_seconds() < 86400:
-            remaining = 24 - (now - last).seconds // 3600
-            await update.message.reply_text(f'⏰ Already spun today!\nCome back in {remaining}h')
+        if last.date() == now.date():
+            await update.message.reply_text(
+                f"⚠️ Already spin today!\n"
+                f"at {last.strftime('%m/%d/%y')}\n\n"
+                f"🎡 Next spin: tomorrow"
+            )
             conn.close()
             return
     
@@ -287,11 +293,17 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     c.execute("INSERT OR REPLACE INTO spin (user_id, last_claim) VALUES (?, ?)", (user_id, now.isoformat()))
     c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount, user_id))
     conn.commit()
+    
     c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
     new_bal = c.fetchone()[0]
     conn.close()
     
-    await update.message.reply_text(f"🎡 SPIN\n\n✨ You got {amount:,} 💰\n💰 New balance: {new_bal:,} 💰")
+    await update.message.reply_text(
+        f"✅ Claimed Daily Spin Rewards of {amount:,} Credits\n"
+        f"at {today_str}\n\n"
+        f"💰 New balance: {new_bal:,} 💰\n"
+        f"🎡 Next spin: tomorrow"
+    )
 
 # ============ DICE ============
 async def dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1153,18 +1165,27 @@ async def addmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(f"✅ MATCH ADDED!\n\n🏏 {team1} vs {team2}\n📅 {date}\n🔓 Status: OPEN")
 
+# ============ ADMIN: DELETE MATCH WITH REFUND ============
 async def deletematch(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Delete match and optionally refund all bets - Admin only"""
+    
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text('❌ Admin only!')
         return
     
     args = context.args
-    if len(args) < 2:
-        await update.message.reply_text('❌ /deletematch TEAM1 vs TEAM2')
+    if len(args) < 3:
+        await update.message.reply_text(
+            "❌ USAGE:\n"
+            "/deletematch TEAM1 vs TEAM2\n"
+            "/deletematch TEAM1 vs TEAM2 refund\n\n"
+            "💡 Add 'refund' to return credits to all bettors"
+        )
         return
     
     team1 = args[0].upper()
     team2 = args[2].upper()
+    do_refund = len(args) > 3 and args[3].lower() == 'refund'
     
     conn = get_db()
     c = conn.cursor()
@@ -1176,12 +1197,53 @@ async def deletematch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
         return
     
-    c.execute("DELETE FROM matches WHERE id=?", (match[0],))
+    # Get all bets for refund calculation
+    c.execute("SELECT user_id, amount FROM bets WHERE match_id=?", (match[0],))
+    bets = c.fetchall()
+    
+    refund_count = 0
+    refund_total = 0
+    
+    # Process refund if requested
+    if do_refund and bets:
+        for bet in bets:
+            user_id, amount = bet
+            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount, user_id))
+            refund_count += 1
+            refund_total += amount
+        
+        # Also update total bets count for users
+        c.execute("UPDATE users SET total = total - ? WHERE user_id IN (SELECT user_id FROM bets WHERE match_id=?)", (refund_count, match[0]))
+        conn.commit()
+    
+    # Delete bets and match
     c.execute("DELETE FROM bets WHERE match_id=?", (match[0],))
+    c.execute("DELETE FROM matches WHERE id=?", (match[0],))
     conn.commit()
     conn.close()
     
-    await update.message.reply_text(f"🗑️ MATCH DELETED!\n\n🏏 {team1} vs {team2}\n⚠️ All bets for this match have also been deleted.")
+    # Response message
+    if do_refund and refund_count > 0:
+        await update.message.reply_text(
+            f"🗑️ MATCH DELETED + REFUNDED!\n\n"
+            f"🏏 {match[1]} vs {match[2]}\n"
+            f"💰 Refunded: {refund_count} users\n"
+            f"💰 Total refund: {refund_total:,} credits\n\n"
+            f"✅ All bettors got their money back!"
+        )
+    elif do_refund and refund_count == 0:
+        await update.message.reply_text(
+            f"🗑️ MATCH DELETED!\n\n"
+            f"🏏 {match[1]} vs {match[2]}\n"
+            f"ℹ️ No bets to refund"
+        )
+    else:
+        await update.message.reply_text(
+            f"🗑️ MATCH DELETED WITHOUT REFUND!\n\n"
+            f"🏏 {match[1]} vs {match[2]}\n"
+            f"⚠️ {len(bets)} users lost their bets!\n\n"
+            f"💡 Next time use: /deletematch {team1} vs {team2} refund"
+        )
 
 async def lockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
