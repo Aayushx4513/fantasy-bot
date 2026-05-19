@@ -84,7 +84,7 @@ def get_user(user_id, name=""):
     conn.close()
     return user
 
-# ============ START ============
+# ============ START (CL ZONE VIP Style) ============
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.first_name if user.first_name else user.username or "User"
@@ -98,18 +98,43 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not existing:
         c.execute("INSERT INTO users (user_id, name, balance, points, won, total) VALUES (?, ?, 1000, 0, 0, 0)", (user_id, name))
         conn.commit()
+        
+        # Keyboard buttons
+        keyboard = [
+            [InlineKeyboardButton("📢 UPDATES", url="https://t.me/clbotofficial")],
+            [InlineKeyboardButton("👥 MAIN GROUP", url="https://t.me/+eTD1m8Cjc_wyOTNl")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
         await update.message.reply_text(
-            f"🏏 CRICKET FANTASY LEAGUE\n\n"
-            f"Welcome {name}! 👋\n"
+            f"✨ WELCOME TO CL ZONE ✨\n\n"
+            f"👑 {name}, you've joined the elite club!\n"
             f"💰 1000 credits | 🏆 0 pts\n\n"
-            f"📌 /claim | /spin | /profile | /leaderboard"
+            f"🎯 /claim - Daily rewards\n"
+            f"🎡 /spin - Daily spin\n"
+            f"👤 /profile - Your stats\n"
+            f"🏆 /leaderboard - Top players\n\n"
+            f"📌 Join our channels for exclusive updates!",
+            reply_markup=reply_markup
         )
     else:
+        # Keyboard buttons for existing users
+        keyboard = [
+            [InlineKeyboardButton("📢 UPDATES", url="https://t.me/clbotofficial")],
+            [InlineKeyboardButton("👥 MAIN GROUP", url="https://t.me/+eTD1m8Cjc_wyOTNl")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
         await update.message.reply_text(
-            f"🏏 CRICKET FANTASY LEAGUE\n\n"
-            f"Welcome back {name}! 👋\n"
+            f"✨ WELCOME BACK TO CL ZONE ✨\n\n"
+            f"👑 {name}\n"
             f"💰 {existing[2]:,} credits | 🏆 {existing[3]} pts\n\n"
-            f"📌 /claim | /spin | /profile | /leaderboard"
+            f"🎯 /claim - Daily rewards\n"
+            f"🎡 /spin - Daily spin\n"
+            f"👤 /profile - Your stats\n"
+            f"🏆 /leaderboard - Top players\n\n"
+            f"📌 Stay connected with our community!",
+            reply_markup=reply_markup
         )
     conn.close()
 
@@ -2229,7 +2254,7 @@ async def broadcast_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💡 Use /broadcast to send message to everyone!"
     )
 
-# ============ AUTO-TRACK GROUPS ============
+# ============ FIXED GROUP TRACKING ============
 async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Auto-track groups where bot is added"""
     if update.message and update.message.chat.type in ['group', 'supergroup']:
@@ -2238,6 +2263,13 @@ async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         conn = get_db()
         c = conn.cursor()
+        
+        # Create table if not exists with correct schema
+        c.execute('''CREATE TABLE IF NOT EXISTS groups 
+                     (group_id INTEGER PRIMARY KEY, 
+                      group_name TEXT, 
+                      added_at TEXT)''')
+        
         c.execute("INSERT OR IGNORE INTO groups (group_id, group_name, added_at) VALUES (?, ?, ?)",
                   (group_id, group_name, datetime.now().isoformat()))
         conn.commit()
@@ -2253,6 +2285,13 @@ async def new_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 conn = get_db()
                 c = conn.cursor()
+                
+                # Create table if not exists with correct schema
+                c.execute('''CREATE TABLE IF NOT EXISTS groups 
+                             (group_id INTEGER PRIMARY KEY, 
+                              group_name TEXT, 
+                              added_at TEXT)''')
+                
                 c.execute("INSERT OR IGNORE INTO groups (group_id, group_name, added_at) VALUES (?, ?, ?)",
                           (group_id, group_name, datetime.now().isoformat()))
                 conn.commit()
@@ -2271,305 +2310,6 @@ async def left_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit()
         conn.close()
         print(f"❌ Bot removed from group: {group_id}")
-
-# ============ CLAIM CODE SYSTEM ============
-
-def init_claimcode_db():
-    conn = get_db()
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS claim_codes 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  code TEXT UNIQUE,
-                  amount INTEGER,
-                  max_claims INTEGER,
-                  claimed_count INTEGER DEFAULT 0,
-                  created_by INTEGER,
-                  created_at TEXT,
-                  expires_at TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS code_claims 
-                 (code TEXT, user_id INTEGER, claimed_at TEXT,
-                  PRIMARY KEY (code, user_id))''')
-    conn.commit()
-    conn.close()
-
-# Call this after init_db()
-init_claimcode_db()
-
-# ============ ADMIN: CREATE CLAIM CODE ============
-async def createcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/createcode <amount> <code> [max_claims] - Admin only"""
-    
-    user_id = update.effective_user.id
-    
-    if user_id not in ADMIN_IDS:
-        await update.message.reply_text("❌ Only admin can create claim codes!")
-        return
-    
-    args = context.args
-    if len(args) < 2:
-        await update.message.reply_text(
-            "📝 CREATE CODE USAGE:\n\n"
-            "/createcode <amount> <code> [max_claims]\n\n"
-            "Examples:\n"
-            "/createcode 1000 FESTIVAL10\n"
-            "/createcode 500 WELCOME5 3\n\n"
-            "💰 Amount: credits to give\n"
-            "🔑 Code: unique code (max 20 chars)\n"
-            "👥 Max claims: default 5 users"
-        )
-        return
-    
-    try:
-        amount = int(args[0])
-        code = args[1].upper()
-        max_claims = int(args[2]) if len(args) > 2 else 5
-    except:
-        await update.message.reply_text("❌ Invalid amount or max_claims!")
-        return
-    
-    if amount < 100:
-        await update.message.reply_text("❌ Minimum amount is 100 credits!")
-        return
-    
-    if max_claims < 1 or max_claims > 50:
-        await update.message.reply_text("❌ Max claims must be between 1 and 50!")
-        return
-    
-    if len(code) > 20:
-        await update.message.reply_text("❌ Code too long! Max 20 characters.")
-        return
-    
-    now = datetime.now()
-    expires_at = now + timedelta(hours=24)
-    
-    conn = get_db()
-    c = conn.cursor()
-    
-    # Check if code already exists
-    c.execute("SELECT code FROM claim_codes WHERE code = ?", (code,))
-    if c.fetchone():
-        await update.message.reply_text(f"❌ Code '{code}' already exists!")
-        conn.close()
-        return
-    
-    c.execute("""INSERT INTO claim_codes 
-                 (code, amount, max_claims, created_by, created_at, expires_at)
-                 VALUES (?, ?, ?, ?, ?, ?)""",
-              (code, amount, max_claims, user_id, now.isoformat(), expires_at.isoformat()))
-    
-    conn.commit()
-    conn.close()
-    
-    await update.message.reply_text(
-        f"✅ CLAIM CODE CREATED!\n\n"
-        f"🔑 Code: `{code}`\n"
-        f"💰 Amount: {amount:,} credits\n"
-        f"👥 Max Claims: {max_claims} users\n"
-        f"⏰ Expires: {expires_at.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-        f"Users can claim with:\n"
-        f"/claimcode {code}",
-        parse_mode="Markdown"
-    )
-
-# ============ USER: CLAIM CODE ============
-async def claimcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/claimcode <code> - Claim credits using code"""
-    
-    user_id = update.effective_user.id
-    
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text("❌ Usage: /claimcode <code>\nExample: /claimcode FESTIVAL10")
-        return
-    
-    code = args[0].upper()
-    
-    conn = get_db()
-    c = conn.cursor()
-    
-    # Get code details
-    c.execute("""SELECT code, amount, max_claims, claimed_count, expires_at 
-                 FROM claim_codes WHERE code = ?""", (code,))
-    code_data = c.fetchone()
-    
-    if not code_data:
-        await update.message.reply_text(f"❌ Invalid code! '{code}' does not exist.")
-        conn.close()
-        return
-    
-    code_name, amount, max_claims, claimed_count, expires_at = code_data
-    
-    # Check expiry
-    expires = datetime.fromisoformat(expires_at)
-    if datetime.now() > expires:
-        await update.message.reply_text(f"❌ Code '{code}' has expired!")
-        conn.close()
-        return
-    
-    # Check if already claimed by this user
-    c.execute("SELECT * FROM code_claims WHERE code = ? AND user_id = ?", (code, user_id))
-    if c.fetchone():
-        await update.message.reply_text(f"❌ You have already claimed code '{code}'!")
-        conn.close()
-        return
-    
-    # Check if max claims reached
-    if claimed_count >= max_claims:
-        await update.message.reply_text(f"❌ Code '{code}' has reached its maximum claims ({max_claims}/5)!")
-        conn.close()
-        return
-    
-    # PROCESS CLAIM
-    c.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
-    c.execute("UPDATE claim_codes SET claimed_count = claimed_count + 1 WHERE code = ?", (code,))
-    c.execute("INSERT INTO code_claims (code, user_id, claimed_at) VALUES (?, ?, ?)",
-              (code, user_id, datetime.now().isoformat()))
-    conn.commit()
-    
-    # Get new balance
-    c.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-    new_bal = c.fetchone()[0]
-    
-    remaining_claims = max_claims - (claimed_count + 1)
-    
-    conn.close()
-    
-    await update.message.reply_text(
-        f"🎉 CODE CLAIMED SUCCESSFULLY!\n\n"
-        f"🔑 Code: {code}\n"
-        f"💰 You got: {amount:,} credits!\n"
-        f"💳 New balance: {new_bal:,} credits\n\n"
-        f"📊 Remaining claims: {remaining_claims}/{max_claims}\n\n"
-        f"💡 More codes? /activecodes"
-    )
-
-# ============ VIEW ACTIVE CODES ============
-async def activecodes(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """View all active claim codes"""
-    
-    user_id = update.effective_user.id
-    
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    
-    now = datetime.now().isoformat()
-    c.execute("""SELECT code, amount, max_claims, claimed_count, expires_at 
-                 FROM claim_codes 
-                 WHERE expires_at > ? AND claimed_count < max_claims
-                 ORDER BY created_at DESC""", (now,))
-    
-    codes = c.fetchall()
-    
-    if not codes:
-        await update.message.reply_text(
-            "📭 NO ACTIVE CODES!\n\n"
-            "💡 Check back later for new codes!\n"
-            "👑 Admin can create codes with /createcode"
-        )
-        conn.close()
-        return
-    
-    msg = "🎁 ACTIVE CLAIM CODES\n\n"
-    for code, amount, max_c, claimed, expires in codes:
-        remaining = max_c - claimed
-        msg += f"🔑 `{code}`\n"
-        msg += f"💰 {amount:,} credits\n"
-        msg += f"👥 {remaining}/{max_c} claims left\n"
-        msg += f"⏰ Expires: {datetime.fromisoformat(expires).strftime('%H:%M:%S')}\n"
-        msg += f"💡 /claimcode {code}\n\n"
-    
-    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
-    msg += "📌 Use /claimcode <code> to claim!"
-    
-    await update.message.reply_text(msg, parse_mode="Markdown")
-    conn.close()
-
-# ============ ADMIN: DELETE CODE ============
-async def deletecode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/deletecode <code> - Delete a claim code (Admin only)"""
-    
-    user_id = update.effective_user.id
-    
-    if user_id not in ADMIN_IDS:
-        await update.message.reply_text("❌ Only admin can delete codes!")
-        return
-    
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text("❌ Usage: /deletecode <code>\nExample: /deletecode FESTIVAL10")
-        return
-    
-    code = args[0].upper()
-    
-    conn = get_db()
-    c = conn.cursor()
-    
-    c.execute("SELECT code FROM claim_codes WHERE code = ?", (code,))
-    if not c.fetchone():
-        await update.message.reply_text(f"❌ Code '{code}' not found!")
-        conn.close()
-        return
-    
-    c.execute("DELETE FROM claim_codes WHERE code = ?", (code,))
-    c.execute("DELETE FROM code_claims WHERE code = ?", (code,))
-    conn.commit()
-    conn.close()
-    
-    await update.message.reply_text(f"✅ Code '{code}' deleted successfully!")
-
-# ============ ADMIN: CODE STATS ============
-async def codestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/codestats - View all codes stats (Admin only)"""
-    
-    user_id = update.effective_user.id
-    
-    if user_id not in ADMIN_IDS:
-        await update.message.reply_text("❌ Only admin can view code stats!")
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    
-    c.execute("""SELECT code, amount, max_claims, claimed_count, created_at, expires_at 
-                 FROM claim_codes ORDER BY created_at DESC LIMIT 20""")
-    codes = c.fetchall()
-    
-    if not codes:
-        await update.message.reply_text("📭 No codes created yet!")
-        conn.close()
-        return
-    
-    msg = "📊 CODE STATS\n\n"
-    for code, amount, max_c, claimed, created, expires in codes:
-        status = "🟢 ACTIVE" if datetime.now().isoformat() < expires and claimed < max_c else "🔴 EXPIRED/CLAIMED"
-        msg += f"🔑 {code}\n"
-        msg += f"💰 {amount:,} | 👥 {claimed}/{max_c}\n"
-        msg += f"📅 Created: {datetime.fromisoformat(created).strftime('%m/%d %H:%M')}\n"
-        msg += f"⏰ Expires: {datetime.fromisoformat(expires).strftime('%m/%d %H:%M')}\n"
-        msg += f"📊 {status}\n\n"
-    
-    # Total credits given out
-    c.execute("SELECT SUM(amount) FROM code_claims cc JOIN claim_codes c ON cc.code = c.code")
-    total_given = c.fetchone()[0] or 0
-    
-    c.execute("SELECT COUNT(DISTINCT user_id) FROM code_claims")
-    total_users = c.fetchone()[0] or 0
-    
-    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
-    msg += f"💰 Total credits given: {total_given:,}\n"
-    msg += f"👥 Total users claimed: {total_users}\n"
-    
-    conn.close()
-    
-    await update.message.reply_text(msg)
 
 # ============ ADMIN: UNLOCK MATCH ============
 async def unlockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2623,6 +2363,318 @@ async def unlockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💰 /bet {match[1]} <amount> | /bet {match[2]} <amount>"
     )
 
+# ============ CLAIM CODE - WORK IN GROUPS ============
+async def claimcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    chat_id = update.message.chat.id
+    chat_type = update.message.chat.type
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first in private!')
+        return
+    
+    code = None
+    
+    # Method 1: Check command arguments
+    if context.args:
+        code = context.args[0].upper()
+    
+    # Method 2: Check replied message
+    if not code and update.message.reply_to_message:
+        replied = update.message.reply_to_message.text or update.message.reply_to_message.caption
+        if replied:
+            import re
+            # Find any uppercase word with 3+ chars (looks like a code)
+            matches = re.findall(r'[A-Z0-9]{3,}', replied.upper())
+            if matches:
+                code = matches[0]
+    
+    if not code:
+        if chat_type in ['group', 'supergroup']:
+            await update.message.reply_text(
+                f"❌ **How to claim code in group:**\n\n"
+                f"1️⃣ **Direct:** `/claimcode CODE123`\n"
+                f"2️⃣ **Reply:** Reply to a message with code and type `/claimcode`\n\n"
+                f"📌 Example: `/claimcode FESTIVAL10`\n\n"
+                f"💡 Get active codes: `/activecodes`"
+            )
+        else:
+            await update.message.reply_text(
+                f"❌ Usage: `/claimcode <code>`\n"
+                f"Example: `/claimcode FESTIVAL10`"
+            )
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Check code exists
+    c.execute("SELECT code, amount, max_claims, claimed_count, expires_at FROM claim_codes WHERE code = ?", (code,))
+    result = c.fetchone()
+    
+    if not result:
+        await update.message.reply_text(f"❌ Code `{code}` not found!\n💡 Try `/activecodes` to see available codes.", parse_mode="Markdown")
+        conn.close()
+        return
+    
+    code_name, amount, max_claims, claimed_count, expires_at = result
+    
+    # Check expiry
+    expires = datetime.fromisoformat(expires_at)
+    if datetime.now() > expires:
+        await update.message.reply_text(f"❌ Code `{code}` has expired!", parse_mode="Markdown")
+        conn.close()
+        return
+    
+    # Check already claimed
+    c.execute("SELECT * FROM code_claims WHERE code = ? AND user_id = ?", (code, user_id))
+    if c.fetchone():
+        await update.message.reply_text(f"❌ You already claimed code `{code}`!", parse_mode="Markdown")
+        conn.close()
+        return
+    
+    # Check max claims
+    if claimed_count >= max_claims:
+        await update.message.reply_text(f"❌ Code `{code}` has reached max claims ({max_claims}/5)!", parse_mode="Markdown")
+        conn.close()
+        return
+    
+    # Process claim
+    c.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
+    c.execute("UPDATE claim_codes SET claimed_count = claimed_count + 1 WHERE code = ?", (code,))
+    c.execute("INSERT INTO code_claims (code, user_id, claimed_at) VALUES (?, ?, ?)",
+              (code, user_id, datetime.now().isoformat()))
+    conn.commit()
+    
+    # Get new balance
+    c.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+    new_bal = c.fetchone()[0]
+    remaining = max_claims - (claimed_count + 1)
+    conn.close()
+    
+    # Mention user in group
+    mention = f"[{update.effective_user.first_name}](tg://user?id={user_id})"
+    
+    if chat_type in ['group', 'supergroup']:
+        await update.message.reply_text(
+            f"🎉 **CODE CLAIMED!**\n\n"
+            f"👤 {mention}\n"
+            f"🔑 Code: `{code}`\n"
+            f"💰 +{amount:,} credits\n"
+            f"💳 Balance: {new_bal:,}\n"
+            f"📊 Remaining: {remaining}/{max_claims}",
+            parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text(
+            f"🎉 **CODE CLAIMED!**\n\n"
+            f"🔑 Code: {code}\n"
+            f"💰 +{amount:,} credits\n"
+            f"💳 Balance: {new_bal:,}\n"
+            f"📊 Remaining: {remaining}/{max_claims}",
+            parse_mode="Markdown"
+        )
+
+
+# ============ ACTIVE CODES - GROUP SUPPORT ============
+async def activecodes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    now = datetime.now().isoformat()
+    c.execute("""SELECT code, amount, max_claims, claimed_count, expires_at 
+                 FROM claim_codes 
+                 WHERE expires_at > ? AND claimed_count < max_claims
+                 ORDER BY created_at DESC LIMIT 10""", (now,))
+    
+    codes = c.fetchall()
+    conn.close()
+    
+    if not codes:
+        await update.message.reply_text(
+            "📭 **NO ACTIVE CODES**\n\n"
+            "No codes available right now!\n"
+            "Check back later for rewards! 🎁",
+            parse_mode="Markdown"
+        )
+        return
+    
+    msg = "🎁 **ACTIVE CLAIM CODES**\n\n"
+    for code, amount, max_c, claimed, expires in codes:
+        remaining = max_c - claimed
+        msg += f"🔑 `{code}`\n"
+        msg += f"💰 {amount:,} credits\n"
+        msg += f"👥 {remaining}/{max_c} left\n"
+        msg += f"💡 `/claimcode {code}`\n\n"
+    
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "Use `/claimcode <code>` in any chat!"
+    
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+
+# ============ CREATE CODE - GROUP SUPPORT ============
+async def createcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "📝 **CREATE CODE**\n\n"
+            "Usage: `/createcode <amount> <code>`\n"
+            "Example: `/createcode 1000 FESTIVAL10`\n\n"
+            "💰 Amount: 100-10000 credits\n"
+            "🔑 Code: Any word/number\n"
+            "👥 Max: 5 claims\n"
+            "⏰ Expires: 24 hours",
+            parse_mode="Markdown"
+        )
+        return
+    
+    try:
+        amount = int(args[0])
+        code = args[1].upper()
+        max_claims = 5
+    except:
+        await update.message.reply_text("❌ Invalid! Use: /createcode 1000 CODE123")
+        return
+    
+    if amount < 100:
+        await update.message.reply_text("❌ Minimum amount 100 credits!")
+        return
+    
+    if len(code) > 20:
+        await update.message.reply_text("❌ Code too long! Max 20 chars")
+        return
+    
+    now = datetime.now()
+    expires_at = now + timedelta(hours=24)
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    c.execute("SELECT code FROM claim_codes WHERE code = ?", (code,))
+    if c.fetchone():
+        await update.message.reply_text(f"❌ Code '{code}' already exists!")
+        conn.close()
+        return
+    
+    c.execute("""INSERT INTO claim_codes 
+                 (code, amount, max_claims, created_by, created_at, expires_at)
+                 VALUES (?, ?, ?, ?, ?, ?)""",
+              (code, amount, max_claims, user_id, now.isoformat(), expires_at.isoformat()))
+    
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✅ **CODE CREATED!**\n\n"
+        f"🔑 Code: `{code}`\n"
+        f"💰 Amount: {amount:,} credits\n"
+        f"👥 Max claims: {max_claims} users\n"
+        f"⏰ Expires: 24 hours\n\n"
+        f"Users can claim with: `/claimcode {code}`\n\n"
+        f"📢 Share this code in groups!",
+        parse_mode="Markdown"
+    )
+
+# ============ ADMIN: DELETE CODE ============
+async def deletecode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Delete a claim code - Admin only"""
+    
+    user_id = update.effective_user.id
+    
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text("❌ Usage: /deletecode CODE123\nExample: /deletecode FESTIVAL10")
+        return
+    
+    code = args[0].upper()
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    c.execute("SELECT code FROM claim_codes WHERE code = ?", (code,))
+    if not c.fetchone():
+        await update.message.reply_text(f"❌ Code '{code}' not found!")
+        conn.close()
+        return
+    
+    c.execute("DELETE FROM claim_codes WHERE code = ?", (code,))
+    c.execute("DELETE FROM code_claims WHERE code = ?", (code,))
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(f"✅ Code '{code}' deleted successfully!")
+
+
+# ============ ADMIN: CODE STATS ============
+async def codestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """View all codes stats - Admin only"""
+    
+    user_id = update.effective_user.id
+    
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Total codes
+    c.execute("SELECT COUNT(*) FROM claim_codes")
+    total_codes = c.fetchone()[0]
+    
+    # Active codes
+    now = datetime.now().isoformat()
+    c.execute("SELECT COUNT(*) FROM claim_codes WHERE expires_at > ? AND claimed_count < max_claims", (now,))
+    active_codes = c.fetchone()[0]
+    
+    # Total claims
+    c.execute("SELECT COUNT(*) FROM code_claims")
+    total_claims = c.fetchone()[0]
+    
+    # Total credits given
+    c.execute("SELECT SUM(amount) FROM code_claims cc JOIN claim_codes c ON cc.code = c.code")
+    total_given = c.fetchone()[0] or 0
+    
+    # Unique users
+    c.execute("SELECT COUNT(DISTINCT user_id) FROM code_claims")
+    unique_users = c.fetchone()[0] or 0
+    
+    # Recent codes
+    c.execute("SELECT code, amount, max_claims, claimed_count, created_at FROM claim_codes ORDER BY created_at DESC LIMIT 5")
+    recent = c.fetchall()
+    
+    msg = f"📊 **CODE STATS**\n\n"
+    msg += f"📝 Total codes: {total_codes}\n"
+    msg += f"🟢 Active codes: {active_codes}\n"
+    msg += f"🎯 Total claims: {total_claims}\n"
+    msg += f"💰 Credits given: {total_given:,}\n"
+    msg += f"👥 Unique users: {unique_users}\n\n"
+    
+    if recent:
+        msg += "**Recent Codes:**\n"
+        for code, amount, max_c, claimed, created in recent:
+            msg += f"🔑 {code} - {amount:,} ({claimed}/{max_c})\n"
+    
+    conn.close()
+    
+    await update.message.reply_text(msg, parse_mode="Markdown")
 
 
 # ============ MAIN ==========
@@ -2709,7 +2761,6 @@ def main():
     app.add_handler(CommandHandler("activecodes", activecodes))
     app.add_handler(CommandHandler("deletecode", deletecode))
     app.add_handler(CommandHandler("codestats", codestats))
-
 
     print("🤖 Bot is running...")
     app.run_polling()
