@@ -2464,7 +2464,7 @@ async def deletecode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ Code '{code}' deleted successfully!")
 
 # ============ ADMIN: CODE STATS ============
-async function codestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def codestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/codestats - View all codes stats (Admin only)"""
     
     user_id = update.effective_user.id
@@ -2508,6 +2508,59 @@ async function codestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     
     await update.message.reply_text(msg)
+
+# ============ ADMIN: UNLOCK MATCH ============
+async def unlockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Unlock a locked match - Admin only"""
+    
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text('❌ Admin only!')
+        return
+    
+    args = context.args
+    if len(args) < 3:
+        await update.message.reply_text('❌ /unlockmatch TEAM1 vs TEAM2\nExample: /unlockmatch IND vs AUS')
+        return
+    
+    team1 = args[0].upper()
+    team2 = args[2].upper()
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT id, team1, team2, locked FROM matches WHERE (team1=? AND team2=?)", (team1, team2))
+    match = c.fetchone()
+    
+    if not match:
+        await update.message.reply_text(f'❌ Match not found: {team1} vs {team2}')
+        conn.close()
+        return
+    
+    if match[3] == 0:
+        await update.message.reply_text(f'⚠️ Match is already UNLOCKED!\n\n🏏 {match[1]} vs {match[2]}\n📊 Bets are already being accepted.')
+        conn.close()
+        return
+    
+    # Unlock the match
+    c.execute("UPDATE matches SET locked=0 WHERE id=?", (match[0],))
+    conn.commit()
+    
+    # Get bet count
+    c.execute("SELECT COUNT(*), SUM(amount) FROM bets WHERE match_id=?", (match[0],))
+    result = c.fetchone()
+    count = result[0] or 0
+    total = result[1] or 0
+    
+    conn.close()
+    
+    await update.message.reply_text(
+        f"🔓 MATCH UNLOCKED!\n\n"
+        f"🏏 {match[1]} vs {match[2]}\n"
+        f"📊 Current Bets: {count}\n"
+        f"💰 Current Pool: {total:,} 💰\n\n"
+        f"✅ New bets are now accepted again!\n"
+        f"💰 /bet {match[1]} <amount> | /bet {match[2]} <amount>"
+    )
+
 
 
 # ============ MAIN ==========
@@ -2570,7 +2623,8 @@ def main():
     app.add_handler(CommandHandler("setprice", setprice))
     app.add_handler(CommandHandler("achieve", achieve))
     app.add_handler(CommandHandler("rmachieve", rmachieve))
-    
+    app.add_handler(CommandHandler("unlockmatch", unlockmatch))
+
     # Shop3 commands
     app.add_handler(CommandHandler("shop3", shop3))
     app.add_handler(CommandHandler("buy3", buy3))
