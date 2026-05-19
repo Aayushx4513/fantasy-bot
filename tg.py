@@ -2001,6 +2001,203 @@ async def removeplayer3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(f"✅ PLAYER REMOVED FROM SHOP3!\n{player[0]}")
 
+# ============ BROADCAST SYSTEM (No Admin Check) ============
+
+def get_known_users():
+    """Get all users who have started the bot"""
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT user_id FROM users")
+    users = [row[0] for row in c.fetchall()]
+    conn.close()
+    return users
+
+def get_known_groups():
+    """Get all groups where bot has been added (auto-track)"""
+    conn = get_db()
+    c = conn.cursor()
+    # Create groups table if not exists
+    c.execute('''CREATE TABLE IF NOT EXISTS groups 
+                 (group_id INTEGER PRIMARY KEY, group_name TEXT, added_at TEXT)''')
+    c.execute("SELECT group_id FROM groups")
+    groups = [row[0] for row in c.fetchall()]
+    conn.close()
+    return groups
+
+async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Auto-track groups where bot is added"""
+    if update.message and update.message.chat.type in ['group', 'supergroup']:
+        group_id = update.message.chat.id
+        group_name = update.message.chat.title or "Unknown Group"
+        
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("INSERT OR IGNORE INTO groups (group_id, group_name, added_at) VALUES (?, ?, ?)",
+                  (group_id, group_name, datetime.now().isoformat()))
+        conn.commit()
+        conn.close()
+
+async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send broadcast to all users and groups - Anyone can use"""
+    
+    msg = update.message
+    
+    known_users = get_known_users()
+    known_groups = get_known_groups()
+    
+    sent_users = 0
+    sent_groups = 0
+    failed = 0
+    
+    # ========== PHOTO BROADCAST ==========
+    if msg.reply_to_message and msg.reply_to_message.photo:
+        
+        photo = msg.reply_to_message.photo[-1].file_id
+        caption = msg.reply_to_message.caption or ""
+        
+        # Send to USERS
+        for uid in known_users:
+            try:
+                await context.bot.send_photo(uid, photo, caption=caption)
+                sent_users += 1
+            except:
+                failed += 1
+        
+        # Send to GROUPS
+        for gid in known_groups:
+            try:
+                await context.bot.send_photo(gid, photo, caption=caption)
+                sent_groups += 1
+            except:
+                pass
+        
+        await update.message.reply_text(
+            f"📸 PHOTO BROADCAST SENT!\n\n"
+            f"👤 Users: {sent_users}\n"
+            f"👥 Groups: {sent_groups}\n"
+            f"❌ Failed: {failed}\n"
+            f"📊 Total: {sent_users + sent_groups}"
+        )
+        return
+    
+    # ========== VIDEO BROADCAST ==========
+    if msg.reply_to_message and msg.reply_to_message.video:
+        
+        video = msg.reply_to_message.video.file_id
+        caption = msg.reply_to_message.caption or ""
+        
+        for uid in known_users:
+            try:
+                await context.bot.send_video(uid, video, caption=caption)
+                sent_users += 1
+            except:
+                failed += 1
+        
+        for gid in known_groups:
+            try:
+                await context.bot.send_video(gid, video, caption=caption)
+                sent_groups += 1
+            except:
+                pass
+        
+        await update.message.reply_text(
+            f"🎥 VIDEO BROADCAST SENT!\n\n"
+            f"👤 Users: {sent_users}\n"
+            f"👥 Groups: {sent_groups}\n"
+            f"❌ Failed: {failed}"
+        )
+        return
+    
+    # ========== TEXT BROADCAST ==========
+    if msg.reply_to_message:
+        content = msg.reply_to_message.text or msg.reply_to_message.caption
+    else:
+        if not context.args:
+            await msg.reply_text(
+                "📢 BROADCAST USAGE:\n\n"
+                "📝 TEXT:\n"
+                "   /broadcast Hello everyone!\n\n"
+                "🖼️ PHOTO:\n"
+                "   Reply to a photo with /broadcast\n\n"
+                "🎥 VIDEO:\n"
+                "   Reply to a video with /broadcast\n\n"
+                "📊 STATS:\n"
+                "   /broadcast_stats"
+            )
+            return
+        content = " ".join(context.args)
+    
+    # Send to USERS
+    for uid in known_users:
+        try:
+            await context.bot.send_message(uid, content)
+            sent_users += 1
+        except:
+            failed += 1
+    
+    # Send to GROUPS
+    for gid in known_groups:
+        try:
+            await context.bot.send_message(gid, content)
+            sent_groups += 1
+        except:
+            pass
+    
+    await msg.reply_text(
+        f"📢 BROADCAST SENT!\n\n"
+        f"👤 Users: {sent_users}\n"
+        f"👥 Groups: {sent_groups}\n"
+        f"❌ Failed: {failed}\n"
+        f"📊 Total reached: {sent_users + sent_groups}"
+    )
+
+
+# ============ BROADCAST STATS ============
+async def broadcast_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Check how many users and groups can receive broadcast"""
+    
+    known_users = get_known_users()
+    known_groups = get_known_groups()
+    
+    await update.message.reply_text(
+        f"📊 BROADCAST REACH STATS\n\n"
+        f"👤 Total Users: {len(known_users)}\n"
+        f"👥 Total Groups: {len(known_groups)}\n"
+        f"📡 Total Reach: {len(known_users) + len(known_groups)}\n\n"
+        f"💡 Use /broadcast to send message to everyone!"
+    )
+
+
+# ============ AUTO-TRACK GROUPS ============
+# Group tracking handlers to add in main()
+async def new_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Auto-add group when bot is added"""
+    for member in update.message.new_chat_members:
+        if member.id == context.bot.id:
+            group_id = update.message.chat.id
+            group_name = update.message.chat.title or "Unknown"
+            
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("INSERT OR IGNORE INTO groups (group_id, group_name, added_at) VALUES (?, ?, ?)",
+                      (group_id, group_name, datetime.now().isoformat()))
+            conn.commit()
+            conn.close()
+            print(f"✅ Bot added to group: {group_name} ({group_id})")
+            break
+
+async def left_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Auto-remove group when bot is removed"""
+    if update.message.left_chat_member and update.message.left_chat_member.id == context.bot.id:
+        group_id = update.message.chat.id
+        
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("DELETE FROM groups WHERE group_id = ?", (group_id,))
+        conn.commit()
+        conn.close()
+        print(f"❌ Bot removed from group: {group_id}")
+
 
 
 # ============ MAIN ==========
@@ -2072,6 +2269,13 @@ def main():
     app.add_handler(CommandHandler("addplayer3", addplayer3))
     app.add_handler(CommandHandler("setprice3", setprice3))
     app.add_handler(CommandHandler("removeplayer3", removeplayer3))
+
+    # Broadcast commands (NO ADMIN CHECK)
+    app.add_handler(CommandHandler("broadcast", broadcast_cmd))
+    app.add_handler(CommandHandler("broadcast_stats", broadcast_stats))
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_chat_member))
+    app.add_handler(MessageHandler(filters.StatusUpdate.LEFT_CHAT_MEMBER, left_chat_member))
+    app.add_handler(MessageHandler(filters.ChatType.GROUP | filters.ChatType.SUPERGROUP, track_group))
 
 
     print("🤖 Bot is running...")
