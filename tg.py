@@ -1,3 +1,4 @@
+from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler, MessageHandler, filters
 import sqlite3
 import random
 from datetime import datetime, timedelta
@@ -1788,10 +1789,10 @@ async def shop3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     
     if not players:
-        await update.message.reply_text('🛒 SHOP3 (Under 10k)\n\nNo players yet.\n👑 Admin: /addplayer3 <name> <price>')
+        await update.message.reply_text('🛒 SHOP3\n\nNo players yet.\n👑 Admin: /addplayer3 <name> <price>')
         return
     
-    msg = "🛒 SHOP3 - UNDER 10k CREDITS\n\n"
+    msg = "🛒 SHOP3\n\n"
     for p in players:
         msg += f"{p[0]}. {p[1]} - {p[2]:,} 💰\n"
     msg += "\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /buy3 <id> to purchase"
@@ -2001,7 +2002,7 @@ async def removeplayer3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(f"✅ PLAYER REMOVED FROM SHOP3!\n{player[0]}")
 
-# ============ BROADCAST SYSTEM (No Admin Check) ============
+# ============ BROADCAST SYSTEM (Admin Only) ============
 
 def get_known_users():
     """Get all users who have started the bot"""
@@ -2013,10 +2014,9 @@ def get_known_users():
     return users
 
 def get_known_groups():
-    """Get all groups where bot has been added (auto-track)"""
+    """Get all groups where bot has been added"""
     conn = get_db()
     c = conn.cursor()
-    # Create groups table if not exists
     c.execute('''CREATE TABLE IF NOT EXISTS groups 
                  (group_id INTEGER PRIMARY KEY, group_name TEXT, added_at TEXT)''')
     c.execute("SELECT group_id FROM groups")
@@ -2024,21 +2024,15 @@ def get_known_groups():
     conn.close()
     return groups
 
-async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Auto-track groups where bot is added"""
-    if update.message and update.message.chat.type in ['group', 'supergroup']:
-        group_id = update.message.chat.id
-        group_name = update.message.chat.title or "Unknown Group"
-        
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("INSERT OR IGNORE INTO groups (group_id, group_name, added_at) VALUES (?, ?, ?)",
-                  (group_id, group_name, datetime.now().isoformat()))
-        conn.commit()
-        conn.close()
-
 async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Send broadcast to all users and groups - Anyone can use"""
+    """Send broadcast to all users and groups - ADMIN ONLY"""
+    
+    user = update.effective_user
+    
+    # 🔥 ADMIN CHECK 🔥
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ ONLY ADMIN CAN USE THIS COMMAND!\n\n👑 Admin ID: 7687078555")
+        return
     
     msg = update.message
     
@@ -2055,7 +2049,6 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         photo = msg.reply_to_message.photo[-1].file_id
         caption = msg.reply_to_message.caption or ""
         
-        # Send to USERS
         for uid in known_users:
             try:
                 await context.bot.send_photo(uid, photo, caption=caption)
@@ -2063,7 +2056,6 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 failed += 1
         
-        # Send to GROUPS
         for gid in known_groups:
             try:
                 await context.bot.send_photo(gid, photo, caption=caption)
@@ -2114,7 +2106,7 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         if not context.args:
             await msg.reply_text(
-                "📢 BROADCAST USAGE:\n\n"
+                "📢 BROADCAST USAGE (ADMIN ONLY):\n\n"
                 "📝 TEXT:\n"
                 "   /broadcast Hello everyone!\n\n"
                 "🖼️ PHOTO:\n"
@@ -2154,7 +2146,14 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ============ BROADCAST STATS ============
 async def broadcast_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Check how many users and groups can receive broadcast"""
+    """Check broadcast reach - ADMIN ONLY"""
+    
+    user = update.effective_user
+    
+    # 🔥 ADMIN CHECK 🔥
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ ONLY ADMIN CAN USE THIS COMMAND!")
+        return
     
     known_users = get_known_users()
     known_groups = get_known_groups()
@@ -2164,27 +2163,40 @@ async def broadcast_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👤 Total Users: {len(known_users)}\n"
         f"👥 Total Groups: {len(known_groups)}\n"
         f"📡 Total Reach: {len(known_users) + len(known_groups)}\n\n"
+        f"👑 Admin IDs: {ADMIN_IDS}\n\n"
         f"💡 Use /broadcast to send message to everyone!"
     )
 
-
 # ============ AUTO-TRACK GROUPS ============
-# Group tracking handlers to add in main()
+async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Auto-track groups where bot is added"""
+    if update.message and update.message.chat.type in ['group', 'supergroup']:
+        group_id = update.message.chat.id
+        group_name = update.message.chat.title or "Unknown Group"
+        
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("INSERT OR IGNORE INTO groups (group_id, group_name, added_at) VALUES (?, ?, ?)",
+                  (group_id, group_name, datetime.now().isoformat()))
+        conn.commit()
+        conn.close()
+
 async def new_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Auto-add group when bot is added"""
-    for member in update.message.new_chat_members:
-        if member.id == context.bot.id:
-            group_id = update.message.chat.id
-            group_name = update.message.chat.title or "Unknown"
-            
-            conn = get_db()
-            c = conn.cursor()
-            c.execute("INSERT OR IGNORE INTO groups (group_id, group_name, added_at) VALUES (?, ?, ?)",
-                      (group_id, group_name, datetime.now().isoformat()))
-            conn.commit()
-            conn.close()
-            print(f"✅ Bot added to group: {group_name} ({group_id})")
-            break
+    if update.message.new_chat_members:
+        for member in update.message.new_chat_members:
+            if member.id == context.bot.id:
+                group_id = update.message.chat.id
+                group_name = update.message.chat.title or "Unknown Group"
+                
+                conn = get_db()
+                c = conn.cursor()
+                c.execute("INSERT OR IGNORE INTO groups (group_id, group_name, added_at) VALUES (?, ?, ?)",
+                          (group_id, group_name, datetime.now().isoformat()))
+                conn.commit()
+                conn.close()
+                print(f"✅ Bot added to group: {group_name} ({group_id})")
+                break
 
 async def left_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Auto-remove group when bot is removed"""
@@ -2198,6 +2210,304 @@ async def left_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
         print(f"❌ Bot removed from group: {group_id}")
 
+# ============ CLAIM CODE SYSTEM ============
+
+def init_claimcode_db():
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS claim_codes 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  code TEXT UNIQUE,
+                  amount INTEGER,
+                  max_claims INTEGER,
+                  claimed_count INTEGER DEFAULT 0,
+                  created_by INTEGER,
+                  created_at TEXT,
+                  expires_at TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS code_claims 
+                 (code TEXT, user_id INTEGER, claimed_at TEXT,
+                  PRIMARY KEY (code, user_id))''')
+    conn.commit()
+    conn.close()
+
+# Call this after init_db()
+init_claimcode_db()
+
+# ============ ADMIN: CREATE CLAIM CODE ============
+async def createcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/createcode <amount> <code> [max_claims] - Admin only"""
+    
+    user_id = update.effective_user.id
+    
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Only admin can create claim codes!")
+        return
+    
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "📝 CREATE CODE USAGE:\n\n"
+            "/createcode <amount> <code> [max_claims]\n\n"
+            "Examples:\n"
+            "/createcode 1000 FESTIVAL10\n"
+            "/createcode 500 WELCOME5 3\n\n"
+            "💰 Amount: credits to give\n"
+            "🔑 Code: unique code (max 20 chars)\n"
+            "👥 Max claims: default 5 users"
+        )
+        return
+    
+    try:
+        amount = int(args[0])
+        code = args[1].upper()
+        max_claims = int(args[2]) if len(args) > 2 else 5
+    except:
+        await update.message.reply_text("❌ Invalid amount or max_claims!")
+        return
+    
+    if amount < 100:
+        await update.message.reply_text("❌ Minimum amount is 100 credits!")
+        return
+    
+    if max_claims < 1 or max_claims > 50:
+        await update.message.reply_text("❌ Max claims must be between 1 and 50!")
+        return
+    
+    if len(code) > 20:
+        await update.message.reply_text("❌ Code too long! Max 20 characters.")
+        return
+    
+    now = datetime.now()
+    expires_at = now + timedelta(hours=24)
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Check if code already exists
+    c.execute("SELECT code FROM claim_codes WHERE code = ?", (code,))
+    if c.fetchone():
+        await update.message.reply_text(f"❌ Code '{code}' already exists!")
+        conn.close()
+        return
+    
+    c.execute("""INSERT INTO claim_codes 
+                 (code, amount, max_claims, created_by, created_at, expires_at)
+                 VALUES (?, ?, ?, ?, ?, ?)""",
+              (code, amount, max_claims, user_id, now.isoformat(), expires_at.isoformat()))
+    
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✅ CLAIM CODE CREATED!\n\n"
+        f"🔑 Code: `{code}`\n"
+        f"💰 Amount: {amount:,} credits\n"
+        f"👥 Max Claims: {max_claims} users\n"
+        f"⏰ Expires: {expires_at.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        f"Users can claim with:\n"
+        f"/claimcode {code}",
+        parse_mode="Markdown"
+    )
+
+# ============ USER: CLAIM CODE ============
+async def claimcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/claimcode <code> - Claim credits using code"""
+    
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text("❌ Usage: /claimcode <code>\nExample: /claimcode FESTIVAL10")
+        return
+    
+    code = args[0].upper()
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Get code details
+    c.execute("""SELECT code, amount, max_claims, claimed_count, expires_at 
+                 FROM claim_codes WHERE code = ?""", (code,))
+    code_data = c.fetchone()
+    
+    if not code_data:
+        await update.message.reply_text(f"❌ Invalid code! '{code}' does not exist.")
+        conn.close()
+        return
+    
+    code_name, amount, max_claims, claimed_count, expires_at = code_data
+    
+    # Check expiry
+    expires = datetime.fromisoformat(expires_at)
+    if datetime.now() > expires:
+        await update.message.reply_text(f"❌ Code '{code}' has expired!")
+        conn.close()
+        return
+    
+    # Check if already claimed by this user
+    c.execute("SELECT * FROM code_claims WHERE code = ? AND user_id = ?", (code, user_id))
+    if c.fetchone():
+        await update.message.reply_text(f"❌ You have already claimed code '{code}'!")
+        conn.close()
+        return
+    
+    # Check if max claims reached
+    if claimed_count >= max_claims:
+        await update.message.reply_text(f"❌ Code '{code}' has reached its maximum claims ({max_claims}/5)!")
+        conn.close()
+        return
+    
+    # PROCESS CLAIM
+    c.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (amount, user_id))
+    c.execute("UPDATE claim_codes SET claimed_count = claimed_count + 1 WHERE code = ?", (code,))
+    c.execute("INSERT INTO code_claims (code, user_id, claimed_at) VALUES (?, ?, ?)",
+              (code, user_id, datetime.now().isoformat()))
+    conn.commit()
+    
+    # Get new balance
+    c.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+    new_bal = c.fetchone()[0]
+    
+    remaining_claims = max_claims - (claimed_count + 1)
+    
+    conn.close()
+    
+    await update.message.reply_text(
+        f"🎉 CODE CLAIMED SUCCESSFULLY!\n\n"
+        f"🔑 Code: {code}\n"
+        f"💰 You got: {amount:,} credits!\n"
+        f"💳 New balance: {new_bal:,} credits\n\n"
+        f"📊 Remaining claims: {remaining_claims}/{max_claims}\n\n"
+        f"💡 More codes? /activecodes"
+    )
+
+# ============ VIEW ACTIVE CODES ============
+async def activecodes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """View all active claim codes"""
+    
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    now = datetime.now().isoformat()
+    c.execute("""SELECT code, amount, max_claims, claimed_count, expires_at 
+                 FROM claim_codes 
+                 WHERE expires_at > ? AND claimed_count < max_claims
+                 ORDER BY created_at DESC""", (now,))
+    
+    codes = c.fetchall()
+    
+    if not codes:
+        await update.message.reply_text(
+            "📭 NO ACTIVE CODES!\n\n"
+            "💡 Check back later for new codes!\n"
+            "👑 Admin can create codes with /createcode"
+        )
+        conn.close()
+        return
+    
+    msg = "🎁 ACTIVE CLAIM CODES\n\n"
+    for code, amount, max_c, claimed, expires in codes:
+        remaining = max_c - claimed
+        msg += f"🔑 `{code}`\n"
+        msg += f"💰 {amount:,} credits\n"
+        msg += f"👥 {remaining}/{max_c} claims left\n"
+        msg += f"⏰ Expires: {datetime.fromisoformat(expires).strftime('%H:%M:%S')}\n"
+        msg += f"💡 /claimcode {code}\n\n"
+    
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "📌 Use /claimcode <code> to claim!"
+    
+    await update.message.reply_text(msg, parse_mode="Markdown")
+    conn.close()
+
+# ============ ADMIN: DELETE CODE ============
+async def deletecode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/deletecode <code> - Delete a claim code (Admin only)"""
+    
+    user_id = update.effective_user.id
+    
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Only admin can delete codes!")
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text("❌ Usage: /deletecode <code>\nExample: /deletecode FESTIVAL10")
+        return
+    
+    code = args[0].upper()
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    c.execute("SELECT code FROM claim_codes WHERE code = ?", (code,))
+    if not c.fetchone():
+        await update.message.reply_text(f"❌ Code '{code}' not found!")
+        conn.close()
+        return
+    
+    c.execute("DELETE FROM claim_codes WHERE code = ?", (code,))
+    c.execute("DELETE FROM code_claims WHERE code = ?", (code,))
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(f"✅ Code '{code}' deleted successfully!")
+
+# ============ ADMIN: CODE STATS ============
+async function codestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/codestats - View all codes stats (Admin only)"""
+    
+    user_id = update.effective_user.id
+    
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Only admin can view code stats!")
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    c.execute("""SELECT code, amount, max_claims, claimed_count, created_at, expires_at 
+                 FROM claim_codes ORDER BY created_at DESC LIMIT 20""")
+    codes = c.fetchall()
+    
+    if not codes:
+        await update.message.reply_text("📭 No codes created yet!")
+        conn.close()
+        return
+    
+    msg = "📊 CODE STATS\n\n"
+    for code, amount, max_c, claimed, created, expires in codes:
+        status = "🟢 ACTIVE" if datetime.now().isoformat() < expires and claimed < max_c else "🔴 EXPIRED/CLAIMED"
+        msg += f"🔑 {code}\n"
+        msg += f"💰 {amount:,} | 👥 {claimed}/{max_c}\n"
+        msg += f"📅 Created: {datetime.fromisoformat(created).strftime('%m/%d %H:%M')}\n"
+        msg += f"⏰ Expires: {datetime.fromisoformat(expires).strftime('%m/%d %H:%M')}\n"
+        msg += f"📊 {status}\n\n"
+    
+    # Total credits given out
+    c.execute("SELECT SUM(amount) FROM code_claims cc JOIN claim_codes c ON cc.code = c.code")
+    total_given = c.fetchone()[0] or 0
+    
+    c.execute("SELECT COUNT(DISTINCT user_id) FROM code_claims")
+    total_users = c.fetchone()[0] or 0
+    
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"💰 Total credits given: {total_given:,}\n"
+    msg += f"👥 Total users claimed: {total_users}\n"
+    
+    conn.close()
+    
+    await update.message.reply_text(msg)
 
 
 # ============ MAIN ==========
@@ -2276,6 +2586,13 @@ def main():
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_chat_member))
     app.add_handler(MessageHandler(filters.StatusUpdate.LEFT_CHAT_MEMBER, left_chat_member))
     app.add_handler(MessageHandler(filters.ChatType.GROUP | filters.ChatType.SUPERGROUP, track_group))
+
+    # Claim code commands
+    app.add_handler(CommandHandler("createcode", createcode))
+    app.add_handler(CommandHandler("claimcode", claimcode))
+    app.add_handler(CommandHandler("activecodes", activecodes))
+    app.add_handler(CommandHandler("deletecode", deletecode))
+    app.add_handler(CommandHandler("codestats", codestats))
 
 
     print("🤖 Bot is running...")
