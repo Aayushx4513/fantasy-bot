@@ -786,7 +786,297 @@ async def achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\nTotal: {len(ach)} achievements"
     await update.message.reply_text(msg)
 
-# ============ SHOP ============
+# ============ ADD DEFAULT PLAYERS (20 per category) ============
+async def add_default_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Add default players to shop - Admin only"""
+    
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Clear existing
+    c.execute("DELETE FROM shop")
+    c.execute("DELETE FROM shop_women")
+    
+    # ========== INDIA CURRENT (20) ==========
+    india_current = [
+        ("Virat Kohli", 2000000, "India", "current"),
+        ("Rohit Sharma", 1900000, "India", "current"),
+        ("Shubman Gill", 1700000, "India", "current"),
+        ("Hardik Pandya", 1800000, "India", "current"),
+        ("Jasprit Bumrah", 2000000, "India", "current"),
+        ("Ravindra Jadeja", 1600000, "India", "current"),
+        ("KL Rahul", 1500000, "India", "current"),
+        ("Suryakumar Yadav", 1750000, "India", "current"),
+        ("Mohammed Shami", 1650000, "India", "current"),
+        ("Rishabh Pant", 1550000, "India", "current"),
+        ("Mohammed Siraj", 1450000, "India", "current"),
+        ("Axar Patel", 1400000, "India", "current"),
+        ("Shreyas Iyer", 1480000, "India", "current"),
+        ("Ishan Kishan", 1380000, "India", "current"),
+        ("Deepak Chahar", 1350000, "India", "current"),
+        ("Sanju Samson", 1420000, "India", "current"),
+        ("Yuzvendra Chahal", 1390000, "India", "current"),
+        ("Bhuvneshwar Kumar", 1370000, "India", "current"),
+        ("Shardul Thakur", 1320000, "India", "current"),
+        ("Washington Sundar", 1300000, "India", "current"),
+    ]
+    
+    # ========== INDIA LEGENDS (20) ==========
+    india_legends = [
+        ("Sachin Tendulkar", 2000000, "India", "legend"),
+        ("MS Dhoni", 2000000, "India", "legend"),
+        ("Rahul Dravid", 1800000, "India", "legend"),
+        ("Sourav Ganguly", 1700000, "India", "legend"),
+        ("Anil Kumble", 1600000, "India", "legend"),
+        ("Kapil Dev", 1900000, "India", "legend"),
+        ("Yuvraj Singh", 1750000, "India", "legend"),
+        ("Virender Sehwag", 1650000, "India", "legend"),
+        ("Zaheer Khan", 1500000, "India", "legend"),
+        ("Harbhajan Singh", 1400000, "India", "legend"),
+        ("Gautam Gambhir", 1350000, "India", "legend"),
+        ("VVS Laxman", 1300000, "India", "legend"),
+        ("Navjot Sidhu", 1000000, "India", "legend"),
+        ("Kris Srikkanth", 950000, "India", "legend"),
+        ("Venkatesh Prasad", 900000, "India", "legend"),
+        ("Javagal Srinath", 1200000, "India", "legend"),
+        ("Robin Singh", 850000, "India", "legend"),
+        ("Ajay Jadeja", 880000, "India", "legend"),
+        ("Nayan Mongia", 800000, "India", "legend"),
+        ("Chetan Sharma", 780000, "India", "legend"),
+    ]
+    
+    # ========== ENGLAND CURRENT (20) ==========
+    england_current = [
+        ("Joe Root", 1800000, "England", "current"),
+        ("Ben Stokes", 1900000, "England", "current"),
+        ("Jos Buttler", 1700000, "England", "current"),
+        ("Jonny Bairstow", 1600000, "England", "current"),
+        ("Jofra Archer", 1750000, "England", "current"),
+        ("Moeen Ali", 1500000, "England", "current"),
+        ("Sam Curran", 1550000, "England", "current"),
+        ("Chris Woakes", 1400000, "England", "current"),
+        ("Mark Wood", 1450000, "England", "current"),
+        ("Adil Rashid", 1350000, "England", "current"),
+        ("Dawid Malan", 1300000, "England", "current"),
+        ("Jason Roy", 1250000, "England", "current"),
+        ("Liam Livingstone", 1450000, "England", "current"),
+        ("Harry Brook", 1500000, "England", "current"),
+        ("Reece Topley", 1200000, "England", "current"),
+        ("David Willey", 1150000, "England", "current"),
+        ("Phil Salt", 1100000, "England", "current"),
+        ("Will Jacks", 1050000, "England", "current"),
+        ("Gus Atkinson", 1000000, "England", "current"),
+        ("Tom Curran", 1080000, "England", "current"),
+    ]
+    
+    # ========== ENGLAND LEGENDS (20) ==========
+    england_legends = [
+        ("Ian Botham", 2000000, "England", "legend"),
+        ("Andrew Flintoff", 1900000, "England", "legend"),
+        ("Kevin Pietersen", 1850000, "England", "legend"),
+        ("Alastair Cook", 1700000, "England", "legend"),
+        ("James Anderson", 1750000, "England", "legend"),
+        ("Stuart Broad", 1650000, "England", "legend"),
+        ("Graeme Swann", 1600000, "England", "legend"),
+        ("Michael Vaughan", 1550000, "England", "legend"),
+        ("Marcus Trescothick", 1500000, "England", "legend"),
+        ("Paul Collingwood", 1450000, "England", "legend"),
+        ("Alec Stewart", 1400000, "England", "legend"),
+        ("Darren Gough", 1350000, "England", "legend"),
+        ("Steve Harmison", 1300000, "England", "legend"),
+        ("Matthew Hoggard", 1250000, "England", "legend"),
+        ("Monty Panesar", 1200000, "England", "legend"),
+        ("Nasser Hussain", 1400000, "England", "legend"),
+        ("Graham Gooch", 1500000, "England", "legend"),
+        ("David Gower", 1450000, "England", "legend"),
+        ("Allan Lamb", 1300000, "England", "legend"),
+        ("Derek Underwood", 1250000, "England", "legend"),
+    ]
+    
+    # ========== NEW ZEALAND CURRENT (20) ==========
+    nz_current = [
+        ("Kane Williamson", 1900000, "New Zealand", "current"),
+        ("Trent Boult", 1800000, "New Zealand", "current"),
+        ("Devon Conway", 1600000, "New Zealand", "current"),
+        ("Daryl Mitchell", 1550000, "New Zealand", "current"),
+        ("Mitchell Santner", 1450000, "New Zealand", "current"),
+        ("Lockie Ferguson", 1500000, "New Zealand", "current"),
+        ("Tim Southee", 1400000, "New Zealand", "current"),
+        ("Glenn Phillips", 1350000, "New Zealand", "current"),
+        ("Michael Bracewell", 1250000, "New Zealand", "current"),
+        ("Finn Allen", 1300000, "New Zealand", "current"),
+        ("Adam Milne", 1200000, "New Zealand", "current"),
+        ("Ish Sodhi", 1150000, "New Zealand", "current"),
+        ("James Neesham", 1250000, "New Zealand", "current"),
+        ("Tom Latham", 1300000, "New Zealand", "current"),
+        ("Martin Guptill", 1400000, "New Zealand", "current"),
+        ("Matt Henry", 1200000, "New Zealand", "current"),
+        ("Kyle Jamieson", 1350000, "New Zealand", "current"),
+        ("Henry Nicholls", 1100000, "New Zealand", "current"),
+        ("Will Young", 1050000, "New Zealand", "current"),
+        ("Ben Sears", 1000000, "New Zealand", "current"),
+    ]
+    
+    # ========== NEW ZEALAND LEGENDS (20) ==========
+    nz_legends = [
+        ("Brendon McCullum", 2000000, "New Zealand", "legend"),
+        ("Richard Hadlee", 2000000, "New Zealand", "legend"),
+        ("Martin Crowe", 1900000, "New Zealand", "legend"),
+        ("Stephen Fleming", 1700000, "New Zealand", "legend"),
+        ("Daniel Vettori", 1800000, "New Zealand", "legend"),
+        ("Chris Cairns", 1650000, "New Zealand", "legend"),
+        ("Nathan Astle", 1550000, "New Zealand", "legend"),
+        ("Scott Styris", 1450000, "New Zealand", "legend"),
+        ("Craig McMillan", 1400000, "New Zealand", "legend"),
+        ("Jacob Oram", 1350000, "New Zealand", "legend"),
+        ("Kyle Mills", 1300000, "New Zealand", "legend"),
+        ("Tim Southee", 1400000, "New Zealand", "legend"),
+        ("Ross Taylor", 1600000, "New Zealand", "legend"),
+        ("John Wright", 1300000, "New Zealand", "legend"),
+        ("Geoff Allott", 1100000, "New Zealand", "legend"),
+        ("Shane Bond", 1500000, "New Zealand", "legend"),
+        ("Dion Nash", 1200000, "New Zealand", "legend"),
+        ("Mark Greatbatch", 1150000, "New Zealand", "legend"),
+        ("Adam Parore", 1100000, "New Zealand", "legend"),
+        ("Chris Harris", 1250000, "New Zealand", "legend"),
+    ]
+    
+    # ========== AUSTRALIA CURRENT (20) ==========
+    australia_current = [
+        ("Pat Cummins", 1900000, "Australia", "current"),
+        ("Steve Smith", 2000000, "Australia", "current"),
+        ("David Warner", 1800000, "Australia", "current"),
+        ("Mitchell Starc", 1850000, "Australia", "current"),
+        ("Glenn Maxwell", 1750000, "Australia", "current"),
+        ("Travis Head", 1650000, "Australia", "current"),
+        ("Marnus Labuschagne", 1700000, "Australia", "current"),
+        ("Josh Hazlewood", 1600000, "Australia", "current"),
+        ("Adam Zampa", 1500000, "Australia", "current"),
+        ("Marcus Stoinis", 1450000, "Australia", "current"),
+        ("Cameron Green", 1550000, "Australia", "current"),
+        ("Alex Carey", 1350000, "Australia", "current"),
+        ("Mitchell Marsh", 1400000, "Australia", "current"),
+        ("Nathan Lyon", 1480000, "Australia", "current"),
+        ("Matthew Wade", 1300000, "Australia", "current"),
+        ("Tim David", 1380000, "Australia", "current"),
+        ("Ashton Agar", 1250000, "Australia", "current"),
+        ("Sean Abbott", 1200000, "Australia", "current"),
+        ("Ben McDermott", 1150000, "Australia", "current"),
+        ("Kane Richardson", 1100000, "Australia", "current"),
+    ]
+    
+    # ========== AUSTRALIA LEGENDS (20) ==========
+    australia_legends = [
+        ("Ricky Ponting", 2000000, "Australia", "legend"),
+        ("Adam Gilchrist", 2000000, "Australia", "legend"),
+        ("Shane Warne", 2000000, "Australia", "legend"),
+        ("Glenn McGrath", 1950000, "Australia", "legend"),
+        ("Matthew Hayden", 1850000, "Australia", "legend"),
+        ("Brett Lee", 1800000, "Australia", "legend"),
+        ("Michael Clarke", 1750000, "Australia", "legend"),
+        ("Andrew Symonds", 1700000, "Australia", "legend"),
+        ("Steve Waugh", 1950000, "Australia", "legend"),
+        ("Mark Waugh", 1600000, "Australia", "legend"),
+        ("Ian Healy", 1500000, "Australia", "legend"),
+        ("Craig McDermott", 1450000, "Australia", "legend"),
+        ("Jason Gillespie", 1550000, "Australia", "legend"),
+        ("Damien Martyn", 1400000, "Australia", "legend"),
+        ("Justin Langer", 1350000, "Australia", "legend"),
+        ("Michael Hussey", 1650000, "Australia", "legend"),
+        ("Shane Watson", 1550000, "Australia", "legend"),
+        ("Brad Haddin", 1300000, "Australia", "legend"),
+        ("Stuart Clark", 1250000, "Australia", "legend"),
+        ("Nathan Bracken", 1200000, "Australia", "legend"),
+    ]
+    
+    # ========== WOMEN (20) ==========
+    women_players = [
+        ("Smriti Mandhana", 1500000, "Women", "women"),
+        ("Harmanpreet Kaur", 1400000, "Women", "women"),
+        ("Jemimah Rodrigues", 1300000, "Women", "women"),
+        ("Shafali Verma", 1350000, "Women", "women"),
+        ("Deepti Sharma", 1250000, "Women", "women"),
+        ("Poonam Yadav", 1150000, "Women", "women"),
+        ("Richa Ghosh", 1200000, "Women", "women"),
+        ("Shefali Verma", 1100000, "Women", "women"),
+        ("Meg Lanning", 1600000, "Women", "women"),
+        ("Ellyse Perry", 1800000, "Women", "women"),
+        ("Alyssa Healy", 1550000, "Women", "women"),
+        ("Sophie Devine", 1650000, "Women", "women"),
+        ("Amelia Kerr", 1450000, "Women", "women"),
+        ("Suzy Bates", 1500000, "Women", "women"),
+        ("Natalie Sciver", 1550000, "Women", "women"),
+        ("Heather Knight", 1500000, "Women", "women"),
+        ("Tammy Beaumont", 1400000, "Women", "women"),
+        ("Marizanne Kapp", 1450000, "Women", "women"),
+        ("Laura Wolvaardt", 1350000, "Women", "women"),
+        ("Tahlia McGrath", 1400000, "Women", "women"),
+    ]
+    
+    # Insert India Current
+    for name, price, country, ptype in india_current:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
+    
+    # Insert India Legends
+    for name, price, country, ptype in india_legends:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
+    
+    # Insert England Current
+    for name, price, country, ptype in england_current:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
+    
+    # Insert England Legends
+    for name, price, country, ptype in england_legends:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
+    
+    # Insert New Zealand Current
+    for name, price, country, ptype in nz_current:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
+    
+    # Insert New Zealand Legends
+    for name, price, country, ptype in nz_legends:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
+    
+    # Insert Australia Current
+    for name, price, country, ptype in australia_current:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
+    
+    # Insert Australia Legends
+    for name, price, country, ptype in australia_legends:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
+    
+    # Insert Women
+    for name, price, country, ptype in women_players:
+        c.execute("INSERT INTO shop_women (name, price, country, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
+    
+    conn.commit()
+    
+    c.execute("SELECT COUNT(*) FROM shop")
+    shop_count = c.fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM shop_women")
+    women_count = c.fetchone()[0]
+    
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✅ **20 PLAYERS ADDED PER CATEGORY!**\n\n"
+        f"🏏 Total Men: {shop_count}\n"
+        f"👩 Total Women: {women_count}\n\n"
+        f"🇮🇳 India: 40 (20 Current + 20 Legends)\n"
+        f"🏴󠁧󠁢󠁥󠁮󠁧󠁿 England: 40 (20 Current + 20 Legends)\n"
+        f"🇳🇿 New Zealand: 40 (20 Current + 20 Legends)\n"
+        f"🇦🇺 Australia: 40 (20 Current + 20 Legends)\n"
+        f"👩 Women: 20\n\n"
+        f"💰 Prices: 780,000 - 2,000,000",
+        parse_mode="Markdown"
+    )
+
+
+
 async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
@@ -796,14 +1086,64 @@ async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🇮🇳 India (Current)", callback_data="shop_India_current")],
         [InlineKeyboardButton("🇮🇳 India (Legends)", callback_data="shop_India_legend")],
+        [InlineKeyboardButton("🏴󠁧󠁢󠁥󠁮󠁧󠁿 England (Current)", callback_data="shop_England_current")],
+        [InlineKeyboardButton("🏴󠁧󠁢󠁥󠁮󠁧󠁿 England (Legends)", callback_data="shop_England_legend")],
+        [InlineKeyboardButton("🇳🇿 New Zealand (Current)", callback_data="shop_New Zealand_current")],
+        [InlineKeyboardButton("🇳🇿 New Zealand (Legends)", callback_data="shop_New Zealand_legend")],
         [InlineKeyboardButton("🇦🇺 Australia (Current)", callback_data="shop_Australia_current")],
         [InlineKeyboardButton("🇦🇺 Australia (Legends)", callback_data="shop_Australia_legend")],
-        [InlineKeyboardButton("🇵🇰 Pakistan (Current)", callback_data="shop_Pakistan_current")],
-        [InlineKeyboardButton("🇵🇰 Pakistan (Legends)", callback_data="shop_Pakistan_legend")],
         [InlineKeyboardButton("👩 Women Players", callback_data="shop_women")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("🛒 CRICKETER SHOP\n\nSelect category:", reply_markup=reply_markup)
+# ============ ADMIN: SET PRICE FOR SHOP1 ============
+async def setprice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Set price for any player - Admin only"""
+    
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text('❌ Admin only!')
+        return
+    
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "📝 **SET PRICE**\n\n"
+            "Usage: `/setprice <player_id> <new_price>`\n"
+            "Example: `/setprice 1 2500000`\n\n"
+            "Use `/shop` to see player IDs",
+            parse_mode="Markdown"
+        )
+        return
+    
+    try:
+        player_id = int(args[0])
+        new_price = int(args[1])
+    except:
+        await update.message.reply_text('❌ Invalid input!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Check in shop1
+    c.execute("SELECT name FROM shop WHERE id=?", (player_id,))
+    player = c.fetchone()
+    
+    if not player:
+        await update.message.reply_text(f'❌ Player ID {player_id} not found!')
+        conn.close()
+        return
+    
+    c.execute("UPDATE shop SET price = ? WHERE id=?", (new_price, player_id))
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✅ **PRICE UPDATED!**\n\n"
+        f"🏏 {player[0]}\n"
+        f"💰 Old: {old_price:,} → New: {new_price:,}",
+        parse_mode="Markdown"
+    )
 
 async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -2633,13 +2973,337 @@ async def codestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+# ============ MINES GAME ============
+
+import random
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import CallbackQueryHandler, CommandHandler
+
+# Store active games
+active_mines_games = {}
+
+# EXACT MULTIPLIER TABLE (as per your data - 1 bomb only)
+MULTIPLIER_TABLE = {
+    1: {1: 1.03, 2: 1.08, 3: 1.13, 4: 1.18, 5: 1.24,
+        6: 1.30, 7: 1.37, 8: 1.46, 9: 1.55, 10: 1.67,
+        11: 1.80, 12: 1.95, 13: 2.14, 14: 2.35, 15: 2.61,
+        16: 2.93, 17: 3.35, 18: 3.91, 19: 4.69, 20: 5.87,
+        21: 7.82, 22: 11.73, 23: 23.47, 24: 24.75}
+}
+
+class MinesGame:
+    def __init__(self, user_id, bet_amount, bomb_count, message_id):
+        self.user_id = user_id
+        self.bet_amount = bet_amount
+        self.bomb_count = bomb_count
+        self.total_boxes = 25
+        self.opened_boxes = []
+        self.safe_clicks = 0
+        self.message_id = message_id
+        self.bomb_positions = self._place_bombs()
+        self.game_active = True
+        
+    def _place_bombs(self):
+        all_positions = list(range(1, 26))
+        random.shuffle(all_positions)
+        return set(all_positions[:self.bomb_count])
+    
+    def get_multiplier(self):
+        if self.bomb_count == 1:
+            table = MULTIPLIER_TABLE[1]
+            if self.safe_clicks in table:
+                return table[self.safe_clicks]
+        
+        if self.safe_clicks == 0:
+            return 1.00
+        
+        multiplier = 1.0
+        for i in range(self.safe_clicks):
+            multiplier = multiplier * (25 - i) / (25 - self.bomb_count - i)
+        return round(multiplier, 2)
+    
+    def get_win_amount(self):
+        return int(self.bet_amount * self.get_multiplier())
+    
+    def open_box(self, box_number):
+        if box_number in self.opened_boxes:
+            return None, None, None
+        
+        self.opened_boxes.append(box_number)
+        
+        if box_number in self.bomb_positions:
+            self.game_active = False
+            return True, 0, 0
+        
+        self.safe_clicks += 1
+        multiplier = self.get_multiplier()
+        win_amount = self.get_win_amount()
+        return False, multiplier, win_amount
+    
+    def is_complete(self):
+        return self.safe_clicks >= (25 - self.bomb_count)
+
+
+def get_mines_keyboard(game, show_all=False):
+    keyboard = []
+    
+    for row in range(5):
+        row_buttons = []
+        for col in range(5):
+            box_num = row * 5 + col + 1
+            
+            if show_all:
+                if box_num in game.bomb_positions:
+                    text = "💣"
+                elif box_num in game.opened_boxes:
+                    text = "💎"
+                else:
+                    text = str(box_num)
+            else:
+                if box_num in game.opened_boxes:
+                    text = "💎"
+                else:
+                    text = str(box_num)
+            
+            row_buttons.append(InlineKeyboardButton(text, callback_data=f"mine_{box_num}"))
+        keyboard.append(row_buttons)
+    
+    keyboard.append([
+        InlineKeyboardButton("💰 CASHOUT 💰", callback_data="mine_cashout"),
+        InlineKeyboardButton("❌ QUIT ❌", callback_data="mine_quit")
+    ])
+    
+    return InlineKeyboardMarkup(keyboard)
+
+
+async def mines(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "💎 **MINES GAME** 💎\n\n"
+            "Usage: `/mines <amount> <bombs>`\n"
+            "Example: `/mines 1000 1`\n\n"
+            "⚡ Min bet: 100\n"
+            "⚡ Max bet: 10,000\n"
+            "💣 Bombs: 1-24\n\n"
+            "📊 Multiplier (1 bomb):\n"
+            "1💎→1.03x │ 5💎→1.24x │ 10💎→1.67x\n"
+            "15💎→2.61x │ 20💎→5.87x │ 24💎→24.75x\n\n"
+            "💎 Find diamonds, avoid bombs!",
+            parse_mode="Markdown"
+        )
+        return
+    
+    try:
+        bet_amount = int(args[0])
+        bomb_count = int(args[1])
+    except:
+        await update.message.reply_text("❌ Invalid amount or bombs!")
+        return
+    
+    if bet_amount < 100:
+        await update.message.reply_text("❌ Minimum bet is 100 credits!")
+        return
+    
+    if bet_amount > 10000:
+        await update.message.reply_text("❌ Maximum bet is 10,000 credits!")
+        return
+    
+    if bomb_count < 1 or bomb_count > 24:
+        await update.message.reply_text("❌ Bombs must be between 1 and 24!")
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    balance = c.fetchone()[0]
+    conn.close()
+    
+    if balance < bet_amount:
+        await update.message.reply_text(f"❌ Need {bet_amount:,}, have {balance:,}")
+        return
+    
+    # Deduct bet
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (bet_amount, user_id))
+    conn.commit()
+    conn.close()
+    
+    # Send game message
+    msg = await update.message.reply_text("🎲 Creating game...")
+    
+    game = MinesGame(user_id, bet_amount, bomb_count, msg.message_id)
+    active_mines_games[user_id] = game
+    
+    multiplier = game.get_multiplier()
+    win_amount = game.get_win_amount()
+    keyboard = get_mines_keyboard(game)
+    
+    await msg.edit_text(
+        f"💎 **MINES GAME** 💎\n\n"
+        f"💰 Bet: {bet_amount:,} credits\n"
+        f"💣 Bombs: {bomb_count}\n"
+        f"📈 Multiplier: {multiplier:.2f}x\n"
+        f"💎 Win amount: {win_amount:,} credits\n\n"
+        f"⬇️ Click on numbers to reveal ⬇️",
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
+
+
+async def mines_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    
+    # Check if user has active game
+    if user_id not in active_mines_games:
+        await query.edit_message_text(
+            "❌ **No active game!**\n\n"
+            "Start a new game:\n"
+            "`/mines <amount> <bombs>`\n\n"
+            "Example: `/mines 1000 1`",
+            parse_mode="Markdown"
+        )
+        return
+    
+    game = active_mines_games[user_id]
+    data = query.data
+    
+    # Cashout
+    if data == "mine_cashout":
+        multiplier = game.get_multiplier()
+        win_amount = game.get_win_amount()
+        
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+        current_bal = c.fetchone()[0]
+        c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (win_amount, user_id))
+        conn.commit()
+        conn.close()
+        
+        keyboard = get_mines_keyboard(game, show_all=True)
+        
+        await query.edit_message_text(
+            f"🎉 **CASHOUT!** 🎉\n\n"
+            f"💰 Bet: {game.bet_amount:,}\n"
+            f"💣 Bombs: {game.bomb_count}\n"
+            f"✅ Safe clicks: {game.safe_clicks}\n"
+            f"📈 Multiplier: {multiplier:.2f}x\n"
+            f"💎 You won: {win_amount:,}\n"
+            f"💳 Balance: {current_bal + win_amount:,}",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+        
+        del active_mines_games[user_id]
+        return
+    
+    # Quit
+    if data == "mine_quit":
+        await query.edit_message_text(
+            f"❌ **GAME QUIT** ❌\n\n"
+            f"💰 Bet lost: {game.bet_amount:,}\n"
+            f"💣 Bombs: {game.bomb_count}\n"
+            f"✅ Safe clicks: {game.safe_clicks}\n\n"
+            f"Start new: `/mines <amount> <bombs>`",
+            parse_mode="Markdown"
+        )
+        del active_mines_games[user_id]
+        return
+    
+    # Open box
+    if data.startswith("mine_"):
+        try:
+            box_num = int(data.split("_")[1])
+        except:
+            return
+        
+        if box_num in game.opened_boxes:
+            await query.answer("Already opened!", show_alert=True)
+            return
+        
+        is_bomb, multiplier, win_amount = game.open_box(box_num)
+        
+        if is_bomb:
+            keyboard = get_mines_keyboard(game, show_all=True)
+            
+            await query.edit_message_text(
+                f"💣 **BOMB HIT!** 💣\n\n"
+                f"💰 Bet: {game.bet_amount:,}\n"
+                f"💣 Bombs: {game.bomb_count}\n"
+                f"❌ Box {box_num} had a bomb!\n"
+                f"💀 You lost: {game.bet_amount:,}",
+                reply_markup=keyboard,
+                parse_mode="Markdown"
+            )
+            
+            del active_mines_games[user_id]
+            return
+        
+        if game.is_complete():
+            multiplier = game.get_multiplier()
+            win_amount = game.get_win_amount()
+            
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+            current_bal = c.fetchone()[0]
+            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (win_amount, user_id))
+            conn.commit()
+            conn.close()
+            
+            keyboard = get_mines_keyboard(game, show_all=True)
+            
+            await query.edit_message_text(
+                f"🎉 **GAME COMPLETE!** 🎉\n\n"
+                f"💰 Bet: {game.bet_amount:,}\n"
+                f"💣 Bombs: {game.bomb_count}\n"
+                f"✅ All safe boxes found!\n"
+                f"📈 Multiplier: {multiplier:.2f}x\n"
+                f"💎 You won: {win_amount:,}\n"
+                f"💳 Balance: {current_bal + win_amount:,}",
+                reply_markup=keyboard,
+                parse_mode="Markdown"
+            )
+            
+            del active_mines_games[user_id]
+            return
+        
+        # Update game board
+        keyboard = get_mines_keyboard(game)
+        multiplier = game.get_multiplier()
+        win_amount = game.get_win_amount()
+        safe_left = (25 - game.bomb_count) - game.safe_clicks
+        
+        await query.edit_message_text(
+            f"💎 **MINES GAME** 💎\n\n"
+            f"💰 Bet: {game.bet_amount:,}\n"
+            f"💣 Bombs: {game.bomb_count}\n"
+            f"✅ Safe: {game.safe_clicks}/{25 - game.bomb_count}\n"
+            f"💚 Left: {safe_left}\n\n"
+            f"📈 Multiplier: {multiplier:.2f}x\n"
+            f"💎 Win: {win_amount:,}\n\n"
+            f"⬇️ Click boxes ⬇️",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
 
 # ============ MAIN ==========
 def main():
     threading.Thread(target=run_flask, daemon=True).start()
-    
+
     app = Application.builder().token(TOKEN).build()
-    
+
     # User commands
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help))
@@ -2660,7 +3324,7 @@ def main():
     app.add_handler(CommandHandler("history", history))
     app.add_handler(CommandHandler("tip", tip))
     app.add_handler(CommandHandler("achievements", achievements))
-    
+
     # Shop commands
     app.add_handler(CommandHandler("shop", shop))
     app.add_handler(CommandHandler("buy", buy))
@@ -2668,7 +3332,7 @@ def main():
     app.add_handler(CommandHandler("myteam", myteam))
     app.add_handler(CommandHandler("top", top))
     app.add_handler(CallbackQueryHandler(shop_callback, pattern="^shop_"))
-    
+
     # Shop2 commands
     app.add_handler(CommandHandler("shop2", shop2))
     app.add_handler(CommandHandler("buy2", buy2))
@@ -2677,13 +3341,13 @@ def main():
     app.add_handler(CommandHandler("addplayer2", addplayer2))
     app.add_handler(CommandHandler("setprice2", setprice2))
     app.add_handler(CommandHandler("removeplayer2", removeplayer2))
-    
+
     # Bank commands
     app.add_handler(CommandHandler("bank", bank))
     app.add_handler(CommandHandler("deposit", deposit))
     app.add_handler(CommandHandler("withdraw", withdraw))
     app.add_handler(CommandHandler("claim_interest", claim_interest))
-    
+
     # Admin commands
     app.add_handler(CommandHandler("addmatch", addmatch))
     app.add_handler(CommandHandler("deletematch", deletematch))
@@ -2705,27 +3369,27 @@ def main():
     app.add_handler(CommandHandler("setprice3", setprice3))
     app.add_handler(CommandHandler("removeplayer3", removeplayer3))
 
-    # Broadcast commands (NO ADMIN CHECK)
+    # Broadcast commands
     app.add_handler(CommandHandler("broadcast", broadcast_cmd))
     app.add_handler(CommandHandler("broadcast_stats", broadcast_stats))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_chat_member))
     app.add_handler(MessageHandler(filters.StatusUpdate.LEFT_CHAT_MEMBER, left_chat_member))
     app.add_handler(MessageHandler(filters.ChatType.GROUP | filters.ChatType.SUPERGROUP, track_group))
 
-    # Make sure these handlers are added
+    # Claim code commands
     app.add_handler(CommandHandler("claimcode", claimcode))
     app.add_handler(CommandHandler("activecodes", activecodes))
     app.add_handler(CommandHandler("createcode", createcode))
     app.add_handler(CommandHandler("deletecode", deletecode))
     app.add_handler(CommandHandler("codestats", codestats))
 
-    # Group message handler - IMPORTANT!
-    app.add_handler(MessageHandler(filters.ChatType.GROUP | filters.ChatType.SUPERGROUP, track_group))
+    # Mines Game - FIXED PATTERN
+    app.add_handler(CommandHandler("mines", mines))
+    app.add_handler(CallbackQueryHandler(mines_callback, pattern="^mine_"))
+    app.add_handler(CommandHandler("add_default_players", add_default_players))
 
     print("🤖 Bot is running...")
     app.run_polling()
 
 if __name__ == "__main__":
     main()
-
-
