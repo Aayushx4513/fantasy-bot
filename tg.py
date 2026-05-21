@@ -183,6 +183,63 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(msg)
 
+# ============ BIO FEATURE ============
+
+async def setbio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text(
+            "📝 **SET BIO**\n\n"
+            "Usage: `/setbio <your bio>`\n"
+            "Example: `/setbio Cricket lover 🏏`\n\n"
+            "💡 Max 100 characters",
+            parse_mode="Markdown"
+        )
+        return
+    
+    bio = " ".join(args)
+    if len(bio) > 100:
+        await update.message.reply_text("❌ Bio too long! Max 100 characters.")
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Add bio column if not exists
+    try:
+        c.execute("ALTER TABLE users ADD COLUMN bio TEXT")
+    except:
+        pass
+    
+    c.execute("UPDATE users SET bio = ? WHERE user_id = ?", (bio, user_id))
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(f"✅ Bio updated!\n\n📝 {bio}")
+
+
+async def rmbio(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("UPDATE users SET bio = NULL WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text("✅ Bio removed!")
+
+
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
@@ -194,7 +251,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT balance, points, won, total, photo FROM users WHERE user_id=?", (user_id,))
+    c.execute("SELECT balance, points, won, total, photo, bio FROM users WHERE user_id=?", (user_id,))
     data = c.fetchone()
     
     # Get bank balance
@@ -204,16 +261,31 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     conn.close()
     
-    wallet_bal, points, won, total, photo = data
+    wallet_bal, points, won, total, photo, bio = data
     total_wealth = wallet_bal + bank_bal
     win_rate = int(won/total*100) if total > 0 else 0
     
-    if photo:
-        await update.message.reply_photo(photo=photo, 
-            caption=f"👤 PROFILE\n\n{name}\n💰 Wallet: {wallet_bal:,} | 🏦 Bank: {bank_bal:,}\n💰 Total: {total_wealth:,}\n🏆 Points: {points}\n📊 Bets: {won}/{total} ({win_rate}%)\n\n🔄 /setpfp | ❌ /rmpfp")
+    # Profile text with bio
+    profile_text = f"👤 **PROFILE**\n\n**Name:** {name}\n"
+    
+    if bio:
+        profile_text += f"**Bio:** {bio}\n\n"
     else:
-        await update.message.reply_text(
-            f"👤 PROFILE\n\n{name}\n💰 Wallet: {wallet_bal:,} | 🏦 Bank: {bank_bal:,}\n💰 Total: {total_wealth:,}\n🏆 Points: {points}\n📊 Bets: {won}/{total} ({win_rate}%)\n\n🔄 /setpfp | ❌ /rmpfp")
+        profile_text += f"\n"
+    
+    profile_text += (
+        f"💰 Wallet: {wallet_bal:,} | 🏦 Bank: {bank_bal:,}\n"
+        f"💰 Total: {total_wealth:,}\n"
+        f"🏆 Points: {points}\n"
+        f"📊 Bets: {won}/{total} ({win_rate}%)\n\n"
+        f"🔄 /setpfp | ❌ /rmpfp | 📝 /setbio | ❌ /rmbio"
+    )
+    
+    if photo:
+        await update.message.reply_photo(photo=photo, caption=profile_text, parse_mode="Markdown")
+    else:
+        await update.message.reply_text(profile_text, parse_mode="Markdown")
+
 
 # ============ SETPFP ============
 async def setpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2973,107 +3045,6 @@ async def codestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-# ============ MINES GAME ============
-
-import random
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import CallbackQueryHandler, CommandHandler
-
-# Store active games
-active_mines_games = {}
-
-# EXACT MULTIPLIER TABLE (as per your data - 1 bomb only)
-MULTIPLIER_TABLE = {
-    1: {1: 1.03, 2: 1.08, 3: 1.13, 4: 1.18, 5: 1.24,
-        6: 1.30, 7: 1.37, 8: 1.46, 9: 1.55, 10: 1.67,
-        11: 1.80, 12: 1.95, 13: 2.14, 14: 2.35, 15: 2.61,
-        16: 2.93, 17: 3.35, 18: 3.91, 19: 4.69, 20: 5.87,
-        21: 7.82, 22: 11.73, 23: 23.47, 24: 24.75}
-}
-
-class MinesGame:
-    def __init__(self, user_id, bet_amount, bomb_count, message_id):
-        self.user_id = user_id
-        self.bet_amount = bet_amount
-        self.bomb_count = bomb_count
-        self.total_boxes = 25
-        self.opened_boxes = []
-        self.safe_clicks = 0
-        self.message_id = message_id
-        self.bomb_positions = self._place_bombs()
-        self.game_active = True
-        
-    def _place_bombs(self):
-        all_positions = list(range(1, 26))
-        random.shuffle(all_positions)
-        return set(all_positions[:self.bomb_count])
-    
-    def get_multiplier(self):
-        if self.bomb_count == 1:
-            table = MULTIPLIER_TABLE[1]
-            if self.safe_clicks in table:
-                return table[self.safe_clicks]
-        
-        if self.safe_clicks == 0:
-            return 1.00
-        
-        multiplier = 1.0
-        for i in range(self.safe_clicks):
-            multiplier = multiplier * (25 - i) / (25 - self.bomb_count - i)
-        return round(multiplier, 2)
-    
-    def get_win_amount(self):
-        return int(self.bet_amount * self.get_multiplier())
-    
-    def open_box(self, box_number):
-        if box_number in self.opened_boxes:
-            return None, None, None
-        
-        self.opened_boxes.append(box_number)
-        
-        if box_number in self.bomb_positions:
-            self.game_active = False
-            return True, 0, 0
-        
-        self.safe_clicks += 1
-        multiplier = self.get_multiplier()
-        win_amount = self.get_win_amount()
-        return False, multiplier, win_amount
-    
-    def is_complete(self):
-        return self.safe_clicks >= (25 - self.bomb_count)
-
-
-def get_mines_keyboard(game, show_all=False):
-    keyboard = []
-    
-    for row in range(5):
-        row_buttons = []
-        for col in range(5):
-            box_num = row * 5 + col + 1
-            
-            if show_all:
-                if box_num in game.bomb_positions:
-                    text = "💣"
-                elif box_num in game.opened_boxes:
-                    text = "💎"
-                else:
-                    text = str(box_num)
-            else:
-                if box_num in game.opened_boxes:
-                    text = "💎"
-                else:
-                    text = str(box_num)
-            
-            row_buttons.append(InlineKeyboardButton(text, callback_data=f"mine_{box_num}"))
-        keyboard.append(row_buttons)
-    
-    keyboard.append([
-        InlineKeyboardButton("💰 CASHOUT 💰", callback_data="mine_cashout"),
-        InlineKeyboardButton("❌ QUIT ❌", callback_data="mine_quit")
-    ])
-    
-    return InlineKeyboardMarkup(keyboard)
 
 
 # ============ MAIN ==========
@@ -3086,6 +3057,8 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help))
     app.add_handler(CommandHandler("profile", profile))
+    app.add_handler(CommandHandler("setbio", setbio))
+    app.add_handler(CommandHandler("rmbio", rmbio))
     app.add_handler(CommandHandler("setpfp", setpfp))
     app.add_handler(CommandHandler("rmpfp", rmpfp))
     app.add_handler(CommandHandler("claim", claim))
@@ -3160,7 +3133,6 @@ def main():
     app.add_handler(CommandHandler("createcode", createcode))
     app.add_handler(CommandHandler("deletecode", deletecode))
     app.add_handler(CommandHandler("codestats", codestats))
-
     app.add_handler(CommandHandler("add_default_players", add_default_players))
 
     print("🤖 Bot is running...")
