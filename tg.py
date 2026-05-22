@@ -1,3 +1,4 @@
+import asyncio
 from telegram.ext import filters
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler, MessageHandler, filters
 import sqlite3
@@ -4279,26 +4280,45 @@ async def workers(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('❌ Send /start first!')
         return
     
-    storage_data = get_user_storage(user_id)
-    workers_list = storage_data["workers"]
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT workers FROM user_storage WHERE user_id = ?", (user_id,))
+    result = c.fetchone()
+    conn.close()
     
-    if not workers_list:
-        await update.message.reply_text(
-            f"👨‍🌾 YOUR WORKERS\n\n"
-            f"No workers hired yet!\n\n"
-            f"💡 /hire - Hire workers"
-        )
+    if not result:
+        await update.message.reply_text("👨‍🌾 YOUR WORKERS\n\nNo workers hired yet!\n\n💡 /hire - Hire workers")
         return
     
+    workers_list = json.loads(result[0]) if result[0] else []
+    
+    if not workers_list:
+        await update.message.reply_text("👨‍🌾 YOUR WORKERS\n\nNo workers hired yet!\n\n💡 /hire - Hire workers")
+        return
+    
+    now = time.time()
     total_cost = 0
-    msg = f"👨‍🌾 YOUR WORKERS\n\n"
+    msg = "👨‍🌾 YOUR WORKERS\n\n"
     
     for i, worker_key in enumerate(workers_list, 1):
         worker = WORKERS.get(worker_key)
         if worker:
+            key = f"{user_id}_{worker_key}"
+            last = last_grow.get(key, now)
+            time_passed = now - last
+            time_needed = worker["time"] * 60
+            remaining = time_needed - time_passed
+            
+            if remaining <= 0:
+                remaining_text = "✅ READY TO HARVEST!"
+            else:
+                minutes = int(remaining // 60)
+                seconds = int(remaining % 60)
+                remaining_text = f"⏰ {minutes}m {seconds}s remaining"
+            
             msg += f"{i}. {worker['emoji']} {worker['name']} Worker\n"
             msg += f"   - Auto-grows: {worker['name']}\n"
-            msg += f"   - Time: {worker['time']} minutes\n\n"
+            msg += f"   - {remaining_text}\n\n"
             total_cost += worker["price"]
     
     msg += f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -4307,11 +4327,65 @@ async def workers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(msg)
 
+# ============ AUTO GROW WITH REMAINING TIME ============
+
+import threading
+import time
+
+last_grow = {}
+
+def auto_grow_worker():
+    while True:
+        try:
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("SELECT user_id, workers, crops FROM user_storage")
+            users = c.fetchall()
+            conn.close()
+            
+            now = time.time()
+            
+            for user_id, workers_json, crops_json in users:
+                workers = json.loads(workers_json) if workers_json else []
+                
+                for w in workers:
+                    worker = WORKERS.get(w)
+                    if not worker:
+                        continue
+                    
+                    key = f"{user_id}_{w}"
+                    last = last_grow.get(key, 0)
+                    time_passed = now - last
+                    time_needed = worker["time"] * 60
+                    
+                    if time_passed >= time_needed:
+                        # Grow crop
+                        crops = json.loads(crops_json) if crops_json else {}
+                        crops[w] = crops.get(w, 0) + 1
+                        
+                        conn = get_db()
+                        c2 = conn.cursor()
+                        c2.execute("UPDATE user_storage SET crops = ? WHERE user_id = ?", 
+                                   (json.dumps(crops), user_id))
+                        conn.commit()
+                        conn.close()
+                        
+                        last_grow[key] = now
+                        
+            time.sleep(60)
+        except:
+            time.sleep(60)
+
+threading.Thread(target=auto_grow_worker, daemon=True).start()
+
+
+
 # ============ MAIN ==========
 def main():
 #    threading.Thread(target=run_flask, daemon=True).start()
 
     app = Application.builder().token(TOKEN).build()
+    threading.Thread(target=auto_grow_worker, daemon=True).start()
 
     # User commands
     app.add_handler(CommandHandler("start", start))
@@ -4406,7 +4480,7 @@ def main():
     app.add_handler(CommandHandler("hire", hire))
     app.add_handler(CommandHandler("workers", workers))
     app.add_handler(CallbackQueryHandler(hire_callback, pattern="^hire_now_"))
-
+    
 
     print("🤖 Bot is running...")
     app.run_polling()
