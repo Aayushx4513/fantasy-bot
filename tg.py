@@ -4558,6 +4558,657 @@ def auto_grow_worker():
 # Start background thread
 threading.Thread(target=auto_grow_worker, daemon=True).start()
 
+# ============ LUDO GAME - PART 1 (DATABASE & INIT) ============
+
+import random
+import json
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import CallbackQueryHandler, CommandHandler
+
+# Ludo data storage
+ludo_games = {}      # game_id -> game object
+ludo_lobby = {}      # game_id -> lobby data
+ludo_next_id = 1
+
+# Colors configuration - FIXED
+COLORS = {
+    "🔴": {"name": "🔴 Red", "emoji": "🔴", "home": "🟥 HOME", "start": 0, "color_num": 1},
+    "🟢": {"name": "🟢 Green", "emoji": "🟢", "home": "🟩 HOME", "start": 13, "color_num": 2},
+    "🟡": {"name": "🟡 Yellow", "emoji": "🟡", "home": "🟨 HOME", "start": 26, "color_num": 3},
+    "🔵": {"name": "🔵 Blue", "emoji": "🔵", "home": "🟦 HOME", "start": 39, "color_num": 4},
+}
+
+# Safe spots (52 tiles, 0-51)
+SAFE_SPOTS = [0, 8, 13, 21, 26, 34, 39, 47]
+
+
+class LudoGame:
+    def __init__(self, game_id, players, bet, chat_id):
+        self.game_id = game_id
+        self.players = players  # {user_id: {"color": 1, "tokens": [0,0,0,0], "home": 4, "name": name}}
+        self.bet = bet
+        self.chat_id = chat_id
+        self.current_turn = 0  # index in players list
+        self.turn_user_id = list(players.keys())[0]
+        self.dice = 0
+        self.roll_again = False
+        self.game_active = True
+        self.winner = None
+        self.consecutive_six = 0
+    
+    def get_players_list(self):
+        return list(self.players.keys())
+    
+    def get_token_positions(self):
+        """Get all token positions on board"""
+        positions = {}
+        for uid, p in self.players.items():
+            color = COLORS[p["color"]]["emoji"]
+            for i, pos in enumerate(p["tokens"]):
+                if 0 < pos < 52:  # On board (not home, not finished)
+                    positions[pos] = {"user": uid, "token": i, "color": color}
+        return positions
+    
+    def get_player_at_position(self, pos):
+        positions = self.get_token_positions()
+        return positions.get(pos)
+    
+    def is_safe_spot(self, pos):
+        return pos in SAFE_SPOTS
+
+# ============ LUDO GAME - PART 2 (GAME LOGIC) ============
+
+    def roll_dice(self, user_id):
+        """Roll dice, return (success, message, dice_value)"""
+        if not self.game_active:
+            return False, "Game already ended!", 0
+        
+        if user_id != self.turn_user_id:
+            return False, "Not your turn!", 0
+        
+        if self.dice != 0:
+            return False, "You already rolled! Use /move to move token!", 0
+        
+        dice = random.randint(1, 6)
+        self.dice = dice
+        
+        # Check for 3 consecutive sixes
+        if dice == 6:
+            self.consecutive_six += 1
+            if self.consecutive_six >= 3:
+                self.consecutive_six = 0
+                self.dice = 0
+                self.next_turn()
+                return True, "❌ Three 6's in a row! Turn skipped!", 0
+        else:
+            self.consecutive_six = 0
+        
+        # Check if any valid moves
+        player = self.players[user_id]
+        valid_moves = False
+        
+        for i, pos in enumerate(player["tokens"]):
+            if pos == -1:
+                continue
+            if pos == 0 and dice == 6:
+                valid_moves = True
+                break
+            if pos > 0 and pos < 52:
+                new_pos = pos + dice
+                if new_pos <= 57:
+                    valid_moves = True
+                    break
+            if 52 <= pos < 58:  # In home lane
+                if pos + dice == 58:
+                    valid_moves = True
+                    break
+        
+        if not valid_moves:
+            self.dice = 0
+            self.next_turn()
+            return True, f"🎲 You rolled {dice}\n❌ No valid moves! Turn skipped!", dice
+        
+        return True, f"🎲 You rolled {dice}", dice
+    
+    def move_token(self, user_id, token_idx):
+    """Move token, return (success, message)"""
+    if not self.game_active:
+        return False, "Game already ended!"
+    
+    if user_id != self.turn_user_id:
+        return False, "Not your turn!"
+    
+    if self.dice == 0:
+        return False, "Roll dice first! /roll"
+    
+    player = self.players[user_id]
+    
+    if token_idx < 0 or token_idx >= len(player["tokens"]):
+        return False, "Invalid token!"
+    
+    current_pos = player["tokens"][token_idx]
+    
+    if current_pos == -1:
+        return False, "Token already finished!"
+    
+    # Token at home (0)
+    if current_pos == 0:
+        if self.dice != 6:
+            return False, f"Need 6 to bring token out! You rolled {self.dice}"
+        # Bring token out - FIXED: use emoji as key
+        start_pos = COLORS[player["color"]]["start"]
+        player["tokens"][token_idx] = start_pos + 1
+        self.dice = 0
+        self.roll_again = True
+        self.consecutive_six = 0
+        return True, f"🚀 Token {token_idx+1} moved to START!"
+        
+        # Token in home lane (52-57)
+        if current_pos >= 52:
+            new_pos = current_pos + self.dice
+            if new_pos == 58:
+                player["tokens"][token_idx] = -1
+                player["home"] -= 1
+                self.dice = 0
+                self.roll_again = True
+                
+                # Check winner
+                if player["home"] == 0:
+                    self.game_active = False
+                    self.winner = user_id
+                    return True, f"🎉 TOKEN {token_idx+1} REACHED HOME!\n🏆 YOU ARE THE WINNER! 🏆"
+                
+                return True, f"🎉 TOKEN {token_idx+1} REACHED HOME! ({player['home']} tokens left)"
+            elif new_pos < 58:
+                player["tokens"][token_idx] = new_pos
+                self.dice = 0
+                return True, f"✅ Token {token_idx+1} moved to home lane ({new_pos-51}/6)"
+            else:
+                return False, f"Need exact roll! You need {58 - current_pos}, got {self.dice}"
+        
+        # Normal move on board
+        new_pos = current_pos + self.dice
+        
+        if new_pos > 57:
+            return False, f"Need exact roll! You need {58 - current_pos}, got {self.dice}"
+        
+        if new_pos == 57:
+            # Just before home
+            player["tokens"][token_idx] = new_pos
+            self.dice = 0
+            return True, f"✅ Token {token_idx+1} moved to position {new_pos+1}\nNext roll will enter home!"
+        
+        # Check for kill
+        opponent = self.get_player_at_position(new_pos)
+        if opponent and not self.is_safe_spot(new_pos):
+            opp_user = opponent["user"]
+            opp_token = opponent["token"]
+            opp_player = self.players[opp_user]
+            opp_player["tokens"][opp_token] = 0
+            opp_player["home"] += 1
+            player["tokens"][token_idx] = new_pos
+            self.dice = 0
+            self.roll_again = True
+            return True, f"💥 KILLED! Token {token_idx+1} destroyed {COLORS[opp_player['color']]['name']}'s token!\nToken sent home!"
+        
+        # Normal move
+        player["tokens"][token_idx] = new_pos
+        self.dice = 0
+        self.roll_again = (self.roll_again or self.dice == 6)
+        
+        return True, f"✅ Token {token_idx+1} moved to position {new_pos+1}"
+    
+    def next_turn(self):
+        """Switch to next player"""
+        if not self.roll_again:
+            players_list = self.get_players_list()
+            current_idx = players_list.index(self.turn_user_id)
+            next_idx = (current_idx + 1) % len(players_list)
+            self.turn_user_id = players_list[next_idx]
+            self.consecutive_six = 0
+        self.roll_again = False
+        self.dice = 0
+
+# ============ LUDO GAME - PART 3 (BOARD DISPLAY) ============
+
+    def get_board(self):
+        """Generate board display"""
+        # Create empty board 5x5
+        board = [['⬜' for _ in range(5)] for _ in range(5)]
+        
+        # Place tokens on board
+        positions = self.get_token_positions()
+        
+        # Map position to board coordinates (simplified)
+        for pos, data in positions.items():
+            color = data["color"]
+            # Simple mapping: position % 25 to board cells
+            row = (pos % 25) // 5
+            col = (pos % 25) % 5
+            if row < 5 and col < 5:
+                board[row][col] = color
+        
+        # Center is 👑
+        board[2][2] = '👑'
+        
+        # Safe spots as ⭐
+        for spot in SAFE_SPOTS:
+            row = (spot % 25) // 5
+            col = (spot % 25) % 5
+            if 0 <= row < 5 and 0 <= col < 5 and board[row][col] == '⬜':
+                board[row][col] = '⭐'
+        
+        # Build board string
+        board_str = ""
+        for row in board:
+            board_str += "".join(f"│{cell}" for cell in row) + "│\n"
+            board_str += "├────┼────┼────┼────┼────┤\n"
+        board_str = board_str.replace("├────┼────┼────┼────┼────┤\n", "", board_str.count("\n") - 1)
+        
+        return board_str
+    
+    def get_full_board_display(self):
+        """Get complete board with home areas"""
+        # Home areas
+        homes = {}
+        for uid, p in self.players.items():
+            color_emoji = COLORS[p["color"]]["emoji"]
+            home_count = p["home"]
+            homes[color_emoji] = f"{color_emoji}" * home_count + "🏠" * (4 - home_count)
+        
+        # Build display
+        display = f"""
+🟥 HOME ({homes.get('🔴', '🏠🏠🏠🏠')})                    🟦 HOME ({homes.get('🔵', '🏠🏠🏠🏠')})
+
+     ⬜ ⬜ ⭐ ⬜ ⬜
+     ⬜ 🟢 ⬜ 🔵 ⬜
+     ⭐ ⬜ 👑 ⬜ ⭐
+     ⬜ 🔴 ⬜ 🟡 ⬜
+     ⬜ ⬜ ⭐ ⬜ ⬜
+
+🟩 HOME ({homes.get('🟢', '🏠🏠🏠🏠')})                    🟨 HOME ({homes.get('🟡', '🏠🏠🏠🏠')})
+"""
+        return display
+    
+    def get_status(self):
+        """Get game status text"""
+        players_text = ""
+        for uid, p in self.players.items():
+            color_name = COLORS[p["color"]]["name"]
+            home_left = p["home"]
+            players_text += f"{color_name}: {home_left} tokens left\n"
+        
+        status = f"""
+🎲 LUDO BOARD
+
+Turn: {COLORS[self.players[self.turn_user_id]['color']]['name']}
+🎲 Dice: {self.dice if self.dice > 0 else 'Not rolled'}
+
+👥 Players:
+{players_text}
+
+{self.get_full_board_display()}
+"""
+        return status
+
+# ============ LUDO GAME - PART 4 (COMMANDS & HANDLERS) ============
+
+async def ludo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Create new Ludo game - /ludo or /ludo 1000"""
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    chat_id = update.message.chat.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    bet = 500  # default bet
+    
+    if args:
+        try:
+            bet = int(args[0])
+            if bet < 100:
+                await update.message.reply_text("❌ Minimum bet is 100 credits!")
+                return
+            if bet > 100000:
+                await update.message.reply_text("❌ Maximum bet is 100,000 credits!")
+                return
+        except:
+            await update.message.reply_text("❌ Invalid bet amount! Use: /ludo 1000")
+            return
+    
+    # Check balance
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    balance = c.fetchone()[0]
+    conn.close()
+    
+    if balance < bet:
+        await update.message.reply_text(f"❌ You need {bet:,} credits to start a game!\n💰 Your balance: {balance:,}")
+        return
+    
+    global ludo_next_id
+    game_id = ludo_next_id
+    ludo_next_id += 1
+    
+    # Create lobby
+    ludo_lobby[game_id] = {
+        "creator_id": user_id,
+        "creator_name": user_name,
+        "bet": bet,
+        "chat_id": chat_id,
+        "players": {user_id: {"name": user_name, "color": "🔴"}}
+    }
+    
+    keyboard = [[InlineKeyboardButton("🔵 JOIN GAME", callback_data=f"ludo_join_{game_id}")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        f"🎲 **LUDO GAME**\n\n"
+        f"👑 Host: {user_name}\n"
+        f"💰 Bet: {bet:,} credits\n"
+        f"👥 Players: 1/4\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"⚡ Game ID: `{game_id}`\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"💡 /ludo <amount> - Create game with custom bet",
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
+    )
+
+async def ludo_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    data = query.data
+    
+    if data.startswith("ludo_join_"):
+        game_id = int(data.split("_")[2])
+        
+        if game_id not in ludo_lobby:
+            await query.edit_message_text("❌ Game lobby expired!")
+            return
+        
+        lobby = ludo_lobby[game_id]
+        
+        if user_id in lobby["players"]:
+            await query.answer("You already joined!", show_alert=True)
+            return
+        
+        if len(lobby["players"]) >= 4:
+            await query.answer("Game is full! (4/4)", show_alert=True)
+            return
+        
+        # Check balance before joining
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+        balance = c.fetchone()[0]
+        conn.close()
+        
+        if balance < lobby["bet"]:
+            await query.answer(f"❌ You need {lobby['bet']:,} credits to join!\nYour balance: {balance:,}", show_alert=True)
+            return
+        
+        # Assign color based on player count
+        color_map = {1: "🔴", 2: "🟢", 3: "🟡", 4: "🔵"}
+        color = color_map[len(lobby["players"]) + 1]
+        
+        lobby["players"][user_id] = {"name": user_name, "color": color}
+        
+        players_text = ""
+        for uid, p in lobby["players"].items():
+            players_text += f"{p['color']} {p['name']}\n"
+        
+        keyboard = [[InlineKeyboardButton("🔵 JOIN GAME", callback_data=f"ludo_join_{game_id}")]]
+        if len(lobby["players"]) >= 2:
+            keyboard.append([InlineKeyboardButton("🎮 START GAME", callback_data=f"ludo_start_{game_id}")])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            f"🎲 **LUDO GAME**\n\n"
+            f"👑 Host: {lobby['creator_name']}\n"
+            f"💰 Bet: {lobby['bet']:,} credits\n"
+            f"👥 Players: {len(lobby['players'])}/4\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📋 Players:\n{players_text}\n"
+            f"━━━━━━━━━━━━━━━━━━━━",
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+
+# ============ FIXED LUDO GAME ============
+
+async def ludo_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle start game button"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    data = query.data
+    
+    if data.startswith("ludo_start_"):
+        game_id = int(data.split("_")[2])
+        
+        if game_id not in ludo_lobby:
+            await query.edit_message_text("❌ Game lobby expired!")
+            return
+        
+        lobby = ludo_lobby[game_id]
+        
+        if user_id != lobby["creator_id"]:
+            await query.answer("Only host can start the game!", show_alert=True)
+            return
+        
+        if len(lobby["players"]) < 2:
+            await query.answer("Need at least 2 players to start!", show_alert=True)
+            return
+        
+        # Deduct bets from all players
+        conn = get_db()
+        c = conn.cursor()
+        
+        for uid in lobby["players"]:
+            c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (lobby["bet"], uid))
+        
+        conn.commit()
+        conn.close()
+        
+        # Create game object
+        players = {}
+        color_map = {1: "🔴", 2: "🟢", 3: "🟡", 4: "🔵"}
+        color_idx = 1
+        for uid, p in lobby["players"].items():
+            players[uid] = {
+                "name": p["name"],
+                "color": color_map[color_idx],
+                "color_num": color_idx,
+                "tokens": [0, 0, 0, 0],
+                "home": 4
+            }
+            color_idx += 1
+        
+        game = LudoGame(game_id, players, lobby["bet"], lobby["chat_id"])
+        game.turn_user_id = list(players.keys())[0]
+        ludo_games[game_id] = game
+        del ludo_lobby[game_id]
+        
+        await show_game_board(query, game, game_id)
+
+
+async def show_game_board(query, game, game_id):
+    """Show game board with current status"""
+    
+    # Get current player
+    current_player = game.players[game.turn_user_id]
+    current_name = current_player["name"]
+    current_color = current_player["color"]
+    
+    # Build players status
+    players_status = ""
+    for uid, p in game.players.items():
+        players_status += f"{p['color']} {p['name']}: {p['home']} tokens left\n"
+    
+    # Build token positions on board
+    board_positions = {}
+    for uid, p in game.players.items():
+        for i, pos in enumerate(p["tokens"]):
+            if 0 < pos < 52:  # On board
+                board_positions[pos] = p["color"]
+    
+    # Build board display with actual token positions
+    board_lines = []
+    for row in range(5):
+        line = ""
+        for col in range(5):
+            cell_num = row * 5 + col
+            if cell_num == 12:  # Center
+                line += " 👑 "
+            elif cell_num in board_positions:
+                line += f" {board_positions[cell_num]} "
+            elif cell_num in SAFE_SPOTS:
+                line += " ⭐ "
+            else:
+                line += " ⬜ "
+        board_lines.append("".join(line))
+    
+    board_display = "\n".join(board_lines)
+    
+    # Home areas display
+    red_home = "🔴" * game.players.get(list(game.players.keys())[0], {}).get("home", 4) if len(game.players) > 0 else "🏠🏠🏠🏠"
+    green_home = "🟢" * game.players.get(list(game.players.keys())[1], {}).get("home", 4) if len(game.players) > 1 else "🏠🏠🏠🏠"
+    yellow_home = "🟡" * game.players.get(list(game.players.keys())[2], {}).get("home", 4) if len(game.players) > 2 else "🏠🏠🏠🏠"
+    blue_home = "🔵" * game.players.get(list(game.players.keys())[3], {}).get("home", 4) if len(game.players) > 3 else "🏠🏠🏠🏠"
+    
+    status = f"""🎲 **LUDO BOARD**
+
+**Turn:** {current_color} {current_name}
+🎲 Dice: {game.dice if game.dice > 0 else 'Not rolled'}
+
+👥 **Players:**
+{players_status}
+
+🟥 HOME ({red_home}){' ' * 15}🟦 HOME ({blue_home})
+
+{board_display}
+
+🟩 HOME ({green_home}){' ' * 15}🟨 HOME ({yellow_home})
+
+"""
+    
+    keyboard = [
+        [InlineKeyboardButton("🎲 ROLL", callback_data=f"ludo_roll_{game_id}")],
+        [InlineKeyboardButton("1", callback_data=f"ludo_move_{game_id}_0"),
+         InlineKeyboardButton("2", callback_data=f"ludo_move_{game_id}_1"),
+         InlineKeyboardButton("3", callback_data=f"ludo_move_{game_id}_2"),
+         InlineKeyboardButton("4", callback_data=f"ludo_move_{game_id}_3")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        status,
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
+    )
+
+
+async def ludo_roll_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle roll dice"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    data = query.data
+    
+    if data.startswith("ludo_roll_"):
+        game_id = int(data.split("_")[2])
+        
+        if game_id not in ludo_games:
+            await query.edit_message_text("❌ Game not found!")
+            return
+        
+        game = ludo_games[game_id]
+        
+        # Check turn
+        if user_id != game.turn_user_id:
+            await query.answer(f"Wait! {game.players[game.turn_user_id]['name']}'s turn!", show_alert=True)
+            return
+        
+        success, msg, dice = game.roll_dice(user_id)
+        
+        if not success:
+            await query.answer(msg, show_alert=True)
+            return
+        
+        await show_game_board(query, game, game_id)
+        
+        if msg:
+            await context.bot.send_message(game.chat_id, f"🎲 {game.players[user_id]['name']} rolled {dice}\n{msg}")
+
+
+async def ludo_move_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle move token"""
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    data = query.data
+    
+    if data.startswith("ludo_move_"):
+        parts = data.split("_")
+        game_id = int(parts[2])
+        token_idx = int(parts[3])
+        
+        if game_id not in ludo_games:
+            await query.edit_message_text("❌ Game not found!")
+            return
+        
+        game = ludo_games[game_id]
+        
+        # Check turn
+        if user_id != game.turn_user_id:
+            await query.answer(f"Wait! {game.players[game.turn_user_id]['name']}'s turn!", show_alert=True)
+            return
+        
+        success, msg = game.move_token(user_id, token_idx)
+        
+        if not success:
+            await query.answer(msg, show_alert=True)
+            return
+        
+        # Check winner
+        if not game.game_active and game.winner:
+            prize = game.bet * len(game.players)
+            
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (prize, game.winner))
+            conn.commit()
+            conn.close()
+            
+            await query.edit_message_text(
+                f"🎉 **GAME OVER!** 🎉\n\n"
+                f"🏆 WINNER: {game.players[game.winner]['name']}\n"
+                f"💰 Prize: {prize} credits\n\n"
+                f"Thanks for playing!",
+                parse_mode="Markdown"
+            )
+            del ludo_games[game_id]
+            return
+        
+        # Show updated board
+        await show_game_board(query, game, game_id)
+        
+        # Send move message
+        await context.bot.send_message(game.chat_id, f"✅ {game.players[user_id]['name']}: {msg}")
+
 
 
 # ============ MAIN ==========
@@ -4634,6 +5285,13 @@ def main():
     app.add_handler(CommandHandler("addplayer3", addplayer3))
     app.add_handler(CommandHandler("setprice3", setprice3))
     app.add_handler(CommandHandler("removeplayer3", removeplayer3))
+    # ============ LUDO HANDLERS (Add in main()) ============
+
+    app.add_handler(CommandHandler("ludo", ludo))
+    app.add_handler(CallbackQueryHandler(ludo_join_callback, pattern="^ludo_join_"))
+    app.add_handler(CallbackQueryHandler(ludo_start_callback, pattern="^ludo_start_"))
+    app.add_handler(CallbackQueryHandler(ludo_roll_callback, pattern="^ludo_roll_"))
+    app.add_handler(CallbackQueryHandler(ludo_move_callback, pattern="^ludo_move_"))
 
     # Broadcast commands
     app.add_handler(CommandHandler("farm", farm))
