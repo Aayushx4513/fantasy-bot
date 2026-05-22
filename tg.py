@@ -3113,41 +3113,25 @@ def get_grow_time(crop_time):
     return crop_time
 
 # ============ COMMANDS ============
-
 async def crops(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-
-    msg = "🌾 **CROP MARKET**\n\n"
-    msg += "┌────────────┬──────────┬──────────┬──────────┐\n"
-    msg += "│ CROP       │ COST     │ SELL     │ TIME     │\n"
-    msg += "├────────────┼──────────┼──────────┼──────────┤\n"
-    msg += "│ 🥔 Potato  │ 💰1,000  │ 💰1,500  │ ⏰ 30m    │\n"
-    msg += "├────────────┼──────────┼──────────┼──────────┤\n"
-    msg += "│ 🥕 Carrot  │ 💰2,000  │ 💰3,000  │ ⏰ 1h     │\n"
-    msg += "├────────────┼──────────┼──────────┼──────────┤\n"
-    msg += "│ 🍅 Tomato  │ 💰3,000  │ 💰4,500  │ ⏰ 2h     │\n"
-    msg += "├────────────┼──────────┼──────────┼──────────┤\n"
-    msg += "│ 🌽 Corn    │ 💰5,000  │ 💰7,500  │ ⏰ 4h     │\n"
-    msg += "├────────────┼──────────┼──────────┼──────────┤\n"
-    msg += "│ 🌾 Wheat   │ 💰7,000  │ 💰10,500 │ ⏰ 6h     │\n"
-    msg += "├────────────┼──────────┼──────────┼──────────┤\n"
-    msg += "│ 🍓 Strawb. │ 💰8,000  │ 💰12,000 │ ⏰ 8h     │\n"
-    msg += "├────────────┼──────────┼──────────┼──────────┤\n"
-    msg += "│ 🍉 Waterm. │ 💰10,000 │ 💰15,000 │ ⏰ 12h    │\n"
-    msg += "└────────────┴──────────┴──────────┴──────────┘\n"
-
-
-    global rain_percentage
-    if rain_percentage > 0:
-        msg += f"\n🌧️ **Rain Active:** {rain_percentage}% faster growth for NEW crops!\n"
     
-    msg += "\n💡 /grow <crop> <quantity>"
+    msg = "🌾 *CROP MARKET*\n\n```\n"
+    msg += "🥔 Potato      💰1,000  →  💰1,500  (30m)\n"
+    msg += "🥕 Carrot      💰2,000  →  💰3,000  (1h)\n"
+    msg += "🍅 Tomato      💰3,000  →  💰4,500  (2h)\n"
+    msg += "🌽 Corn        💰5,000  →  💰7,500  (4h)\n"
+    msg += "🌾 Wheat       💰7,000  →  💰10,500 (6h)\n"
+    msg += "🍓 Strawberry  💰8,000  →  💰12,000 (8h)\n"
+    msg += "🍉 Watermelon  💰10,000 →  💰15,000 (12h)\n"
+    msg += "```\n💡 /grow <crop> <quantity>"
     
     await update.message.reply_text(msg, parse_mode="Markdown")
+
+
 
 async def grow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
