@@ -23,11 +23,14 @@ def health():
     return "OK", 200
 
 def run_flask():
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", 9090))  # 10000 → 9090
     flask_app.run(host="0.0.0.0", port=port)
 
 def get_db():
-    return sqlite3.connect('fantasy.db')
+    conn = sqlite3.connect('fantasy.db', timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    return conn
 
 def init_db():
     conn = get_db()
@@ -3191,53 +3194,79 @@ async def crops(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(msg, parse_mode="Markdown")
 
-
 async def grow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    
+
     args = context.args
     if len(args) < 2:
         await update.message.reply_text("❌ Usage: /grow <crop> <quantity>\nExample: /grow watermelon 5")
         return
-    
+
     crop_name = args[0].lower()
     try:
         quantity = int(args[1])
     except:
         await update.message.reply_text("❌ Invalid quantity!")
         return
-    
+
     if crop_name not in CROPS:
         await update.message.reply_text(f"❌ Unknown crop! Use /crops to see available crops.")
         return
-    
+
     if quantity < 1 or quantity > 100:
         await update.message.reply_text("❌ Quantity must be between 1 and 100!")
         return
-    
+
     crop = CROPS[crop_name]
     total_cost = crop['price'] * quantity
-    
+
     conn = get_db()
     c = conn.cursor()
     c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
     balance = c.fetchone()[0]
-    
+
     if balance < total_cost:
         await update.message.reply_text(f"❌ Need {total_cost:,} credits!\n💰 Have: {balance:,}\n💡 /claim or /spin to earn more!")
         conn.close()
         return
+
+    # 🔥 STORAGE CHECK 🔥
+    c.execute("SELECT level, crops FROM user_storage WHERE user_id = ?", (user_id,))
+    storage_result = c.fetchone()
     
+    if storage_result:
+        level = storage_result[0]
+        crops_stored = json.loads(storage_result[1]) if storage_result[1] else {}
+    else:
+        level = 1
+        crops_stored = {}
+    
+    total_slots = get_total_slots(level)
+    used_slots = sum(crops_stored.values())
+    free_slots = total_slots - used_slots
+    
+    if quantity > free_slots:
+        await update.message.reply_text(
+            f"❌ NOT ENOUGH STORAGE!\n\n"
+            f"Need: {quantity} slots\n"
+            f"Free: {free_slots} slots\n"
+            f"Total: {used_slots}/{total_slots}\n\n"
+            f"💡 /upgrade_storage to increase capacity\n"
+            f"💡 /sell to free up space"
+        )
+        conn.close()
+        return
+
     # Deduct cost
     c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (total_cost, user_id))
-    
+
     # Get farm data
     c.execute("SELECT crops, harvested, total_grown, total_earned, total_profit FROM farms WHERE user_id=?", (user_id,))
     farm = c.fetchone()
-    
+
     if farm:
         crops_data = json.loads(farm[0]) if farm[0] else []
         harvested_data = json.loads(farm[1]) if farm[1] else []
@@ -3250,27 +3279,28 @@ async def grow(update: Update, context: ContextTypes.DEFAULT_TYPE):
         total_grown = 0
         total_earned = 0
         total_profit = 0
-    
+
     # Add new crops with rain effect
     now = datetime.now()
     grow_time = get_grow_time(crop['time'])
-    
+
     for i in range(quantity):
         crops_data.append({
             "crop": crop_name,
             "planted": now.isoformat(),
             "ready_time": (now + timedelta(minutes=grow_time)).isoformat()
         })
-    
+
     c.execute("INSERT OR REPLACE INTO farms (user_id, crops, harvested, total_grown, total_earned, total_profit) VALUES (?, ?, ?, ?, ?, ?)",
               (user_id, json.dumps(crops_data), json.dumps(harvested_data), total_grown + quantity, total_earned, total_profit))
     conn.commit()
     conn.close()
-    
+
     await update.message.reply_text(
         f"🌱 **GROWING {crop['emoji']} {crop['name']} x{quantity}**\n\n"
         f"💰 Cost: {total_cost:,} credits deducted\n"
         f"⏰ Ready in: {format_time(grow_time)}\n"
+        f"📦 Storage: {used_slots}/{total_slots} → {used_slots + quantity}/{total_slots}\n"
         f"💡 /farm - Check status\n"
         f"💡 /harvest - When ready",
         parse_mode="Markdown"
@@ -4222,23 +4252,25 @@ async def hire_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(f"❌ Need {worker['price']:,} credits!")
             return
         
+        # 🔥 PROBLEM YAHAN HAI - Database locked
         conn = get_db()
         c = conn.cursor()
+        
+        # Deduct credits
         c.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (worker["price"], user_id))
         
+        # Add worker
         workers = storage_data["workers"]
         workers.append(crop_key)
-        save_user_storage(user_id, storage_data["level"], storage_data["crops"], workers)
+        
+        # Save storage
+        c.execute("INSERT OR REPLACE INTO user_storage (user_id, level, crops, workers) VALUES (?, ?, ?, ?)",
+                  (user_id, storage_data["level"], json.dumps(storage_data["crops"]), json.dumps(workers)))
         
         conn.commit()
         conn.close()
         
-        await query.edit_message_text(
-            f"✅ WORKER HIRED!\n\n"
-            f"{worker['emoji']} {worker['name']} Worker joined your farm!\n\n"
-            f"⚡ Auto-grows {worker['name']} every {worker['time']} minutes\n"
-            f"💰 Cost: {worker['price']:,} credits"
-        )
+        await query.edit_message_text(f"✅ HIRED! {worker['name']} worker added!")
 
 async def workers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -4277,7 +4309,7 @@ async def workers(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ============ MAIN ==========
 def main():
-    threading.Thread(target=run_flask, daemon=True).start()
+#    threading.Thread(target=run_flask, daemon=True).start()
 
     app = Application.builder().token(TOKEN).build()
 
