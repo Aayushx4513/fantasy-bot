@@ -95,10 +95,19 @@ def get_user(user_id, name=""):
     return user
 
 # ============ START (CL ZONE VIP Style) ============
+# ============ START (CL ZONE VIP Style with Referral) ============
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.first_name if user.first_name else user.username or "User"
     user_id = user.id
+    
+    # Check for referral
+    referred_by = None
+    if context.args and len(context.args) > 0 and context.args[0].startswith("ref_"):
+        try:
+            referred_by = int(context.args[0].split("_")[1])
+        except:
+            pass
     
     conn = get_db()
     c = conn.cursor()
@@ -106,7 +115,42 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     existing = c.fetchone()
     
     if not existing:
+        # Insert new user
         c.execute("INSERT INTO users (user_id, name, balance, points, won, total) VALUES (?, ?, 1000, 0, 0, 0)", (user_id, name))
+        
+        # Process referral if valid
+        if referred_by and referred_by != user_id:
+            c.execute("SELECT user_id FROM users WHERE user_id=?", (referred_by,))
+            if c.fetchone():
+                # Check if already referred
+                c.execute("SELECT * FROM referrals WHERE user_id=?", (user_id,))
+                if not c.fetchone():
+                    # Add referral record
+                    c.execute("INSERT INTO referrals (user_id, referred_by, referred_at) VALUES (?, ?, ?)",
+                              (user_id, referred_by, datetime.now().isoformat()))
+                    
+                    # Add 1000 credits to referrer
+                    c.execute("UPDATE users SET balance = balance + 1000 WHERE user_id=?", (referred_by,))
+                    
+                    # Add 500 bonus to new user
+                    c.execute("UPDATE users SET balance = balance + 500 WHERE user_id=?", (user_id,))
+                    
+                    conn.commit()
+                    
+                    # Notify referrer
+                    try:
+                        await context.bot.send_message(referred_by, f"🎉 **REFERRAL REWARD!**\n\n@{name} joined using your link!\n💰 +1,000 credits!", parse_mode="Markdown")
+                    except:
+                        pass
+                    
+                    await update.message.reply_text(
+                        f"🎉 **WELCOME!** 🎉\n\n"
+                        f"You joined with a referral!\n"
+                        f"💰 +500 bonus credits!\n\n"
+                        f"✨ WELCOME TO CL ZONE ✨",
+                        parse_mode="Markdown"
+                    )
+        
         conn.commit()
         
         # Keyboard buttons
@@ -128,6 +172,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
     else:
+        conn.close()
+        
         # Keyboard buttons for existing users
         keyboard = [
             [InlineKeyboardButton("📢 UPDATES", url="https://t.me/clbotofficial")],
@@ -3113,6 +3159,19 @@ def get_grow_time(crop_time):
     return crop_time
 
 # ============ COMMANDS ============
+# ============ CROPS DATA ============
+CROPS = {
+    "potato": {"name": "🥔 Potato", "price": 1000, "sell": 1500, "time": 30, "emoji": "🥔"},
+    "carrot": {"name": "🥕 Carrot", "price": 2000, "sell": 3000, "time": 60, "emoji": "🥕"},
+    "tomato": {"name": "🍅 Tomato", "price": 3000, "sell": 4500, "time": 120, "emoji": "🍅"},
+    "corn": {"name": "🌽 Corn", "price": 5000, "sell": 7500, "time": 240, "emoji": "🌽"},
+    "wheat": {"name": "🌾 Wheat", "price": 7000, "sell": 10500, "time": 360, "emoji": "🌾"},
+    "strawberry": {"name": "🍓 Strawberry", "price": 8000, "sell": 12000, "time": 480, "emoji": "🍓"},
+    "watermelon": {"name": "🍉 Watermelon", "price": 10000, "sell": 15000, "time": 720, "emoji": "🍉"},
+    "ganja": {"name": "🌿 Ganja", "price": 14000, "sell": 21000, "time": 720, "emoji": "🌿"},
+}
+
+# ============ CROPS COMMAND ============
 async def crops(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
@@ -3127,10 +3186,10 @@ async def crops(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += "🌾 Wheat       💰7,000  →  💰10,500 (6h)\n"
     msg += "🍓 Strawberry  💰8,000  →  💰12,000 (8h)\n"
     msg += "🍉 Watermelon  💰10,000 →  💰15,000 (12h)\n"
+    msg += "🌿 Ganja       💰14,000 →  💰21,000 (12h)\n"
     msg += "```\n💡 /grow <crop> <quantity>"
     
     await update.message.reply_text(msg, parse_mode="Markdown")
-
 
 
 async def grow(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3874,7 +3933,347 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
+async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    bot_username = context.bot.username
+    ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM referrals WHERE referred_by = ?", (user_id,))
+    count = c.fetchone()[0]
+    conn.close()
+    
+    await update.message.reply_text(
+        f"👥 REFERRAL SYSTEM\n\n"
+        f"Invite friends and earn 1,000 credits each!\n\n"
+        f"Your Link: {ref_link}\n\n"
+        f"Referred: {count} users\n"
+        f"Earned: {count * 1000} credits\n\n"
+        f"Share this link with your friends!\n"
+        f"New users get +500 bonus!"
+    )
 
+# ============ STORAGE & HIRE SYSTEM ============
+
+# ============ STORAGE & HIRE SYSTEM ============
+
+import json
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import CallbackQueryHandler, CommandHandler
+
+# Storage upgrade data
+STORAGE_LEVELS = {
+    1: {"slots": 50, "next_cost": 10000, "next_slots": 70},
+    2: {"slots": 70, "next_cost": 15000, "next_slots": 95},
+    3: {"slots": 95, "next_cost": 22500, "next_slots": 125},
+    4: {"slots": 125, "next_cost": 33750, "next_slots": 160},
+    5: {"slots": 160, "next_cost": 50625, "next_slots": 200},
+    6: {"slots": 200, "next_cost": 75937, "next_slots": 245},
+    7: {"slots": 245, "next_cost": 113905, "next_slots": 295},
+    8: {"slots": 295, "next_cost": 170857, "next_slots": 350},
+    9: {"slots": 350, "next_cost": 256285, "next_slots": 410},
+    10: {"slots": 410, "next_cost": 0, "next_slots": 410},
+}
+
+# Worker data (Price = Crop Price × 8)
+WORKERS = {
+    "potato": {"name": "🥔 Potato", "price": 8000, "crop_price": 1000, "sell": 1500, "time": 30, "emoji": "🥔"},
+    "carrot": {"name": "🥕 Carrot", "price": 16000, "crop_price": 2000, "sell": 3000, "time": 60, "emoji": "🥕"},
+    "tomato": {"name": "🍅 Tomato", "price": 24000, "crop_price": 3000, "sell": 4500, "time": 120, "emoji": "🍅"},
+    "corn": {"name": "🌽 Corn", "price": 40000, "crop_price": 5000, "sell": 7500, "time": 240, "emoji": "🌽"},
+    "wheat": {"name": "🌾 Wheat", "price": 56000, "crop_price": 7000, "sell": 10500, "time": 360, "emoji": "🌾"},
+    "strawberry": {"name": "🍓 Strawberry", "price": 64000, "crop_price": 8000, "sell": 12000, "time": 480, "emoji": "🍓"},
+    "watermelon": {"name": "🍉 Watermelon", "price": 80000, "crop_price": 10000, "sell": 15000, "time": 720, "emoji": "🍉"},
+    "ganja": {"name": "🌿 Ganja", "price": 112000, "crop_price": 14000, "sell": 21000, "time": 720, "emoji": "🌿"},
+}
+
+def init_storage_db():
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS user_storage
+                 (user_id INTEGER PRIMARY KEY,
+                  level INTEGER DEFAULT 1,
+                  crops TEXT DEFAULT '{}',
+                  workers TEXT DEFAULT '[]')''')
+    conn.commit()
+    conn.close()
+
+init_storage_db()
+
+def get_user_storage(user_id):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT level, crops, workers FROM user_storage WHERE user_id = ?", (user_id,))
+    result = c.fetchone()
+    conn.close()
+    
+    if result:
+        return {"level": result[0], "crops": json.loads(result[1]), "workers": json.loads(result[2])}
+    else:
+        return {"level": 1, "crops": {}, "workers": []}
+
+def save_user_storage(user_id, level, crops, workers):
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO user_storage (user_id, level, crops, workers) VALUES (?, ?, ?, ?)",
+              (user_id, level, json.dumps(crops), json.dumps(workers)))
+    conn.commit()
+    conn.close()
+
+def get_total_slots(level):
+    return STORAGE_LEVELS.get(level, {"slots": 50})["slots"]
+
+def get_used_slots(crops):
+    return sum(crops.values())
+
+# ============ STORAGE COMMANDS ============
+# ============ STORAGE SYSTEM ============
+
+async def storage(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    storage_data = get_user_storage(user_id)
+    level = storage_data["level"]
+    crops = storage_data["crops"]
+    
+    total_slots = get_total_slots(level)
+    used_slots = get_used_slots(crops)
+    free_slots = total_slots - used_slots
+    
+    next_level = level + 1
+    if next_level in STORAGE_LEVELS:
+        next_slots = STORAGE_LEVELS[next_level]["next_slots"]
+        next_cost = STORAGE_LEVELS[level]["next_cost"]
+        upgrade_text = f"📈 NEXT UPGRADE:\nLevel {next_level} → {next_slots} slots (+{next_slots - total_slots})\n💰 Cost: {next_cost:,} credits"
+    else:
+        upgrade_text = "🏆 MAX LEVEL REACHED!"
+    
+    crops_text = ""
+    for crop_name, count in crops.items():
+        crop = WORKERS.get(crop_name, CROPS.get(crop_name))
+        if crop:
+            crops_text += f"{crop['emoji']} {crop['name']} x{count}\n"
+    
+    if not crops_text:
+        crops_text = "🌱 No crops stored\n"
+    
+    status = "🟢 FREE" if free_slots > 0 else "🔴 FULL"
+    
+    await update.message.reply_text(
+        f"📦 YOUR STORAGE\n\n"
+        f"Level: {level}\n"
+        f"Slots: {used_slots}/{total_slots} ({status})\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"{upgrade_text}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🌾 Crops stored:\n{crops_text}\n"
+        f"💡 /upgrade_storage - To upgrade"
+    )
+
+async def upgrade_storage(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    storage_data = get_user_storage(user_id)
+    level = storage_data["level"]
+    
+    if level not in STORAGE_LEVELS or STORAGE_LEVELS[level]["next_cost"] == 0:
+        await update.message.reply_text("🏆 You have reached MAX storage level!")
+        return
+    
+    next_cost = STORAGE_LEVELS[level]["next_cost"]
+    next_slots = STORAGE_LEVELS[level]["next_slots"]
+    current_slots = get_total_slots(level)
+    
+    keyboard = [
+        [InlineKeyboardButton("✅ CONFIRM", callback_data=f"storage_confirm_{user_id}")],
+        [InlineKeyboardButton("❌ CANCEL", callback_data="storage_cancel")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        f"📦 UPGRADE STORAGE\n\n"
+        f"Current Level: {level} ({current_slots} slots)\n"
+        f"Next Level: {level + 1} ({next_slots} slots)\n"
+        f"💰 Cost: {next_cost:,} credits\n\n"
+        f"⚠️ Confirm upgrade?",
+        reply_markup=reply_markup
+    )
+
+async def storage_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    data = query.data
+    
+    if data == "storage_cancel":
+        await query.edit_message_text("❌ Upgrade cancelled!")
+        return
+    
+    if data.startswith("storage_confirm_"):
+        target_id = int(data.split("_")[2])
+        
+        if user_id != target_id:
+            await query.answer("Not your upgrade!", show_alert=True)
+            return
+        
+        storage_data = get_user_storage(user_id)
+        level = storage_data["level"]
+        
+        if level not in STORAGE_LEVELS or STORAGE_LEVELS[level]["next_cost"] == 0:
+            await query.edit_message_text("🏆 Max level already reached!")
+            return
+        
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+        balance = c.fetchone()[0]
+        conn.close()
+        
+        cost = STORAGE_LEVELS[level]["next_cost"]
+        
+        if balance < cost:
+            await query.edit_message_text(f"❌ Need {cost:,} credits to upgrade!")
+            return
+        
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (cost, user_id))
+        
+        new_level = level + 1
+        c.execute("INSERT OR REPLACE INTO user_storage (user_id, level, crops, workers) VALUES (?, ?, ?, ?)",
+                  (user_id, new_level, json.dumps(storage_data["crops"]), json.dumps(storage_data["workers"])))
+        conn.commit()
+        conn.close()
+        
+        new_slots = get_total_slots(new_level)
+        
+        await query.edit_message_text(
+            f"✅ STORAGE UPGRADED!\n\n"
+            f"Level: {level} → {new_level}\n"
+            f"Slots: {get_total_slots(level)} → {new_slots}\n"
+            f"💰 Cost: {cost:,} credits\n\n"
+            f"📦 Free slots: {new_slots - get_used_slots(storage_data['crops'])}"
+        )
+
+# ============ HIRE COMMANDS ============
+# ============ HIRE SYSTEM ============
+
+async def hire(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    keyboard = []
+    for key, worker in WORKERS.items():
+        keyboard.append([InlineKeyboardButton(f"{worker['emoji']} {worker['name']} - {worker['price']:,}", callback_data=f"hire_now_{key}")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        f"👨‍🌾 HIRE WORKER\n\nChoose a worker:",
+        reply_markup=reply_markup
+    )
+
+async def hire_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    data = query.data
+    
+    if data.startswith("hire_now_"):
+        crop_key = data.replace("hire_now_", "")
+        worker = WORKERS.get(crop_key)
+        
+        if not worker:
+            await query.edit_message_text("❌ Invalid worker!")
+            return
+        
+        storage_data = get_user_storage(user_id)
+        
+        if crop_key in storage_data["workers"]:
+            await query.edit_message_text(f"❌ You already have a {worker['name']} worker!")
+            return
+        
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+        balance = c.fetchone()[0]
+        conn.close()
+        
+        if balance < worker["price"]:
+            await query.edit_message_text(f"❌ Need {worker['price']:,} credits!")
+            return
+        
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (worker["price"], user_id))
+        
+        workers = storage_data["workers"]
+        workers.append(crop_key)
+        save_user_storage(user_id, storage_data["level"], storage_data["crops"], workers)
+        
+        conn.commit()
+        conn.close()
+        
+        await query.edit_message_text(
+            f"✅ WORKER HIRED!\n\n"
+            f"{worker['emoji']} {worker['name']} Worker joined your farm!\n\n"
+            f"⚡ Auto-grows {worker['name']} every {worker['time']} minutes\n"
+            f"💰 Cost: {worker['price']:,} credits"
+        )
+
+async def workers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    storage_data = get_user_storage(user_id)
+    workers_list = storage_data["workers"]
+    
+    if not workers_list:
+        await update.message.reply_text(
+            f"👨‍🌾 YOUR WORKERS\n\n"
+            f"No workers hired yet!\n\n"
+            f"💡 /hire - Hire workers"
+        )
+        return
+    
+    total_cost = 0
+    msg = f"👨‍🌾 YOUR WORKERS\n\n"
+    
+    for i, worker_key in enumerate(workers_list, 1):
+        worker = WORKERS.get(worker_key)
+        if worker:
+            msg += f"{i}. {worker['emoji']} {worker['name']} Worker\n"
+            msg += f"   - Auto-grows: {worker['name']}\n"
+            msg += f"   - Time: {worker['time']} minutes\n\n"
+            total_cost += worker["price"]
+    
+    msg += f"━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"💰 Total spent: {total_cost:,} credits\n\n"
+    msg += f"💡 /hire - Hire more workers"
+    
+    await update.message.reply_text(msg)
 
 # ============ MAIN ==========
 def main():
@@ -3884,6 +4283,7 @@ def main():
 
     # User commands
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("refer", refer))
     app.add_handler(CommandHandler("help", help))
     app.add_handler(CommandHandler("profile", profile))
     app.add_handler(CommandHandler("setbio", setbio))
@@ -3966,6 +4366,15 @@ def main():
     app.add_handler(CommandHandler("add_default_players", add_default_players))
     app.add_handler(CommandHandler("ttt", ttt))
     app.add_handler(CallbackQueryHandler(ttt_callback, pattern="^ttt_"))
+    # Storage commands
+    app.add_handler(CommandHandler("storage", storage))
+    app.add_handler(CommandHandler("upgrade_storage", upgrade_storage))
+    app.add_handler(CallbackQueryHandler(storage_callback, pattern="^storage_"))
+    # Hire commands
+    app.add_handler(CommandHandler("hire", hire))
+    app.add_handler(CommandHandler("workers", workers))
+    app.add_handler(CallbackQueryHandler(hire_callback, pattern="^hire_now_"))
+
 
     print("🤖 Bot is running...")
     app.run_polling()
