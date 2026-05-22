@@ -206,41 +206,77 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     msg = (
-        "📋 COMMAND LIST\n\n"
-        "👤 PROFILE:\n"
-        "   /profile - Your profile\n"
-        "   /setpfp - Set profile photo\n"
-        "   /rmpfp - Remove profile photo\n\n"
-        "🎁 EARN:\n"
-        "   /claim - 500 daily credits\n"
-        "   /spin - Daily spin (1k-10k)\n"
-        "   /dice - Dice game\n"
-        "   /flip - Heads/Tails\n\n"
-        "🏏 CRICKET:\n"
-        "   /matches - Live matches\n"
-        "   /bet - Place bet\n"
-        "   /mybets - Your bets\n"
-        "   /cancel - Cancel bet\n"
-        "   /allbets - All bets\n\n"
-        "🛒 SHOP:\n"
-        "   /shop - Buy players\n"
-        "   /shop2 - Cheap players\n"
-        "   /buy /buyw /buy2 - Purchase\n"
-        "   /myteam - Your collection\n"
-        "   /top - Top collectors\n\n"
-        "📊 STATS:\n"
-        "   /leaderboard - Rich list\n"
-        "   /top_fantasy - Points ranking\n"
-        "   /history - Bet history\n\n"
-        "💝 OTHER:\n"
-        "   /tip - Send credits\n"
-        "   /achievements - Your badges\n\n"
-        "🏦 BANK:\n"
-        "   /bank - Check balance\n"
-        "   /deposit - Add to bank\n"
-        "   /withdraw - Take from bank\n"
-        "   /claim_interest - 5% daily interest"
+        "📋 CL ZONE - COMMAND LIST\n\n"
+        
+        "👤 PROFILE\n"
+        "• /start - Start bot\n"
+        "• /profile - Your stats\n"
+        "• /leaderboard - Top 10 Richest users\n"
+        "• /setbio <text> - Set bio\n"
+        "• /rmbio - Remove bio\n"
+        "• /setpfp - Set photo (reply to pic)\n"
+        "• /rmpfp - Remove photo\n\n"
+        
+        "💰 EARN CREDITS\n"
+        "• /claim - 500 daily\n"
+        "• /spin - 1,000-10,000 daily\n"
+        "• /dice <amount> - 0x to 2.5x\n"
+        "• /flip heads/tails <amount> - 2x\n"
+        "• /tip <amount> (reply) - Send credits\n\n"
+        
+        "🏏 CRICKET BETTING\n"
+        "• /matches - Live matches\n"
+        "• /bet <team> <amount> - Place bet\n"
+        "• /mybets - Your bets\n"
+        "• /cancel <number> - Cancel bet\n"
+        "• /allbets - All bets\n"
+        "• /history - Win/loss record\n"
+        "• /top_fantasy - Fantasy points ranking\n\n"
+        
+        "🏆 ACHIEVEMENTS\n"
+        "• /achievements - Your badges\n\n"
+        
+        "🛒 SHOP\n"
+        "• /shop - Buy players\n"
+        "• /buy <id> - Purchase\n"
+        "• /myteam - Your collection\n"
+        "• /top - Top collectors\n\n"
+        
+        "🏦 BANK\n"
+        "• /bank - Check balance\n"
+        "• /deposit <amount> - Add to bank\n"
+        "• /withdraw <amount> - Take from bank\n"
+        "• /claim_interest - 5% daily\n\n"
+        
+        "🌾 FARM\n"
+        "• /farm - Your farm\n"
+        "• /crops - Crop prices\n"
+        "• /grow <crop> <qty> - Grow crops\n"
+        "• /harvest - Collect ready\n"
+        "• /sell <crop> <qty> - Sell\n"
+        "• /farm_stats - Your stats\n"
+        "• /farm_leaderboard - Top farmers\n\n"
+        
+        "📦 STORAGE\n"
+        "• /storage - Check space\n"
+        "• /upgrade_storage - More slots\n\n"
+        
+        "👨‍🌾 WORKERS\n"
+        "• /hire - Hire workers\n"
+        "• /workers - Your workers\n\n"
+        
+        "🎮 GAMES\n"
+        "• /ttt [amount] - Tic Tac Toe\n"
+        "• /claimcode <code> - Claim rewards\n"
+        "• /activecodes - Active codes\n\n"
+        
+        "🎁 REFERRAL\n"
+        "• /refer - Get your link (1k per refer)\n\n"
+        
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "💡 Need help? Ask in @CLZoneGroup"
     )
+    
     await update.message.reply_text(msg)
 
 # ============ BIO FEATURE ============
@@ -4263,76 +4299,125 @@ async def storage_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # ============ HIRE COMMANDS ============
-# ============ HIRE SYSTEM ============
-
 async def hire(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    
+
     keyboard = []
     for key, worker in WORKERS.items():
-        keyboard.append([InlineKeyboardButton(f"{worker['emoji']} {worker['name']} - {worker['price']:,}", callback_data=f"hire_now_{key}")])
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
+        keyboard.append([InlineKeyboardButton(
+            f"{worker['emoji']} {worker['name']} - {worker['price']:,} credits",
+            callback_data=f"hire_{key}"
+        )])
+
     await update.message.reply_text(
-        f"👨‍🌾 HIRE WORKER\n\nChoose a worker:",
-        reply_markup=reply_markup
+        "👨‍🌾 **HIRE WORKER**\n\nClick on any worker to hire instantly:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
     )
 
+
 async def hire_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user_id = update.effective_user.id
+    data = query.data
+
+    if not data.startswith("hire_"):
+        return
+
+    crop_key = data[5:]  # "hire_potato" -> "potato"
+    worker = WORKERS.get(crop_key)
+
+    if not worker:
+        await query.edit_message_text("❌ Invalid worker!")
+        return
+
+    conn = get_db()
+    c = conn.cursor()
+
+    # get current workers
+    c.execute("SELECT workers FROM user_storage WHERE user_id = ?", (user_id,))
+    row = c.fetchone()
+    workers = json.loads(row[0]) if row and row[0] else []
+
+    # balance check
+    c.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+    balance = c.fetchone()[0]
+
+    if balance < worker["price"]:
+        await query.edit_message_text(f"❌ Need {worker['price']:,} credits!")
+        conn.close()
+        return
+
+    # deduct & add worker
+    c.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (worker["price"], user_id))
+    workers.append(crop_key)
+    c.execute("INSERT OR REPLACE INTO user_storage (user_id, level, crops, workers) VALUES (?, 1, '{}', ?)",
+              (user_id, json.dumps(workers)))
+    conn.commit()
+    conn.close()
+
+    await query.edit_message_text(f"✅ **{worker['name']} worker hired successfully!**", parse_mode="Markdown")
+
+
+
+async def hire_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
     user_id = update.effective_user.id
     data = query.data
     
-    if data.startswith("hire_now_"):
-        crop_key = data.replace("hire_now_", "")
+    print(f"Confirm data: {data}")  # Debug
+    
+    if data == "hire_cancel":
+        await query.edit_message_text("❌ Hire cancelled!")
+        return
+    
+    if data.startswith("hire_confirm_"):
+        crop_key = data.replace("hire_confirm_", "")
+        
+        # Remove any extra parts
+        if "_" in crop_key:
+            crop_key = crop_key.split("_")[0]
+        
         worker = WORKERS.get(crop_key)
         
         if not worker:
-            await query.edit_message_text("❌ Invalid worker!")
+            await query.edit_message_text(f"❌ Invalid worker!")
             return
         
-        storage_data = get_user_storage(user_id)
-        
-        if crop_key in storage_data["workers"]:
-            await query.edit_message_text(f"❌ You already have a {worker['name']} worker!")
-            return
-        
+        # Process hire...
         conn = get_db()
         c = conn.cursor()
+        
+        c.execute("SELECT workers FROM user_storage WHERE user_id = ?", (user_id,))
+        result = c.fetchone()
+        workers_list = json.loads(result[0]) if result and result[0] else []
+        
         c.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
         balance = c.fetchone()[0]
-        conn.close()
         
         if balance < worker["price"]:
             await query.edit_message_text(f"❌ Need {worker['price']:,} credits!")
+            conn.close()
             return
         
-        # 🔥 PROBLEM YAHAN HAI - Database locked
-        conn = get_db()
-        c = conn.cursor()
-        
-        # Deduct credits
         c.execute("UPDATE users SET balance = balance - ? WHERE user_id = ?", (worker["price"], user_id))
+        workers_list.append(crop_key)
         
-        # Add worker
-        workers = storage_data["workers"]
-        workers.append(crop_key)
-        
-        # Save storage
         c.execute("INSERT OR REPLACE INTO user_storage (user_id, level, crops, workers) VALUES (?, ?, ?, ?)",
-                  (user_id, storage_data["level"], json.dumps(storage_data["crops"]), json.dumps(workers)))
+                  (user_id, 1, "{}", json.dumps(workers_list)))
         
         conn.commit()
         conn.close()
         
         await query.edit_message_text(f"✅ HIRED! {worker['name']} worker added!")
+
 
 async def workers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -4361,34 +4446,40 @@ async def workers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_cost = 0
     msg = "👨‍🌾 YOUR WORKERS\n\n"
     
-    for i, worker_key in enumerate(workers_list, 1):
+    # Count workers
+    from collections import Counter
+    worker_counts = Counter(workers_list)
+    
+    for worker_key, count in worker_counts.items():
         worker = WORKERS.get(worker_key)
         if worker:
+            # Get last grow time for this worker type
             key = f"{user_id}_{worker_key}"
-            last = last_grow.get(key, now)
+            last = last_grow.get(key, 0)
             time_passed = now - last
             time_needed = worker["time"] * 60
             remaining = time_needed - time_passed
             
             if remaining <= 0:
-                remaining_text = "✅ READY TO HARVEST!"
+                remaining_text = "✅ READY!"
             else:
                 minutes = int(remaining // 60)
                 seconds = int(remaining % 60)
-                remaining_text = f"⏰ {minutes}m {seconds}s remaining"
+                remaining_text = f"⏰ {minutes}m {seconds}s"
             
-            msg += f"{i}. {worker['emoji']} {worker['name']} Worker\n"
+            msg += f"{worker['emoji']} {worker['name']} Worker x{count}\n"
             msg += f"   - Auto-grows: {worker['name']}\n"
             msg += f"   - {remaining_text}\n\n"
-            total_cost += worker["price"]
+            total_cost += worker["price"] * count
     
     msg += f"━━━━━━━━━━━━━━━━━━━━\n"
     msg += f"💰 Total spent: {total_cost:,} credits\n\n"
-    msg += f"💡 /hire - Hire more workers"
+    msg += f"💡 /hire - Hire more workers\n"
+    msg += f"📦 Storage full = auto-grow paused"
     
     await update.message.reply_text(msg)
 
-# ============ AUTO GROW WITH REMAINING TIME ============
+# ============ WORKER AUTO-GROW WITH STORAGE CHECK ============
 
 import threading
 import time
@@ -4400,14 +4491,30 @@ def auto_grow_worker():
         try:
             conn = get_db()
             c = conn.cursor()
-            c.execute("SELECT user_id, workers, crops FROM user_storage")
+            c.execute("SELECT user_id, workers FROM user_storage")
             users = c.fetchall()
             conn.close()
             
             now = time.time()
             
-            for user_id, workers_json, crops_json in users:
+            for user_id, workers_json in users:
                 workers = json.loads(workers_json) if workers_json else []
+                
+                # Get storage info
+                conn2 = get_db()
+                c2 = conn2.cursor()
+                c2.execute("SELECT level, crops FROM user_storage WHERE user_id = ?", (user_id,))
+                storage_result = c2.fetchone()
+                conn2.close()
+                
+                if storage_result:
+                    level = storage_result[0]
+                    stored_crops = json.loads(storage_result[1]) if storage_result[1] else {}
+                    total_slots = get_total_slots(level)
+                    used_slots = sum(stored_crops.values())
+                    free_slots = total_slots - used_slots
+                else:
+                    free_slots = 50
                 
                 for w in workers:
                     worker = WORKERS.get(w)
@@ -4420,23 +4527,35 @@ def auto_grow_worker():
                     time_needed = worker["time"] * 60
                     
                     if time_passed >= time_needed:
+                        # 🔥 STORAGE CHECK - AGAR JAGAH NAHI TO MAT GROW KARO 🔥
+                        if free_slots <= 0:
+                            print(f"User {user_id} storage full, cannot auto-grow {w}")
+                            continue
+                        
                         # Grow crop
-                        crops = json.loads(crops_json) if crops_json else {}
+                        conn3 = get_db()
+                        c3 = conn3.cursor()
+                        c3.execute("SELECT crops FROM user_storage WHERE user_id = ?", (user_id,))
+                        result = c3.fetchone()
+                        
+                        crops = json.loads(result[0]) if result and result[0] else {}
                         crops[w] = crops.get(w, 0) + 1
                         
-                        conn = get_db()
-                        c2 = conn.cursor()
-                        c2.execute("UPDATE user_storage SET crops = ? WHERE user_id = ?", 
+                        c3.execute("UPDATE user_storage SET crops = ? WHERE user_id = ?", 
                                    (json.dumps(crops), user_id))
-                        conn.commit()
-                        conn.close()
+                        conn3.commit()
+                        conn3.close()
                         
                         last_grow[key] = now
+                        free_slots -= 1
                         
             time.sleep(60)
-        except:
+        except Exception as e:
+            print(f"Worker error: {e}")
             time.sleep(60)
 
+
+# Start background thread
 threading.Thread(target=auto_grow_worker, daemon=True).start()
 
 
@@ -4533,12 +4652,14 @@ def main():
     app.add_handler(CommandHandler("add_default_players", add_default_players))
     app.add_handler(CommandHandler("ttt", ttt))
     app.add_handler(CallbackQueryHandler(ttt_callback, pattern="^ttt_"))
-    # Storage commands
+    app.add_handler(CommandHandler("broadcast", broadcast_cmd))
+    app.add_handler(CommandHandler("broadcast_stats", broadcast_stats))
     app.add_handler(CommandHandler("storage", storage))
     app.add_handler(CommandHandler("upgrade_storage", upgrade_storage))
     app.add_handler(CallbackQueryHandler(storage_callback, pattern="^storage_"))
     # Hire commands
     app.add_handler(CommandHandler("hire", hire))
+    app.add_handler(CallbackQueryHandler(hire_callback, pattern="^hire_"))
     app.add_handler(CommandHandler("workers", workers))
     app.add_handler(CallbackQueryHandler(hire_callback, pattern="^hire_now_"))
     
