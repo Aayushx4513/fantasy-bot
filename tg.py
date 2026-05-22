@@ -3312,33 +3312,33 @@ async def farm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    
+
     conn = get_db()
     c = conn.cursor()
     c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
     balance = c.fetchone()[0]
-    
+
+    # Get farm data (manually grown)
     c.execute("SELECT crops, harvested FROM farms WHERE user_id=?", (user_id,))
     farm = c.fetchone()
+
+    # Get storage data (auto-grown by workers)
+    c.execute("SELECT crops FROM user_storage WHERE user_id=?", (user_id,))
+    storage = c.fetchone()
     conn.close()
-    
-    if not farm:
-        await update.message.reply_text(
-            "🌾 **YOUR FARM**\n\n"
-            f"💰 Wallet: {balance:,} credits\n"
-            f"🌱 No crops growing!\n\n"
-            f"💡 /grow <crop> <quantity> to start!",
-            parse_mode="Markdown"
-        )
-        return
-    
-    crops_data = json.loads(farm[0]) if farm[0] else []
-    harvested_data = json.loads(farm[1]) if farm[1] else []
-    
+
+    # Manual growing crops
+    crops_data = json.loads(farm[0]) if farm and farm[0] else []
+    harvested_data = json.loads(farm[1]) if farm and farm[1] else []
+
+    # Auto-grown crops from workers
+    storage_crops = json.loads(storage[0]) if storage and storage[0] else {}
+
     now = datetime.now()
     growing = []
     ready = []
-    
+
+    # Check manually grown crops
     for crop in crops_data:
         ready_time = datetime.fromisoformat(crop['ready_time'])
         crop_info = CROPS[crop['crop']]
@@ -3347,53 +3347,63 @@ async def farm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             remaining = (ready_time - now).total_seconds() / 60
             growing.append((crop_info, remaining, crop))
-    
+
     msg = f"🌾 **YOUR FARM**\n\n💰 Wallet: {balance:,} credits\n"
-    
+
     global rain_percentage
     if rain_percentage > 0:
-        msg += f"🌧️ Rain Bonus: {rain_percentage}% faster for NEW crops\n"
-    
+        msg += f"🌧️ Rain: {rain_percentage}% faster\n"
+
     msg += "\n"
-    
+
+    # 🔥 SHOW AUTO-GROWN CROPS FROM WORKERS 🔥
+    if storage_crops:
+        msg += "🤖 **WORKER CROPS (Auto-Grown - Ready to Sell):**\n"
+        for crop_name, count in storage_crops.items():
+            crop = CROPS.get(crop_name)
+            if crop:
+                msg += f"   {crop['emoji']} {crop['name']} x{count}\n"
+        msg += "\n💡 /sell <crop> <quantity> to sell\n\n"
+
     if growing:
-        msg += "🌿 **GROWING:**\n"
+        msg += "🌿 **GROWING (Manual):**\n"
         for crop_info, remaining, _ in growing[:5]:
-            msg += f"{crop_info['emoji']} {crop_info['name']} → Ready in: {format_time(int(remaining))}\n"
+            msg += f"   {crop_info['emoji']} {crop_info['name']} → Ready in: {format_time(int(remaining))}\n"
         if len(growing) > 5:
             msg += f"   +{len(growing)-5} more\n"
         msg += "\n"
-    
+
     if ready:
-        msg += "🌾 **READY TO HARVEST:**\n"
+        msg += "🌾 **READY TO HARVEST (Manual):**\n"
         ready_count = {}
         for crop in ready:
             crop_name = crop['crop']
             ready_count[crop_name] = ready_count.get(crop_name, 0) + 1
-        
+
         for crop_name, count in ready_count.items():
             crop_info = CROPS[crop_name]
-            msg += f"{crop_info['emoji']} {crop_info['name']} x{count} → READY!\n"
+            msg += f"   {crop_info['emoji']} {crop_info['name']} x{count} → READY!\n"
         msg += "\n💡 /harvest - Collect ready crops\n"
-    
+
     if harvested_data:
-        msg += "📦 **INVENTORY:**\n"
+        msg += "📦 **HARVESTED (Manual):**\n"
         harvest_count = {}
         for crop in harvested_data:
             crop_name = crop['crop']
             harvest_count[crop_name] = harvest_count.get(crop_name, 0) + 1
-        
+
         for crop_name, count in list(harvest_count.items())[:5]:
             crop_info = CROPS[crop_name]
-            msg += f"{crop_info['emoji']} {crop_info['name']} x{count}\n"
+            msg += f"   {crop_info['emoji']} {crop_info['name']} x{count}\n"
         if len(harvest_count) > 5:
             msg += f"   +{len(harvest_count)-5} more\n"
         msg += "\n💡 /sell <crop> <quantity> to sell\n"
-    
-    if not growing and not ready and not harvested_data:
-        msg += "🌱 Empty farm!\n💡 /grow <crop> <quantity> to start!"
-    
+
+    if not growing and not ready and not harvested_data and not storage_crops:
+        msg += "🌱 Empty farm!\n💡 /grow <crop> <quantity> to start!\n💡 /hire to hire workers for auto-growing!"
+
     await update.message.reply_text(msg, parse_mode="Markdown")
+
 
 async def harvest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -3450,54 +3460,108 @@ async def harvest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(msg, parse_mode="Markdown")
 
+
 async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    
+
     args = context.args
     if len(args) < 2:
         await update.message.reply_text("❌ Usage: /sell <crop> <quantity>\nExample: /sell watermelon 5")
         return
-    
+
     crop_name = args[0].lower()
     try:
         quantity = int(args[1])
     except:
         await update.message.reply_text("❌ Invalid quantity!")
         return
-    
+
     if crop_name not in CROPS:
         await update.message.reply_text(f"❌ Unknown crop!")
         return
-    
+
     if quantity < 1:
         await update.message.reply_text("❌ Quantity must be at least 1!")
         return
-    
+
     conn = get_db()
     c = conn.cursor()
+    
+    crop_info = CROPS[crop_name]
+    sell_price = crop_info['sell'] * quantity
+    sold = False
+    
+    # 🔥 FIRST CHECK STORAGE (auto-grown by workers) 🔥
+    c.execute("SELECT crops FROM user_storage WHERE user_id = ?", (user_id,))
+    storage_result = c.fetchone()
+    
+    if storage_result:
+        storage_crops = json.loads(storage_result[0]) if storage_result[0] else {}
+        available_in_storage = storage_crops.get(crop_name, 0)
+        
+        if available_in_storage >= quantity:
+            # Sell from storage
+            storage_crops[crop_name] = storage_crops.get(crop_name, 0) - quantity
+            if storage_crops[crop_name] <= 0:
+                del storage_crops[crop_name]
+            
+            c.execute("UPDATE user_storage SET crops = ? WHERE user_id = ?", 
+                     (json.dumps(storage_crops), user_id))
+            
+            c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+            current_bal = c.fetchone()[0]
+            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (sell_price, user_id))
+            
+            # Update farm stats
+            c.execute("SELECT total_earned, total_profit FROM farms WHERE user_id=?", (user_id,))
+            stats = c.fetchone()
+            if stats:
+                total_earned = (stats[0] or 0) + sell_price
+                total_profit = (stats[1] or 0) + (sell_price - (crop_info['price'] * quantity))
+                c.execute("UPDATE farms SET total_earned = ?, total_profit = ? WHERE user_id=?", 
+                         (total_earned, total_profit, user_id))
+            else:
+                c.execute("INSERT INTO farms (user_id, total_earned, total_profit) VALUES (?, ?, ?)", 
+                         (user_id, sell_price, sell_price - (crop_info['price'] * quantity)))
+            
+            conn.commit()
+            conn.close()
+            
+            await update.message.reply_text(
+                f"💰 **SOLD FROM STORAGE!**\n\n"
+                f"{crop_info['emoji']} {crop_info['name']} x{quantity}\n"
+                f"💵 Price: {crop_info['sell']:,} each\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"💰 Total: {sell_price:,} credits\n"
+                f"💳 New balance: {current_bal + sell_price:,}",
+                parse_mode="Markdown"
+            )
+            return
+    
+    # 🔥 IF NOT IN STORAGE, CHECK HARVESTED (manual) 🔥
     c.execute("SELECT harvested FROM farms WHERE user_id=?", (user_id,))
     farm = c.fetchone()
-    
+
     if not farm:
         await update.message.reply_text("📦 No crops to sell!")
         conn.close()
         return
-    
+
     harvested_data = json.loads(farm[0]) if farm[0] else []
-    
+
     available = 0
     for crop in harvested_data:
         if crop['crop'] == crop_name:
             available += 1
-    
+
     if available < quantity:
-        await update.message.reply_text(f"❌ You have only {available} {CROPS[crop_name]['emoji']} {CROPS[crop_name]['name']}!")
+        await update.message.reply_text(f"❌ You have only {available} {crop_info['emoji']} {crop_info['name']}!\n💡 Check /farm to see what you have!")
         conn.close()
         return
-    
+
     sold_count = 0
     new_harvested = []
     for crop in harvested_data:
@@ -3505,14 +3569,11 @@ async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sold_count += 1
         else:
             new_harvested.append(crop)
-    
-    crop_info = CROPS[crop_name]
-    sell_price = crop_info['sell'] * quantity
-    
+
     c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
     current_bal = c.fetchone()[0]
     c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (sell_price, user_id))
-    
+
     c.execute("SELECT total_earned, total_profit FROM farms WHERE user_id=?", (user_id,))
     stats = c.fetchone()
     if stats:
@@ -3521,14 +3582,14 @@ async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         total_earned = sell_price
         total_profit = sell_price - (crop_info['price'] * quantity)
-    
+
     c.execute("UPDATE farms SET harvested = ?, total_earned = ?, total_profit = ? WHERE user_id=?",
               (json.dumps(new_harvested), total_earned, total_profit, user_id))
     conn.commit()
     conn.close()
-    
+
     await update.message.reply_text(
-        f"💰 **SOLD!**\n\n"
+        f"💰 **SOLD FROM HARVEST!**\n\n"
         f"{crop_info['emoji']} {crop_info['name']} x{quantity}\n"
         f"💵 Price: {crop_info['sell']:,} each\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
