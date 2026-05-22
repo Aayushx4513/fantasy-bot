@@ -1,29 +1,16 @@
+# ============ PART 1: IMPORTS & DATABASE ============
+
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler, MessageHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 import sqlite3
 import random
 from datetime import datetime, timedelta
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
 import os
 import threading
-from flask import Flask
+import time
 
 TOKEN = "8533156744:AAE2Fesm35bggPg47V2UBjJolJnRsJ-pjVA"
 ADMIN_IDS = [7687078555, 1315564307]
-
-flask_app = Flask(__name__)
-
-@flask_app.route('/')
-def home():
-    return "Bot is running!"
-
-@flask_app.route('/health')
-def health():
-    return "OK", 200
-
-def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    flask_app.run(host="0.0.0.0", port=port)
 
 def get_db():
     return sqlite3.connect('fantasy.db')
@@ -31,36 +18,69 @@ def get_db():
 def init_db():
     conn = get_db()
     c = conn.cursor()
+    
     c.execute('''CREATE TABLE IF NOT EXISTS users 
-                 (user_id INTEGER PRIMARY KEY, name TEXT, balance INTEGER, points INTEGER, won INTEGER, total INTEGER, photo TEXT)''')
+                 (user_id INTEGER PRIMARY KEY, name TEXT, balance INTEGER, 
+                  points INTEGER, won INTEGER, total INTEGER, photo TEXT)''')
+    
     c.execute('''CREATE TABLE IF NOT EXISTS matches 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, team1 TEXT, team2 TEXT, date TEXT, status TEXT, locked INTEGER DEFAULT 0)''')
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, team1 TEXT, team2 TEXT, 
+                  date TEXT, status TEXT, locked INTEGER DEFAULT 0)''')
+    
     c.execute('''CREATE TABLE IF NOT EXISTS bets 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, match_id INTEGER, team TEXT, amount INTEGER)''')
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, 
+                  match_id INTEGER, team TEXT, amount INTEGER)''')
+    
     c.execute('''CREATE TABLE IF NOT EXISTS claim 
                  (user_id INTEGER PRIMARY KEY, last_claim DATE)''')
+    
     c.execute('''CREATE TABLE IF NOT EXISTS spin 
                  (user_id INTEGER PRIMARY KEY, last_claim TEXT)''')
+    
     c.execute('''CREATE TABLE IF NOT EXISTS shop 
-                 (id INTEGER PRIMARY KEY, name TEXT, price INTEGER, country TEXT, type TEXT, category TEXT)''')
+                 (id INTEGER PRIMARY KEY, name TEXT, price INTEGER, 
+                  country TEXT, type TEXT, category TEXT, photo TEXT)''')
+    
     c.execute('''CREATE TABLE IF NOT EXISTS shop_women 
-                 (id INTEGER PRIMARY KEY, name TEXT, price INTEGER, country TEXT, type TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS user_players 
-                 (user_id INTEGER, player_id INTEGER, type TEXT)''')
+                 (id INTEGER PRIMARY KEY, name TEXT, price INTEGER, 
+                  country TEXT, type TEXT)''')
+    
     c.execute('''CREATE TABLE IF NOT EXISTS shop2 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, price INTEGER)''')
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS shop3 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, price INTEGER)''')
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS user_players 
+                 (user_id INTEGER, player_id INTEGER, type TEXT)''')
+    
     c.execute('''CREATE TABLE IF NOT EXISTS user_players2 
                  (user_id INTEGER, player_id INTEGER)''')
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS user_players3 
+                 (user_id INTEGER, player_id INTEGER)''')
+    
     c.execute('''CREATE TABLE IF NOT EXISTS achievements 
                  (user_id INTEGER, achievement TEXT)''')
+    
     c.execute('''CREATE TABLE IF NOT EXISTS bank 
-                 (user_id INTEGER PRIMARY KEY, balance INTEGER DEFAULT 0, last_interest TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS shop3
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, price INTEGER)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS user_players3
-                 (user_id INTEGER, player_id INTEGER)''')
+                 (user_id INTEGER PRIMARY KEY, balance INTEGER DEFAULT 0, 
+                  last_interest TEXT)''')
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS groups 
+                 (group_id INTEGER PRIMARY KEY, group_name TEXT, added_at TEXT)''')
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS claim_codes 
+                 (code TEXT PRIMARY KEY, amount INTEGER, max_claims INTEGER DEFAULT 5,
+                  claimed_count INTEGER DEFAULT 0, created_at TEXT, expires_at TEXT)''')
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS code_claims 
+                 (code TEXT, user_id INTEGER, claimed_at TEXT,
+                  PRIMARY KEY (code, user_id))''')
+    
     conn.commit()
     conn.close()
+    print("✅ Database initialized!")
 
 init_db()
 
@@ -84,7 +104,8 @@ def get_user(user_id, name=""):
     conn.close()
     return user
 
-# ============ START (CL ZONE VIP Style) ============
+# ============ PART 2: BASIC COMMANDS ============
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.first_name if user.first_name else user.username or "User"
@@ -95,93 +116,34 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     c.execute("SELECT * FROM users WHERE user_id=?", (user_id,))
     existing = c.fetchone()
     
+    keyboard = [
+        [InlineKeyboardButton("📢 UPDATES", url="https://t.me/clbotofficial")],
+        [InlineKeyboardButton("👥 MAIN GROUP", url="https://t.me/+eTD1m8Cjc_wyOTNl")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
     if not existing:
         c.execute("INSERT INTO users (user_id, name, balance, points, won, total) VALUES (?, ?, 1000, 0, 0, 0)", (user_id, name))
         conn.commit()
-        
-        # Keyboard buttons
-        keyboard = [
-            [InlineKeyboardButton("📢 UPDATES", url="https://t.me/clbotofficial")],
-            [InlineKeyboardButton("👥 MAIN GROUP", url="https://t.me/+eTD1m8Cjc_wyOTNl")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
         await update.message.reply_text(
-            f"✨ WELCOME TO CL ZONE ✨\n\n"
-            f"👑 {name}, you've joined the elite club!\n"
-            f"💰 1000 credits | 🏆 0 pts\n\n"
-            f"🎯 /claim - Daily rewards\n"
-            f"🎡 /spin - Daily spin\n"
-            f"👤 /profile - Your stats\n"
-            f"🏆 /leaderboard - Top players\n\n"
-            f"📌 Join our channels for exclusive updates!",
+            f"✨ WELCOME TO CL ZONE ✨\n\n👑 {name}, you've joined the elite club!\n💰 1000 credits | 🏆 0 pts\n\n🎯 /claim - Daily rewards\n🎡 /spin - Daily spin\n👤 /profile - Your stats\n🏆 /leaderboard - Top players",
             reply_markup=reply_markup
         )
     else:
-        # Keyboard buttons for existing users
-        keyboard = [
-            [InlineKeyboardButton("📢 UPDATES", url="https://t.me/clbotofficial")],
-            [InlineKeyboardButton("👥 MAIN GROUP", url="https://t.me/+eTD1m8Cjc_wyOTNl")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
         await update.message.reply_text(
-            f"✨ WELCOME BACK TO CL ZONE ✨\n\n"
-            f"👑 {name}\n"
-            f"💰 {existing[2]:,} credits | 🏆 {existing[3]} pts\n\n"
-            f"🎯 /claim - Daily rewards\n"
-            f"🎡 /spin - Daily spin\n"
-            f"👤 /profile - Your stats\n"
-            f"🏆 /leaderboard - Top players\n\n"
-            f"📌 Stay connected with our community!",
+            f"✨ WELCOME BACK TO CL ZONE ✨\n\n👑 {name}\n💰 {existing[2]:,} credits | 🏆 {existing[3]} pts\n\n🎯 /claim - Daily rewards\n🎡 /spin - Daily spin\n👤 /profile - Your stats\n🏆 /leaderboard - Top players",
             reply_markup=reply_markup
         )
     conn.close()
 
-# ============ HELP ============
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    msg = (
-        "📋 COMMAND LIST\n\n"
-        "👤 PROFILE:\n"
-        "   /profile - Your profile\n"
-        "   /setpfp - Set profile photo\n"
-        "   /rmpfp - Remove profile photo\n\n"
-        "🎁 EARN:\n"
-        "   /claim - 500 daily credits\n"
-        "   /spin - Daily spin (1k-10k)\n"
-        "   /dice - Dice game\n"
-        "   /flip - Heads/Tails\n\n"
-        "🏏 CRICKET:\n"
-        "   /matches - Live matches\n"
-        "   /bet - Place bet\n"
-        "   /mybets - Your bets\n"
-        "   /cancel - Cancel bet\n"
-        "   /allbets - All bets\n\n"
-        "🛒 SHOP:\n"
-        "   /shop - Buy players\n"
-        "   /shop2 - Cheap players\n"
-        "   /buy /buyw /buy2 - Purchase\n"
-        "   /myteam - Your collection\n"
-        "   /top - Top collectors\n\n"
-        "📊 STATS:\n"
-        "   /leaderboard - Rich list\n"
-        "   /top_fantasy - Points ranking\n"
-        "   /history - Bet history\n\n"
-        "💝 OTHER:\n"
-        "   /tip - Send credits\n"
-        "   /achievements - Your badges\n\n"
-        "🏦 BANK:\n"
-        "   /bank - Check balance\n"
-        "   /deposit - Add to bank\n"
-        "   /withdraw - Take from bank\n"
-        "   /claim_interest - 5% daily interest"
+    await update.message.reply_text(
+        "📋 COMMANDS\n\n"
+        "/start - Start bot\n/profile - Your profile\n/claim - 500 daily\n/spin - 1k-10k daily\n"
+        "/dice - Dice game\n/flip - Heads/Tails\n/matches - Live matches\n/bet - Place bet\n"
+        "/shop - Buy players\n/myteam - Your collection\n/leaderboard - Rich list\n/bank - Bank system\n"
+        "/claimcode - Claim code\n/activecodes - Active codes"
     )
-    await update.message.reply_text(msg)
 
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -197,11 +159,9 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     c.execute("SELECT balance, points, won, total, photo FROM users WHERE user_id=?", (user_id,))
     data = c.fetchone()
     
-    # Get bank balance
     c.execute("SELECT balance FROM bank WHERE user_id=?", (user_id,))
     bank_row = c.fetchone()
     bank_bal = bank_row[0] if bank_row else 0
-    
     conn.close()
     
     wallet_bal, points, won, total, photo = data
@@ -210,22 +170,18 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if photo:
         await update.message.reply_photo(photo=photo, 
-            caption=f"👤 PROFILE\n\n{name}\n💰 Wallet: {wallet_bal:,} | 🏦 Bank: {bank_bal:,}\n💰 Total: {total_wealth:,}\n🏆 Points: {points}\n📊 Bets: {won}/{total} ({win_rate}%)\n\n🔄 /setpfp | ❌ /rmpfp")
+            caption=f"👤 PROFILE\n\n{name}\n💰 Wallet: {wallet_bal:,} | 🏦 Bank: {bank_bal:,}\n💰 Total: {total_wealth:,}\n🏆 Points: {points}\n📊 Bets: {won}/{total} ({win_rate}%)")
     else:
-        await update.message.reply_text(
-            f"👤 PROFILE\n\n{name}\n💰 Wallet: {wallet_bal:,} | 🏦 Bank: {bank_bal:,}\n💰 Total: {total_wealth:,}\n🏆 Points: {points}\n📊 Bets: {won}/{total} ({win_rate}%)\n\n🔄 /setpfp | ❌ /rmpfp")
+        await update.message.reply_text(f"👤 PROFILE\n\n{name}\n💰 Wallet: {wallet_bal:,} | 🏦 Bank: {bank_bal:,}\n💰 Total: {total_wealth:,}\n🏆 Points: {points}\n📊 Bets: {won}/{total} ({win_rate}%)")
 
-# ============ SETPFP ============
 async def setpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    
     if not update.message.reply_to_message or not update.message.reply_to_message.photo:
         await update.message.reply_text('❌ Reply to a photo with /setpfp')
         return
-    
     photo = update.message.reply_to_message.photo[-1].file_id
     conn = get_db()
     c = conn.cursor()
@@ -234,13 +190,11 @@ async def setpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     await update.message.reply_text('✅ Profile photo updated!')
 
-# ============ RMPFP ============
 async def rmpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    
     conn = get_db()
     c = conn.cursor()
     c.execute("UPDATE users SET photo=NULL WHERE user_id=?", (user_id,))
@@ -248,89 +202,57 @@ async def rmpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     await update.message.reply_text('❌ Profile photo removed!')
 
-# ============ CLAIM ============
 async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    
     conn = get_db()
     c = conn.cursor()
-    c.execute("CREATE TABLE IF NOT EXISTS claim (user_id INTEGER PRIMARY KEY, last_claim DATE)")
     c.execute("SELECT last_claim FROM claim WHERE user_id=?", (user_id,))
     row = c.fetchone()
-    
     today = datetime.now().date()
-    today_str = today.strftime("%m/%d/%y")
-    
     if row and row[0]:
         last = datetime.fromisoformat(row[0]).date()
         if last == today:
-            await update.message.reply_text("⚠️ Already claimed today!\nCome back tomorrow.")
+            await update.message.reply_text("⚠️ Already claimed today!")
             conn.close()
             return
-    
     c.execute("INSERT OR REPLACE INTO claim (user_id, last_claim) VALUES (?, ?)", (user_id, today.isoformat()))
     c.execute("UPDATE users SET balance = balance + 500 WHERE user_id=?", (user_id,))
     conn.commit()
-    
     c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
     new_bal = c.fetchone()[0]
     conn.close()
-    
-    await update.message.reply_text(
-        f"✅ Claimed Daily Rewards of 500 Credits\n"
-        f"at {today_str}\n\n"
-        f"💰 New balance: {new_bal:,} 💰\n"
-        f"📅 Next claim: tomorrow"
-    )
+    await update.message.reply_text(f"✅ Claimed 500 credits!\n💰 New balance: {new_bal:,}")
 
-# ============ SPIN ============
-# ============ SPIN (Updated - Claim Style) ============
 async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    
     conn = get_db()
     c = conn.cursor()
-    c.execute("CREATE TABLE IF NOT EXISTS spin (user_id INTEGER PRIMARY KEY, last_claim TEXT)")
     c.execute("SELECT last_claim FROM spin WHERE user_id=?", (user_id,))
     row = c.fetchone()
-    
     now = datetime.now()
-    today_str = now.strftime("%m/%d/%y")
-    
     if row and row[0]:
         last = datetime.fromisoformat(row[0])
         if last.date() == now.date():
-            await update.message.reply_text(
-                f"⚠️ Already spin today!\n"
-                f"at {last.strftime('%m/%d/%y')}\n\n"
-                f"🎡 Next spin: tomorrow"
-            )
+            await update.message.reply_text("⚠️ Already spun today!")
             conn.close()
             return
-    
     amount = random.randint(1000, 10000)
     c.execute("INSERT OR REPLACE INTO spin (user_id, last_claim) VALUES (?, ?)", (user_id, now.isoformat()))
     c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount, user_id))
     conn.commit()
-    
     c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
     new_bal = c.fetchone()[0]
     conn.close()
-    
-    await update.message.reply_text(
-        f"✅ Claimed Daily Spin Rewards of {amount:,} Credits\n"
-        f"at {today_str}\n\n"
-        f"💰 New balance: {new_bal:,} 💰\n"
-        f"🎡 Next spin: tomorrow"
-    )
+    await update.message.reply_text(f"✅ Spin reward: {amount:,} credits!\n💰 New balance: {new_bal:,}")
 
-# ============ DICE ============
+# ============ PART 3: GAMES & BETTING ============
+
 async def dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
@@ -372,11 +294,10 @@ async def dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     
     if win > 0:
-        await update.message.reply_text(f"🎲 DICE\n\n🎲 Rolled: {roll} {dice_emoji[roll]}\n✨ You won {win:,} 💰 ({multi[roll]}x)\n💰 New balance: {new_bal:,} 💰")
+        await update.message.reply_text(f"🎲 DICE\n\n🎲 Rolled: {roll} {dice_emoji[roll]}\n✨ You won {win:,}💰 ({multi[roll]}x)\n💰 New balance: {new_bal:,}")
     else:
-        await update.message.reply_text(f"🎲 DICE\n\n🎲 Rolled: {roll} {dice_emoji[roll]}\n💀 You lost {amount:,} 💰\n💰 New balance: {new_bal:,} 💰")
+        await update.message.reply_text(f"🎲 DICE\n\n🎲 Rolled: {roll} {dice_emoji[roll]}\n💀 You lost {amount:,}💰\n💰 New balance: {new_bal:,}")
 
-# ============ FLIP ============
 async def flip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
@@ -420,15 +341,14 @@ async def flip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         c.execute("UPDATE users SET balance = ? WHERE user_id=?", (new_bal, user_id))
         conn.commit()
         conn.close()
-        await update.message.reply_text(f"🪙 {result.upper()}! You won {win:,} 💰\n💰 New balance: {new_bal:,} 💰")
+        await update.message.reply_text(f"🪙 {result.upper()}! You won {win:,}💰\n💰 New balance: {new_bal:,}")
     else:
         new_bal = balance - amount
         c.execute("UPDATE users SET balance = ? WHERE user_id=?", (new_bal, user_id))
         conn.commit()
         conn.close()
-        await update.message.reply_text(f"😞 {result.upper()}! You lost {amount:,} 💰\n💰 New balance: {new_bal:,} 💰")
+        await update.message.reply_text(f"😞 {result.upper()}! You lost {amount:,}💰\n💰 New balance: {new_bal:,}")
 
-# ============ MATCHES ============
 async def matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
@@ -439,21 +359,17 @@ async def matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
     c = conn.cursor()
     c.execute("SELECT id, team1, team2, date, locked FROM matches WHERE locked=0")
     matches_data = c.fetchall()
+    conn.close()
     
     if not matches_data:
         await update.message.reply_text('📭 No active matches')
-        conn.close()
         return
     
     msg = "🏏 LIVE MATCHES\n\n"
     for m in matches_data:
         status = "🔓 OPEN" if m[4] == 0 else "🔒 LOCKED"
-        msg += f"🔥 {m[1]} vs {m[2]}\n📅 {m[3]} | {status}\n💰 /bet {m[1]} <amount> | /bet {m[2]} <amount>\n\n"
-    
-    user = get_user(user_id)
-    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n💰 Your balance: {user[2]:,} 💰"
+        msg += f"🔥 {m[1]} vs {m[2]}\n📅 {m[3]} | {status}\n💰 /bet {m[1]} <amount>\n\n"
     await update.message.reply_text(msg)
-    conn.close()
 
 async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -463,7 +379,7 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     args = context.args
     if len(args) < 2:
-        await update.message.reply_text('❌ /bet TEAM AMOUNT\nExample: /bet KKR 1000')
+        await update.message.reply_text('❌ /bet TEAM AMOUNT\nExample: /bet IND 1000')
         return
     
     team = args[0].upper()
@@ -497,12 +413,11 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
         return
     
-    # 🔥 MAX 2 BETS CHECK 🔥
     c.execute("SELECT COUNT(*) FROM bets WHERE user_id = ? AND match_id = ?", (user_id, match[0]))
     bet_count = c.fetchone()[0]
     
     if bet_count >= 2:
-        await update.message.reply_text("❌ You can only place up to 2 bets per match!")
+        await update.message.reply_text("❌ Max 2 bets per match!")
         conn.close()
         return
     
@@ -511,9 +426,8 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.commit()
     conn.close()
     
-    await update.message.reply_text(f"✅ BET PLACED!\n\n🏏 {match[1]} vs {match[2]}\n🎯 {team}\n💰 {amount:,} 💰\n\n📊 New balance: {user[2]-amount:,} 💰\n💡 /mybets to check")
+    await update.message.reply_text(f"✅ BET PLACED!\n🏏 {match[1]} vs {match[2]}\n🎯 {team}\n💰 {amount:,}💰\n📊 New balance: {user[2]-amount:,}")
 
-# ============ MYBETS ============
 async def mybets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
@@ -522,24 +436,20 @@ async def mybets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     conn = get_db()
     c = conn.cursor()
-    c.execute("""
-        SELECT b.id, b.team, b.amount, m.team1, m.team2, m.date
-        FROM bets b JOIN matches m ON b.match_id = m.id WHERE b.user_id = ? AND m.locked = 0
-    """, (user_id,))
-    bets_data = c.fetchall()
+    c.execute("SELECT b.id, b.team, b.amount, m.team1, m.team2 FROM bets b JOIN matches m ON b.match_id = m.id WHERE b.user_id = ? AND m.locked = 0", (user_id,))
+    bets = c.fetchall()
     conn.close()
     
-    if not bets_data:
+    if not bets:
         await update.message.reply_text('📭 No active bets')
         return
     
-    msg = f"🎯 MY ACTIVE BETS ({len(bets_data)})\n\n"
-    for i, bet in enumerate(bets_data, 1):
-        msg += f"{i}️⃣ {bet[3]} vs {bet[4]}\n   🎯 {bet[1]} | 💰 {bet[2]:,}\n   📅 {bet[5]}\n\n"
-    msg += "━━━━━━━━━━━━━━━━━━━━━━\n💡 /cancel <number> to cancel bet"
+    msg = "🎯 MY BETS\n\n"
+    for i, bet in enumerate(bets, 1):
+        msg += f"{i}. {bet[3]} vs {bet[4]}\n   🎯 {bet[1]} | 💰 {bet[2]:,}\n\n"
+    msg += "💡 /cancel <number>"
     await update.message.reply_text(msg)
 
-# ============ CANCEL ============
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
@@ -548,534 +458,34 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     args = context.args
     if len(args) < 1:
-        await update.message.reply_text('❌ /cancel <bet_number>\nExample: /cancel 1\n\nUse /mybets to see numbers')
+        await update.message.reply_text('❌ /cancel <bet_number>')
         return
     
     try:
-        bet_number = int(args[0])
+        bet_num = int(args[0])
     except:
         await update.message.reply_text('❌ Invalid number')
         return
     
     conn = get_db()
     c = conn.cursor()
-    c.execute("""
-        SELECT b.id, b.amount, m.team1, m.team2, m.locked
-        FROM bets b JOIN matches m ON b.match_id = m.id WHERE b.user_id = ? AND m.locked = 0
-    """, (user_id,))
-    bets_data = c.fetchall()
+    c.execute("SELECT b.id, b.amount, m.team1, m.team2 FROM bets b JOIN matches m ON b.match_id = m.id WHERE b.user_id = ? AND m.locked = 0", (user_id,))
+    bets = c.fetchall()
     
-    if bet_number < 1 or bet_number > len(bets_data):
-        await update.message.reply_text(f'❌ Invalid! Choose 1-{len(bets_data)}')
+    if bet_num < 1 or bet_num > len(bets):
+        await update.message.reply_text(f'❌ Choose 1-{len(bets)}')
         conn.close()
         return
     
-    bet_to_cancel = bets_data[bet_number - 1]
-    
-    c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (bet_to_cancel[1], user_id))
-    c.execute("DELETE FROM bets WHERE id=?", (bet_to_cancel[0],))
-    c.execute("UPDATE users SET total = total - 1 WHERE user_id=?", (user_id,))
-    conn.commit()
-    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-    new_bal = c.fetchone()[0]
-    conn.close()
-    
-    await update.message.reply_text(f"✅ BET CANCELLED!\n\n🏏 {bet_to_cancel[2]} vs {bet_to_cancel[3]}\n💰 Refund: {bet_to_cancel[1]:,} 💰\n📊 New balance: {new_bal:,} 💰")
-
-# ============ ALLBETS ============
-async def allbets(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT id, team1, team2 FROM matches WHERE locked=0")
-    matches_data = c.fetchall()
-    
-    if not matches_data:
-        await update.message.reply_text('📭 No active bets')
-        conn.close()
-        return
-    
-    full_msg = "📊 ALL BETS\n\n"
-    for match in matches_data:
-        c.execute("SELECT b.team, b.amount, u.name FROM bets b JOIN users u ON b.user_id=u.user_id WHERE b.match_id=?", (match[0],))
-        bets_data = c.fetchall()
-        
-        if not bets_data:
-            continue
-        
-        team1_amount = 0
-        team2_amount = 0
-        team1_users = []
-        team2_users = []
-        
-        for bet in bets_data:
-            if bet[0] == match[1]:
-                team1_amount += bet[1]
-                team1_users.append(f"{bet[2]} - {bet[1]:,}")
-            else:
-                team2_amount += bet[1]
-                team2_users.append(f"{bet[2]} - {bet[1]:,}")
-        
-        full_msg += f"🏏 {match[1]} vs {match[2]}\n"
-        full_msg += f"🎯 {match[1]} (Total: {team1_amount:,} 💰):\n"
-        for i, u in enumerate(team1_users, 1):
-            full_msg += f"   {i}. {u}\n"
-        full_msg += f"\n🎯 {match[2]} (Total: {team2_amount:,} 💰):\n"
-        for i, u in enumerate(team2_users, 1):
-            full_msg += f"   {i}. {u}\n"
-        full_msg += f"\n💣 Total Pool: {team1_amount + team2_amount:,} 💰\n\n"
-    
-    await update.message.reply_text(full_msg)
-    conn.close()
-
-async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    
-    # Total wealth = wallet + bank
-    c.execute("""
-        SELECT u.name, u.balance + COALESCE(b.balance, 0) as total_wealth
-        FROM users u
-        LEFT JOIN bank b ON u.user_id = b.user_id
-        ORDER BY total_wealth DESC
-        LIMIT 10
-    """)
-    users_data = c.fetchall()
-    
-    msg = "🏆 TOP 10 RICHEST (Wallet + Bank)\n\n"
-    for i, u in enumerate(users_data, 1):
-        medal = "👑" if i==1 else "🥈" if i==2 else "🥉" if i==3 else f"{i}."
-        msg += f"{medal} {u[0]} - {u[1]:,} 💰\n"
-    
-    # Current user total wealth
-    c.execute("""
-        SELECT u.balance + COALESCE(b.balance, 0)
-        FROM users u
-        LEFT JOIN bank b ON u.user_id = b.user_id
-        WHERE u.user_id = ?
-    """, (user_id,))
-    user_total = c.fetchone()[0]
-    
-    rank = c.execute("""
-        SELECT COUNT(*) + 1 FROM (
-            SELECT u.balance + COALESCE(b.balance, 0) as total
-            FROM users u
-            LEFT JOIN bank b ON u.user_id = b.user_id
-        ) WHERE total > ?
-    """, (user_total,)).fetchone()[0]
-    
-    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 Your rank: #{rank}\n💰 Total wealth: {user_total:,} 💰"
-    
-    await update.message.reply_text(msg)
-    conn.close()
-
-
-# ============ TOP FANTASY ============
-async def top_fantasy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT name, points FROM users ORDER BY points DESC LIMIT 20")
-    users_data = c.fetchall()
-    
-    if not users_data:
-        await update.message.reply_text('📭 No fantasy points yet!')
-        conn.close()
-        return
-    
-    msg = "🏆 FANTASY LEADERBOARD\n\n"
-    for i, u in enumerate(users_data, 1):
-        msg += f"{i}. {u[0]} - {u[1]} pts\n"
-    
-    user = get_user(user_id)
-    rank = c.execute("SELECT COUNT(*) FROM users WHERE points > ?", (user[3],)).fetchone()[0] + 1
-    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 Your points: {user[3]} | Rank: #{rank}"
-    await update.message.reply_text(msg)
-    conn.close()
-
-# ============ HISTORY ============
-async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    user = get_user(user_id)
-    win_rate = int(user[4]/user[5]*100) if user[5] > 0 else 0
-    await update.message.reply_text(f'📜 BET HISTORY\n\n✅ Won: {user[4]}\n❌ Lost: {user[5]-user[4]}\n📊 Win Rate: {win_rate}%\n\n🏆 Fantasy Points: {user[3]}')
-
-# ============ TIP ============
-async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    if not update.message.reply_to_message:
-        await update.message.reply_text('❌ Reply to user with /tip AMOUNT')
-        return
-    
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text('❌ /tip AMOUNT\nExample: /tip 500')
-        return
-    
-    try:
-        amount = int(args[0])
-    except:
-        await update.message.reply_text('❌ Invalid amount')
-        return
-    
-    sender = update.effective_user
-    receiver = update.message.reply_to_message.from_user
-    
-    if sender.id == receiver.id:
-        await update.message.reply_text('❌ Cannot tip yourself!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT balance FROM users WHERE user_id=?", (sender.id,))
-    sender_bal = c.fetchone()[0]
-    
-    if sender_bal < amount:
-        await update.message.reply_text(f'❌ Need {amount:,}, have {sender_bal:,}')
-        conn.close()
-        return
-    
-    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (amount, sender.id))
-    c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount, receiver.id))
+    bet = bets[bet_num - 1]
+    c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (bet[1], user_id))
+    c.execute("DELETE FROM bets WHERE id=?", (bet[0],))
     conn.commit()
     conn.close()
     
-    await update.message.reply_text(f"💝 TIP SENT!\n\n📤 To: {receiver.first_name}\n💰 Amount: {amount:,} 💰\n📊 Your balance: {sender_bal - amount:,} 💰")
+    await update.message.reply_text(f"✅ Bet cancelled! Refund: {bet[1]:,}💰")
 
-# ============ ACHIEVEMENTS ============
-async def achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT achievement FROM achievements WHERE user_id=?", (user_id,))
-    ach = c.fetchall()
-    conn.close()
-    
-    if not ach:
-        await update.message.reply_text('🏆 MY ACHIEVEMENTS\n\nNo achievements yet!')
-        return
-    
-    msg = "🏆 MY ACHIEVEMENTS\n\n"
-    for i, a in enumerate(ach, 1):
-        msg += f"{i}. {a[0]} 🏆\n"
-    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\nTotal: {len(ach)} achievements"
-    await update.message.reply_text(msg)
-
-# ============ ADD DEFAULT PLAYERS (20 per category) ============
-async def add_default_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Add default players to shop - Admin only"""
-    
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("❌ Admin only!")
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    
-    # Clear existing
-    c.execute("DELETE FROM shop")
-    c.execute("DELETE FROM shop_women")
-    
-    # ========== INDIA CURRENT (20) ==========
-    india_current = [
-        ("Virat Kohli", 2000000, "India", "current"),
-        ("Rohit Sharma", 1900000, "India", "current"),
-        ("Shubman Gill", 1700000, "India", "current"),
-        ("Hardik Pandya", 1800000, "India", "current"),
-        ("Jasprit Bumrah", 2000000, "India", "current"),
-        ("Ravindra Jadeja", 1600000, "India", "current"),
-        ("KL Rahul", 1500000, "India", "current"),
-        ("Suryakumar Yadav", 1750000, "India", "current"),
-        ("Mohammed Shami", 1650000, "India", "current"),
-        ("Rishabh Pant", 1550000, "India", "current"),
-        ("Mohammed Siraj", 1450000, "India", "current"),
-        ("Axar Patel", 1400000, "India", "current"),
-        ("Shreyas Iyer", 1480000, "India", "current"),
-        ("Ishan Kishan", 1380000, "India", "current"),
-        ("Deepak Chahar", 1350000, "India", "current"),
-        ("Sanju Samson", 1420000, "India", "current"),
-        ("Yuzvendra Chahal", 1390000, "India", "current"),
-        ("Bhuvneshwar Kumar", 1370000, "India", "current"),
-        ("Shardul Thakur", 1320000, "India", "current"),
-        ("Washington Sundar", 1300000, "India", "current"),
-    ]
-    
-    # ========== INDIA LEGENDS (20) ==========
-    india_legends = [
-        ("Sachin Tendulkar", 2000000, "India", "legend"),
-        ("MS Dhoni", 2000000, "India", "legend"),
-        ("Rahul Dravid", 1800000, "India", "legend"),
-        ("Sourav Ganguly", 1700000, "India", "legend"),
-        ("Anil Kumble", 1600000, "India", "legend"),
-        ("Kapil Dev", 1900000, "India", "legend"),
-        ("Yuvraj Singh", 1750000, "India", "legend"),
-        ("Virender Sehwag", 1650000, "India", "legend"),
-        ("Zaheer Khan", 1500000, "India", "legend"),
-        ("Harbhajan Singh", 1400000, "India", "legend"),
-        ("Gautam Gambhir", 1350000, "India", "legend"),
-        ("VVS Laxman", 1300000, "India", "legend"),
-        ("Navjot Sidhu", 1000000, "India", "legend"),
-        ("Kris Srikkanth", 950000, "India", "legend"),
-        ("Venkatesh Prasad", 900000, "India", "legend"),
-        ("Javagal Srinath", 1200000, "India", "legend"),
-        ("Robin Singh", 850000, "India", "legend"),
-        ("Ajay Jadeja", 880000, "India", "legend"),
-        ("Nayan Mongia", 800000, "India", "legend"),
-        ("Chetan Sharma", 780000, "India", "legend"),
-    ]
-    
-    # ========== ENGLAND CURRENT (20) ==========
-    england_current = [
-        ("Joe Root", 1800000, "England", "current"),
-        ("Ben Stokes", 1900000, "England", "current"),
-        ("Jos Buttler", 1700000, "England", "current"),
-        ("Jonny Bairstow", 1600000, "England", "current"),
-        ("Jofra Archer", 1750000, "England", "current"),
-        ("Moeen Ali", 1500000, "England", "current"),
-        ("Sam Curran", 1550000, "England", "current"),
-        ("Chris Woakes", 1400000, "England", "current"),
-        ("Mark Wood", 1450000, "England", "current"),
-        ("Adil Rashid", 1350000, "England", "current"),
-        ("Dawid Malan", 1300000, "England", "current"),
-        ("Jason Roy", 1250000, "England", "current"),
-        ("Liam Livingstone", 1450000, "England", "current"),
-        ("Harry Brook", 1500000, "England", "current"),
-        ("Reece Topley", 1200000, "England", "current"),
-        ("David Willey", 1150000, "England", "current"),
-        ("Phil Salt", 1100000, "England", "current"),
-        ("Will Jacks", 1050000, "England", "current"),
-        ("Gus Atkinson", 1000000, "England", "current"),
-        ("Tom Curran", 1080000, "England", "current"),
-    ]
-    
-    # ========== ENGLAND LEGENDS (20) ==========
-    england_legends = [
-        ("Ian Botham", 2000000, "England", "legend"),
-        ("Andrew Flintoff", 1900000, "England", "legend"),
-        ("Kevin Pietersen", 1850000, "England", "legend"),
-        ("Alastair Cook", 1700000, "England", "legend"),
-        ("James Anderson", 1750000, "England", "legend"),
-        ("Stuart Broad", 1650000, "England", "legend"),
-        ("Graeme Swann", 1600000, "England", "legend"),
-        ("Michael Vaughan", 1550000, "England", "legend"),
-        ("Marcus Trescothick", 1500000, "England", "legend"),
-        ("Paul Collingwood", 1450000, "England", "legend"),
-        ("Alec Stewart", 1400000, "England", "legend"),
-        ("Darren Gough", 1350000, "England", "legend"),
-        ("Steve Harmison", 1300000, "England", "legend"),
-        ("Matthew Hoggard", 1250000, "England", "legend"),
-        ("Monty Panesar", 1200000, "England", "legend"),
-        ("Nasser Hussain", 1400000, "England", "legend"),
-        ("Graham Gooch", 1500000, "England", "legend"),
-        ("David Gower", 1450000, "England", "legend"),
-        ("Allan Lamb", 1300000, "England", "legend"),
-        ("Derek Underwood", 1250000, "England", "legend"),
-    ]
-    
-    # ========== NEW ZEALAND CURRENT (20) ==========
-    nz_current = [
-        ("Kane Williamson", 1900000, "New Zealand", "current"),
-        ("Trent Boult", 1800000, "New Zealand", "current"),
-        ("Devon Conway", 1600000, "New Zealand", "current"),
-        ("Daryl Mitchell", 1550000, "New Zealand", "current"),
-        ("Mitchell Santner", 1450000, "New Zealand", "current"),
-        ("Lockie Ferguson", 1500000, "New Zealand", "current"),
-        ("Tim Southee", 1400000, "New Zealand", "current"),
-        ("Glenn Phillips", 1350000, "New Zealand", "current"),
-        ("Michael Bracewell", 1250000, "New Zealand", "current"),
-        ("Finn Allen", 1300000, "New Zealand", "current"),
-        ("Adam Milne", 1200000, "New Zealand", "current"),
-        ("Ish Sodhi", 1150000, "New Zealand", "current"),
-        ("James Neesham", 1250000, "New Zealand", "current"),
-        ("Tom Latham", 1300000, "New Zealand", "current"),
-        ("Martin Guptill", 1400000, "New Zealand", "current"),
-        ("Matt Henry", 1200000, "New Zealand", "current"),
-        ("Kyle Jamieson", 1350000, "New Zealand", "current"),
-        ("Henry Nicholls", 1100000, "New Zealand", "current"),
-        ("Will Young", 1050000, "New Zealand", "current"),
-        ("Ben Sears", 1000000, "New Zealand", "current"),
-    ]
-    
-    # ========== NEW ZEALAND LEGENDS (20) ==========
-    nz_legends = [
-        ("Brendon McCullum", 2000000, "New Zealand", "legend"),
-        ("Richard Hadlee", 2000000, "New Zealand", "legend"),
-        ("Martin Crowe", 1900000, "New Zealand", "legend"),
-        ("Stephen Fleming", 1700000, "New Zealand", "legend"),
-        ("Daniel Vettori", 1800000, "New Zealand", "legend"),
-        ("Chris Cairns", 1650000, "New Zealand", "legend"),
-        ("Nathan Astle", 1550000, "New Zealand", "legend"),
-        ("Scott Styris", 1450000, "New Zealand", "legend"),
-        ("Craig McMillan", 1400000, "New Zealand", "legend"),
-        ("Jacob Oram", 1350000, "New Zealand", "legend"),
-        ("Kyle Mills", 1300000, "New Zealand", "legend"),
-        ("Tim Southee", 1400000, "New Zealand", "legend"),
-        ("Ross Taylor", 1600000, "New Zealand", "legend"),
-        ("John Wright", 1300000, "New Zealand", "legend"),
-        ("Geoff Allott", 1100000, "New Zealand", "legend"),
-        ("Shane Bond", 1500000, "New Zealand", "legend"),
-        ("Dion Nash", 1200000, "New Zealand", "legend"),
-        ("Mark Greatbatch", 1150000, "New Zealand", "legend"),
-        ("Adam Parore", 1100000, "New Zealand", "legend"),
-        ("Chris Harris", 1250000, "New Zealand", "legend"),
-    ]
-    
-    # ========== AUSTRALIA CURRENT (20) ==========
-    australia_current = [
-        ("Pat Cummins", 1900000, "Australia", "current"),
-        ("Steve Smith", 2000000, "Australia", "current"),
-        ("David Warner", 1800000, "Australia", "current"),
-        ("Mitchell Starc", 1850000, "Australia", "current"),
-        ("Glenn Maxwell", 1750000, "Australia", "current"),
-        ("Travis Head", 1650000, "Australia", "current"),
-        ("Marnus Labuschagne", 1700000, "Australia", "current"),
-        ("Josh Hazlewood", 1600000, "Australia", "current"),
-        ("Adam Zampa", 1500000, "Australia", "current"),
-        ("Marcus Stoinis", 1450000, "Australia", "current"),
-        ("Cameron Green", 1550000, "Australia", "current"),
-        ("Alex Carey", 1350000, "Australia", "current"),
-        ("Mitchell Marsh", 1400000, "Australia", "current"),
-        ("Nathan Lyon", 1480000, "Australia", "current"),
-        ("Matthew Wade", 1300000, "Australia", "current"),
-        ("Tim David", 1380000, "Australia", "current"),
-        ("Ashton Agar", 1250000, "Australia", "current"),
-        ("Sean Abbott", 1200000, "Australia", "current"),
-        ("Ben McDermott", 1150000, "Australia", "current"),
-        ("Kane Richardson", 1100000, "Australia", "current"),
-    ]
-    
-    # ========== AUSTRALIA LEGENDS (20) ==========
-    australia_legends = [
-        ("Ricky Ponting", 2000000, "Australia", "legend"),
-        ("Adam Gilchrist", 2000000, "Australia", "legend"),
-        ("Shane Warne", 2000000, "Australia", "legend"),
-        ("Glenn McGrath", 1950000, "Australia", "legend"),
-        ("Matthew Hayden", 1850000, "Australia", "legend"),
-        ("Brett Lee", 1800000, "Australia", "legend"),
-        ("Michael Clarke", 1750000, "Australia", "legend"),
-        ("Andrew Symonds", 1700000, "Australia", "legend"),
-        ("Steve Waugh", 1950000, "Australia", "legend"),
-        ("Mark Waugh", 1600000, "Australia", "legend"),
-        ("Ian Healy", 1500000, "Australia", "legend"),
-        ("Craig McDermott", 1450000, "Australia", "legend"),
-        ("Jason Gillespie", 1550000, "Australia", "legend"),
-        ("Damien Martyn", 1400000, "Australia", "legend"),
-        ("Justin Langer", 1350000, "Australia", "legend"),
-        ("Michael Hussey", 1650000, "Australia", "legend"),
-        ("Shane Watson", 1550000, "Australia", "legend"),
-        ("Brad Haddin", 1300000, "Australia", "legend"),
-        ("Stuart Clark", 1250000, "Australia", "legend"),
-        ("Nathan Bracken", 1200000, "Australia", "legend"),
-    ]
-    
-    # ========== WOMEN (20) ==========
-    women_players = [
-        ("Smriti Mandhana", 1500000, "Women", "women"),
-        ("Harmanpreet Kaur", 1400000, "Women", "women"),
-        ("Jemimah Rodrigues", 1300000, "Women", "women"),
-        ("Shafali Verma", 1350000, "Women", "women"),
-        ("Deepti Sharma", 1250000, "Women", "women"),
-        ("Poonam Yadav", 1150000, "Women", "women"),
-        ("Richa Ghosh", 1200000, "Women", "women"),
-        ("Shefali Verma", 1100000, "Women", "women"),
-        ("Meg Lanning", 1600000, "Women", "women"),
-        ("Ellyse Perry", 1800000, "Women", "women"),
-        ("Alyssa Healy", 1550000, "Women", "women"),
-        ("Sophie Devine", 1650000, "Women", "women"),
-        ("Amelia Kerr", 1450000, "Women", "women"),
-        ("Suzy Bates", 1500000, "Women", "women"),
-        ("Natalie Sciver", 1550000, "Women", "women"),
-        ("Heather Knight", 1500000, "Women", "women"),
-        ("Tammy Beaumont", 1400000, "Women", "women"),
-        ("Marizanne Kapp", 1450000, "Women", "women"),
-        ("Laura Wolvaardt", 1350000, "Women", "women"),
-        ("Tahlia McGrath", 1400000, "Women", "women"),
-    ]
-    
-    # Insert India Current
-    for name, price, country, ptype in india_current:
-        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
-    
-    # Insert India Legends
-    for name, price, country, ptype in india_legends:
-        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
-    
-    # Insert England Current
-    for name, price, country, ptype in england_current:
-        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
-    
-    # Insert England Legends
-    for name, price, country, ptype in england_legends:
-        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
-    
-    # Insert New Zealand Current
-    for name, price, country, ptype in nz_current:
-        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
-    
-    # Insert New Zealand Legends
-    for name, price, country, ptype in nz_legends:
-        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
-    
-    # Insert Australia Current
-    for name, price, country, ptype in australia_current:
-        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
-    
-    # Insert Australia Legends
-    for name, price, country, ptype in australia_legends:
-        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
-    
-    # Insert Women
-    for name, price, country, ptype in women_players:
-        c.execute("INSERT INTO shop_women (name, price, country, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
-    
-    conn.commit()
-    
-    c.execute("SELECT COUNT(*) FROM shop")
-    shop_count = c.fetchone()[0]
-    c.execute("SELECT COUNT(*) FROM shop_women")
-    women_count = c.fetchone()[0]
-    
-    conn.close()
-    
-    await update.message.reply_text(
-        f"✅ **20 PLAYERS ADDED PER CATEGORY!**\n\n"
-        f"🏏 Total Men: {shop_count}\n"
-        f"👩 Total Women: {women_count}\n\n"
-        f"🇮🇳 India: 40 (20 Current + 20 Legends)\n"
-        f"🏴󠁧󠁢󠁥󠁮󠁧󠁿 England: 40 (20 Current + 20 Legends)\n"
-        f"🇳🇿 New Zealand: 40 (20 Current + 20 Legends)\n"
-        f"🇦🇺 Australia: 40 (20 Current + 20 Legends)\n"
-        f"👩 Women: 20\n\n"
-        f"💰 Prices: 780,000 - 2,000,000",
-        parse_mode="Markdown"
-    )
-
-
+# ============ PART 4: SHOP SYSTEM ============
 
 async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -1086,64 +496,17 @@ async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🇮🇳 India (Current)", callback_data="shop_India_current")],
         [InlineKeyboardButton("🇮🇳 India (Legends)", callback_data="shop_India_legend")],
+        [InlineKeyboardButton("🇦🇺 Australia (Current)", callback_data="shop_Australia_current")],
+        [InlineKeyboardButton("🇦🇺 Australia (Legends)", callback_data="shop_Australia_legend")],
         [InlineKeyboardButton("🏴󠁧󠁢󠁥󠁮󠁧󠁿 England (Current)", callback_data="shop_England_current")],
         [InlineKeyboardButton("🏴󠁧󠁢󠁥󠁮󠁧󠁿 England (Legends)", callback_data="shop_England_legend")],
         [InlineKeyboardButton("🇳🇿 New Zealand (Current)", callback_data="shop_New Zealand_current")],
         [InlineKeyboardButton("🇳🇿 New Zealand (Legends)", callback_data="shop_New Zealand_legend")],
-        [InlineKeyboardButton("🇦🇺 Australia (Current)", callback_data="shop_Australia_current")],
-        [InlineKeyboardButton("🇦🇺 Australia (Legends)", callback_data="shop_Australia_legend")],
+        [InlineKeyboardButton("🇱🇰 Sri Lanka (Current)", callback_data="shop_Sri Lanka_current")],
+        [InlineKeyboardButton("🇱🇰 Sri Lanka (Legends)", callback_data="shop_Sri Lanka_legend")],
         [InlineKeyboardButton("👩 Women Players", callback_data="shop_women")],
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("🛒 CRICKETER SHOP\n\nSelect category:", reply_markup=reply_markup)
-# ============ ADMIN: SET PRICE FOR SHOP1 ============
-async def setprice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Set price for any player - Admin only"""
-    
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    
-    args = context.args
-    if len(args) < 2:
-        await update.message.reply_text(
-            "📝 **SET PRICE**\n\n"
-            "Usage: `/setprice <player_id> <new_price>`\n"
-            "Example: `/setprice 1 2500000`\n\n"
-            "Use `/shop` to see player IDs",
-            parse_mode="Markdown"
-        )
-        return
-    
-    try:
-        player_id = int(args[0])
-        new_price = int(args[1])
-    except:
-        await update.message.reply_text('❌ Invalid input!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    
-    # Check in shop1
-    c.execute("SELECT name FROM shop WHERE id=?", (player_id,))
-    player = c.fetchone()
-    
-    if not player:
-        await update.message.reply_text(f'❌ Player ID {player_id} not found!')
-        conn.close()
-        return
-    
-    c.execute("UPDATE shop SET price = ? WHERE id=?", (new_price, player_id))
-    conn.commit()
-    conn.close()
-    
-    await update.message.reply_text(
-        f"✅ **PRICE UPDATED!**\n\n"
-        f"🏏 {player[0]}\n"
-        f"💰 Old: {old_price:,} → New: {new_price:,}",
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text("🛒 CRICKETER SHOP\n\nSelect category:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1158,13 +521,13 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
         
         if not players:
-            await query.edit_message_text("👩 WOMEN CRICKETERS\n\nNo players yet!")
+            await query.edit_message_text("👩 No women players yet!")
             return
         
         msg = "👩 WOMEN CRICKETERS\n\n"
         for p in players:
             msg += f"{p[0]}. {p[1]} - {p[2]:,} 💰\n"
-        msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /buyw <number> to purchase"
+        msg += "\n💡 /buyw <number>"
         await query.edit_message_text(msg)
         return
     
@@ -1186,10 +549,10 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"❌ No players found")
         return
     
-    msg = f"🛒 {country} {ptype.upper()} PLAYERS\n\n"
+    msg = f"🛒 {country} {ptype.upper()}\n\n"
     for p in players:
         msg += f"{p[0]}. {p[1]} - {p[2]:,} 💰\n"
-    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /buy <number> to purchase"
+    msg += "\n💡 /buy <number>"
     await query.edit_message_text(msg)
 
 async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1200,7 +563,7 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     args = context.args
     if len(args) < 1:
-        await update.message.reply_text('❌ /buy <player_id>\nExample: /buy 1')
+        await update.message.reply_text('❌ /buy <player_id>')
         return
     
     try:
@@ -1219,28 +582,31 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
         return
     
+    name, price = player
+    
     c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
     balance = c.fetchone()[0]
     
-    if balance < player[1]:
-        await update.message.reply_text(f'❌ Need {player[1]:,}, have {balance:,}')
+    if balance < price:
+        await update.message.reply_text(f'❌ Need {price:,}, have {balance:,}')
         conn.close()
         return
     
     c.execute("SELECT * FROM user_players WHERE user_id=? AND player_id=? AND type='mens'", (user_id, player_id))
     if c.fetchone():
-        await update.message.reply_text(f'❌ You already own {player[0]}!')
+        await update.message.reply_text(f'❌ You already own {name}!')
         conn.close()
         return
     
-    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (player[1], user_id))
+    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (price, user_id))
     c.execute("INSERT INTO user_players (user_id, player_id, type) VALUES (?, ?, 'mens')", (user_id, player_id))
     conn.commit()
+    
     c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
     new_bal = c.fetchone()[0]
     conn.close()
     
-    await update.message.reply_text(f"✅ PURCHASED!\n\n🏏 {player[0]}\n💰 Price: {player[1]:,} 💰\n📊 New balance: {new_bal:,} 💰")
+    await update.message.reply_text(f"✅ PURCHASED!\n🏏 {name}\n💰 Price: {price:,}💰\n📊 New balance: {new_bal:,}")
 
 async def buyw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -1250,7 +616,7 @@ async def buyw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     args = context.args
     if len(args) < 1:
-        await update.message.reply_text('❌ /buyw <player_id>\nExample: /buyw 1')
+        await update.message.reply_text('❌ /buyw <player_id>')
         return
     
     try:
@@ -1269,151 +635,31 @@ async def buyw(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
         return
     
+    name, price = player
+    
     c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
     balance = c.fetchone()[0]
     
-    if balance < player[1]:
-        await update.message.reply_text(f'❌ Need {player[1]:,}, have {balance:,}')
+    if balance < price:
+        await update.message.reply_text(f'❌ Need {price:,}, have {balance:,}')
         conn.close()
         return
     
     c.execute("SELECT * FROM user_players WHERE user_id=? AND player_id=? AND type='women'", (user_id, player_id))
     if c.fetchone():
-        await update.message.reply_text(f'❌ You already own {player[0]}!')
+        await update.message.reply_text(f'❌ You already own {name}!')
         conn.close()
         return
     
-    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (player[1], user_id))
+    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (price, user_id))
     c.execute("INSERT INTO user_players (user_id, player_id, type) VALUES (?, ?, 'women')", (user_id, player_id))
     conn.commit()
+    
     c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
     new_bal = c.fetchone()[0]
     conn.close()
     
-    await update.message.reply_text(f"✅ PURCHASED!\n\n👩 {player[0]}\n💰 Price: {player[1]:,} 💰\n📊 New balance: {new_bal:,} 💰")
-
-# ============ SHOP2 ============
-async def shop2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT id, name, price FROM shop2 ORDER BY price ASC")
-    players = c.fetchall()
-    conn.close()
-    
-    if not players:
-        await update.message.reply_text('🛒 CHEAP SHOP\n\nNo players yet.\n👑 Admin: /addplayer2 <name> <price>')
-        return
-    
-    msg = "🛒 CHEAP PLAYERS SHOP\n\n"
-    for p in players:
-        msg += f"{p[0]}. {p[1]} - {p[2]:,} 💰\n"
-    msg += "\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /buy2 <id> to purchase"
-    await update.message.reply_text(msg)
-
-async def buy2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text('❌ /buy2 <player_id>\nExample: /buy2 1')
-        return
-    
-    try:
-        player_id = int(args[0])
-    except:
-        await update.message.reply_text('❌ Invalid ID')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT name, price FROM shop2 WHERE id=?", (player_id,))
-    player = c.fetchone()
-    
-    if not player:
-        await update.message.reply_text(f'❌ Player ID {player_id} not found!')
-        conn.close()
-        return
-    
-    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-    balance = c.fetchone()[0]
-    
-    if balance < player[1]:
-        await update.message.reply_text(f'❌ Need {player[1]:,}, have {balance:,}')
-        conn.close()
-        return
-    
-    c.execute("SELECT * FROM user_players2 WHERE user_id=? AND player_id=?", (user_id, player_id))
-    if c.fetchone():
-        await update.message.reply_text(f'❌ You already own {player[0]}!')
-        conn.close()
-        return
-    
-    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (player[1], user_id))
-    c.execute("INSERT INTO user_players2 (user_id, player_id) VALUES (?, ?)", (user_id, player_id))
-    conn.commit()
-    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-    new_bal = c.fetchone()[0]
-    conn.close()
-    
-    await update.message.reply_text(f"✅ PURCHASED!\n\n🏏 {player[0]}\n💰 Price: {player[1]:,} 💰\n📊 New balance: {new_bal:,} 💰")
-
-async def myteam2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT s.name, s.price FROM user_players2 u JOIN shop2 s ON u.player_id=s.id WHERE u.user_id=?", (user_id,))
-    players = c.fetchall()
-    conn.close()
-    
-    if not players:
-        await update.message.reply_text('📭 No cheap players owned.\nUse /shop2 to buy!')
-        return
-    
-    total = sum(p[1] for p in players)
-    msg = "🤑 MY CHEAP PLAYERS\n\n"
-    for i, p in enumerate(players, 1):
-        msg += f"{i}. {p[0]} - {p[1]:,} 💰\n"
-    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💰 Total spent: {total:,} 💰"
-    await update.message.reply_text(msg)
-
-async def top2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT u.name, COUNT(up.player_id) as count, COALESCE(SUM(s.price), 0) as total FROM users u JOIN user_players2 up ON u.user_id=up.user_id JOIN shop2 s ON up.player_id=s.id GROUP BY u.user_id ORDER BY total DESC LIMIT 10")
-    tops = c.fetchall()
-    
-    if not tops:
-        await update.message.reply_text('🏆 CHEAP PLAYERS TOP\n\nNo one owns any yet!')
-        conn.close()
-        return
-    
-    msg = "🏆 CHEAP PLAYERS TOP\n\n"
-    for i, t in enumerate(tops, 1):
-        medal = "👑" if i==1 else "🥈" if i==2 else "🥉" if i==3 else f"{i}."
-        msg += f"{medal} {t[0]} - {t[1]} players ({t[2]:,} 💰)\n"
-    
-    c.execute("SELECT COUNT(*) FROM user_players2 WHERE user_id=?", (user_id,))
-    my_count = c.fetchone()[0]
-    msg += f"\n📊 You own: {my_count} players"
-    await update.message.reply_text(msg)
-    conn.close()
+    await update.message.reply_text(f"✅ PURCHASED!\n👩 {name}\n💰 Price: {price:,}💰\n📊 New balance: {new_bal:,}")
 
 async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -1424,52 +670,41 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = get_db()
     c = conn.cursor()
     
-    c.execute("SELECT p.name, p.price FROM user_players u JOIN shop p ON u.player_id=p.id WHERE u.user_id=? AND u.type='mens'", (user_id,))
+    c.execute("SELECT s.name, s.price FROM user_players u JOIN shop s ON u.player_id = s.id WHERE u.user_id = ? AND u.type = 'mens'", (user_id,))
     mens = c.fetchall()
-    c.execute("SELECT w.name, w.price FROM user_players u JOIN shop_women w ON u.player_id=w.id WHERE u.user_id=? AND u.type='women'", (user_id,))
+    
+    c.execute("SELECT w.name, w.price FROM user_players u JOIN shop_women w ON u.player_id = w.id WHERE u.user_id = ? AND u.type = 'women'", (user_id,))
     women = c.fetchall()
-    c.execute("SELECT s.name, s.price FROM user_players2 u JOIN shop2 s ON u.player_id=s.id WHERE u.user_id=?", (user_id,))
-    cheap = c.fetchall()
     
     conn.close()
     
-    mens_total = sum(p[1] for p in mens)
-    women_total = sum(w[1] for w in women)
-    cheap_total = sum(c[1] for c in cheap)
+    if not mens and not women:
+        await update.message.reply_text("📭 No players owned. Use /shop to buy!")
+        return
     
     msg = "🏏 MY CRICKET TEAM\n\n━━━━━━━━━━━━━━━━━━━━━━\n👨 MENS"
     if mens:
         msg += f" ({len(mens)})\n\n"
         for i, p in enumerate(mens, 1):
             msg += f"{i}. {p[0]} - {p[1]:,} 💰\n"
-        msg += f"\nTotal: {mens_total:,} 💰"
+        msg += f"\nTotal: {sum(p[1] for p in mens):,} 💰"
     else:
-        msg += "\n\nNo mens players. /shop to buy!"
-    
-    msg += "\n\n━━━━━━━━━━━━━━━━━━━━━━\n🤑 CHEAP"
-    if cheap:
-        msg += f" ({len(cheap)})\n\n"
-        for i, c in enumerate(cheap, 1):
-            msg += f"{i}. {c[0]} - {c[1]:,} 💰\n"
-        msg += f"\nTotal: {cheap_total:,} 💰"
-    else:
-        msg += "\n\nNo cheap players. /shop2 to buy!"
+        msg += "\n\nNo mens players."
     
     msg += "\n\n━━━━━━━━━━━━━━━━━━━━━━\n👩 WOMEN"
     if women:
         msg += f" ({len(women)})\n\n"
         for i, w in enumerate(women, 1):
             msg += f"{i}. {w[0]} - {w[1]:,} 💰\n"
-        msg += f"\nTotal: {women_total:,} 💰"
+        msg += f"\nTotal: {sum(w[1] for w in women):,} 💰"
     else:
-        msg += "\n\nNo women players. /shop women section"
+        msg += "\n\nNo women players."
     
-    grand_total = mens_total + cheap_total + women_total
-    total_players = len(mens) + len(cheap) + len(women)
-    msg += f"\n\n━━━━━━━━━━━━━━━━━━━━━━\n💰 GRAND TOTAL: {grand_total:,} 💰\n🏆 TOTAL PLAYERS: {total_players}"
+    total = sum(p[1] for p in mens) + sum(w[1] for w in women)
+    msg += f"\n\n━━━━━━━━━━━━━━━━━━━━━━\n💰 GRAND TOTAL: {total:,} 💰"
     await update.message.reply_text(msg)
 
-async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
@@ -1477,537 +712,18 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT u.name, COUNT(up.player_id) as count, COALESCE(SUM(p.price), 0) as total FROM users u JOIN user_players up ON u.user_id=up.user_id JOIN shop p ON up.player_id=p.id WHERE up.type='mens' GROUP BY u.user_id ORDER BY total DESC LIMIT 10")
-    tops = c.fetchall()
+    c.execute("SELECT name, balance FROM users ORDER BY balance DESC LIMIT 10")
+    users = c.fetchall()
+    conn.close()
     
-    if not tops:
-        await update.message.reply_text('🏆 TOP COLLECTORS\n\nNo one owns any players yet!')
-        conn.close()
-        return
-    
-    msg = "🏆 TOP COLLECTORS\n\n"
-    for i, t in enumerate(tops, 1):
+    msg = "🏆 TOP 10 RICHEST\n\n"
+    for i, u in enumerate(users, 1):
         medal = "👑" if i==1 else "🥈" if i==2 else "🥉" if i==3 else f"{i}."
-        msg += f"{medal} {t[0]} - {t[1]} players ({t[2]:,} 💰)\n"
-    
-    c.execute("SELECT COUNT(up.player_id), COALESCE(SUM(p.price), 0) FROM user_players up JOIN shop p ON up.player_id=p.id WHERE up.user_id=? AND up.type='mens'", (user_id,))
-    user_data = c.fetchone()
-    player_count = user_data[0] if user_data else 0
-    total_value = user_data[1] if user_data else 0
-    
-    rank = 1
-    for i, t in enumerate(tops, 1):
-        if t[0] == update.effective_user.first_name:  # ← COLON YAHAN HONA CHAHIYE
-            rank = i
-            break
-    else:
-        rank = len(tops) + 1
-    
-    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 Your rank: #{rank}\n💰 Collection value: {total_value:,} 💰\n🏆 Players: {player_count}"
-    await update.message.reply_text(msg)
-    conn.close()
-
-# ============ ADMIN CRICKET COMMANDS ============
-async def addmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    
-    args = context.args
-    if len(args) < 4:
-        await update.message.reply_text('❌ /addmatch TEAM1 vs TEAM2 YYYY-MM-DD')
-        return
-    
-    team1 = args[0]
-    team2 = args[2]
-    date = args[3]
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("INSERT INTO matches (team1, team2, date, status, locked) VALUES (?, ?, ?, 'upcoming', 0)", (team1, team2, date))
-    conn.commit()
-    conn.close()
-    
-    await update.message.reply_text(f"✅ MATCH ADDED!\n\n🏏 {team1} vs {team2}\n📅 {date}\n🔓 Status: OPEN")
-
-# ============ ADMIN: DELETE MATCH WITH REFUND ============
-async def deletematch(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Delete match and optionally refund all bets - Admin only"""
-    
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    
-    args = context.args
-    if len(args) < 3:
-        await update.message.reply_text(
-            "❌ USAGE:\n"
-            "/deletematch TEAM1 vs TEAM2\n"
-            "/deletematch TEAM1 vs TEAM2 refund\n\n"
-            "💡 Add 'refund' to return credits to all bettors"
-        )
-        return
-    
-    team1 = args[0].upper()
-    team2 = args[2].upper()
-    do_refund = len(args) > 3 and args[3].lower() == 'refund'
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT id, team1, team2 FROM matches WHERE (team1=? AND team2=?)", (team1, team2))
-    match = c.fetchone()
-    
-    if not match:
-        await update.message.reply_text(f'❌ Match not found: {team1} vs {team2}')
-        conn.close()
-        return
-    
-    # Get all bets for refund calculation
-    c.execute("SELECT user_id, amount FROM bets WHERE match_id=?", (match[0],))
-    bets = c.fetchall()
-    
-    refund_count = 0
-    refund_total = 0
-    
-    # Process refund if requested
-    if do_refund and bets:
-        for bet in bets:
-            user_id, amount = bet
-            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount, user_id))
-            refund_count += 1
-            refund_total += amount
-        
-        # Also update total bets count for users
-        c.execute("UPDATE users SET total = total - ? WHERE user_id IN (SELECT user_id FROM bets WHERE match_id=?)", (refund_count, match[0]))
-        conn.commit()
-    
-    # Delete bets and match
-    c.execute("DELETE FROM bets WHERE match_id=?", (match[0],))
-    c.execute("DELETE FROM matches WHERE id=?", (match[0],))
-    conn.commit()
-    conn.close()
-    
-    # Response message
-    if do_refund and refund_count > 0:
-        await update.message.reply_text(
-            f"🗑️ MATCH DELETED + REFUNDED!\n\n"
-            f"🏏 {match[1]} vs {match[2]}\n"
-            f"💰 Refunded: {refund_count} users\n"
-            f"💰 Total refund: {refund_total:,} credits\n\n"
-            f"✅ All bettors got their money back!"
-        )
-    elif do_refund and refund_count == 0:
-        await update.message.reply_text(
-            f"🗑️ MATCH DELETED!\n\n"
-            f"🏏 {match[1]} vs {match[2]}\n"
-            f"ℹ️ No bets to refund"
-        )
-    else:
-        await update.message.reply_text(
-            f"🗑️ MATCH DELETED WITHOUT REFUND!\n\n"
-            f"🏏 {match[1]} vs {match[2]}\n"
-            f"⚠️ {len(bets)} users lost their bets!\n\n"
-            f"💡 Next time use: /deletematch {team1} vs {team2} refund"
-        )
-
-async def lockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    
-    args = context.args
-    if len(args) < 3:
-        await update.message.reply_text('❌ /lockmatch TEAM1 vs TEAM2')
-        return
-    
-    team1 = args[0].upper()
-    team2 = args[2].upper()
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT id, team1, team2 FROM matches WHERE (team1=? AND team2=?)", (team1, team2))
-    match = c.fetchone()
-    
-    if not match:
-        await update.message.reply_text(f'❌ Match not found!')
-        conn.close()
-        return
-    
-    c.execute("UPDATE matches SET locked=1 WHERE id=?", (match[0],))
-    c.execute("SELECT COUNT(*), SUM(amount) FROM bets WHERE match_id=?", (match[0],))
-    result = c.fetchone()
-    count = result[0] or 0
-    total = result[1] or 0
-    
-    conn.commit()
-    conn.close()
-    
-    await update.message.reply_text(f"🔒 MATCH LOCKED!\n\n🏏 {match[1]} vs {match[2]}\n📊 Bets: {count}\n💰 Pool: {total:,} 💰\n❌ No more bets accepted!")
-
-async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    
-    args = context.args
-    if len(args) < 4:
-        await update.message.reply_text('❌ /result TEAM1 vs TEAM2 WINNER')
-        return
-    
-    team1 = args[0].upper()
-    team2 = args[2].upper()
-    winner = args[3].upper()
-    
-    if winner not in [team1, team2]:
-        await update.message.reply_text(f'❌ Winner must be {team1} or {team2}!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT id, team1, team2 FROM matches WHERE (team1=? AND team2=?)", (team1, team2))
-    match = c.fetchone()
-    
-    if not match:
-        await update.message.reply_text(f'❌ Match not found!')
-        conn.close()
-        return
-    
-    c.execute("SELECT user_id, amount, team FROM bets WHERE match_id=?", (match[0],))
-    bets = c.fetchall()
-    
-    winners = 0
-    losers = 0
-    total_paid = 0
-    winner_list = []
-    loser_list = []
-    points_given = {}
-    points_deducted = {}
-    
-    for bet in bets:
-        user_id = bet[0]
-        amount = bet[1]
-        bet_team = bet[2].upper()
-        
-        c.execute("SELECT balance, won, points, name FROM users WHERE user_id=?", (user_id,))
-        u = c.fetchone()
-        
-        if bet_team == winner:
-            win_amount = amount * 2
-            new_balance = u[0] + win_amount
-            new_won = u[1] + 1
-            
-            if user_id not in points_given:
-                new_points = u[2] + 10
-                points_given[user_id] = True
-            else:
-                new_points = u[2]
-            
-            c.execute("UPDATE users SET balance = ?, won = ?, points = ? WHERE user_id=?", 
-                     (new_balance, new_won, new_points, user_id))
-            total_paid += win_amount
-            winners += 1
-            winner_list.append(f"{u[3]} - {amount} → {win_amount} (+{amount})")
-        else:
-            if user_id not in points_deducted:
-                new_points = u[2] - 5
-                points_deducted[user_id] = True
-            else:
-                new_points = u[2]
-            
-            c.execute("UPDATE users SET points = ? WHERE user_id=?", (new_points, user_id))
-            losers += 1
-            loser_list.append(f"{u[3]} - {amount} → 0 (-{amount})")
-    
-    c.execute("DELETE FROM bets WHERE match_id=?", (match[0],))
-    c.execute("DELETE FROM matches WHERE id=?", (match[0],))
-    conn.commit()
-    conn.close()
-    
-    msg = f"📢 MATCH RESULT!\n\n🏏 {match[1]} vs {match[2]}\n🏆 WINNER: {winner}\n\n"
-    msg += f"✅ WINNERS (+10 pts max): {winners} users\n"
-    for w in winner_list[:5]:
-        msg += f"   • {w}\n"
-    if len(winner_list) > 5:
-        msg += f"   • +{len(winner_list)-5} more\n"
-    
-    msg += f"\n❌ LOSERS (-5 pts max): {losers} users\n"
-    for l in loser_list[:5]:
-        msg += f"   • {l}\n"
-    if len(loser_list) > 5:
-        msg += f"   • +{len(loser_list)-5} more\n"
-    
-    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💰 TOTAL PAYOUT: {total_paid:,} 💰"
+        msg += f"{medal} {u[0]} - {u[1]:,} 💰\n"
     await update.message.reply_text(msg)
 
-async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    
-    if not update.message.reply_to_message:
-        await update.message.reply_text('❌ Reply to user with /add AMOUNT')
-        return
-    
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text('❌ /add AMOUNT')
-        return
-    
-    try:
-        amount = int(args[0])
-    except:
-        await update.message.reply_text('❌ Invalid amount')
-        return
-    
-    target = update.message.reply_to_message.from_user
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT balance, name FROM users WHERE user_id=?", (target.id,))
-    old = c.fetchone()
-    
-    if not old:
-        await update.message.reply_text('❌ User not found!')
-        conn.close()
-        return
-    
-    c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount, target.id))
-    conn.commit()
-    conn.close()
-    
-    await update.message.reply_text(f"✅ ADDED {amount:,} to {old[1]}\n💰 Balance: {old[0]:,} → {old[0]+amount:,} 💰")
+# ============ PART 5: BANK SYSTEM ============
 
-async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    
-    if not update.message.reply_to_message:
-        await update.message.reply_text('❌ Reply to user with /remove AMOUNT')
-        return
-    
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text('❌ /remove AMOUNT')
-        return
-    
-    try:
-        amount = int(args[0])
-    except:
-        await update.message.reply_text('❌ Invalid amount')
-        return
-    
-    target = update.message.reply_to_message.from_user
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT balance, name FROM users WHERE user_id=?", (target.id,))
-    old = c.fetchone()
-    
-    if not old:
-        await update.message.reply_text('❌ User not found!')
-        conn.close()
-        return
-    
-    if old[0] < amount:
-        await update.message.reply_text(f'❌ Insufficient! Balance: {old[0]:,} 💰')
-        conn.close()
-        return
-    
-    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (amount, target.id))
-    conn.commit()
-    conn.close()
-    
-    await update.message.reply_text(f"❌ REMOVED {amount:,} from {old[1]}\n💰 Balance: {old[0]:,} → {old[0]-amount:,} 💰")
-
-async def setprice(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    
-    args = context.args
-    if len(args) < 2:
-        await update.message.reply_text('❌ /setprice <player_id> <new_price>\nExample: /setprice 1 1500000')
-        return
-    
-    try:
-        player_id = int(args[0])
-        new_price = int(args[1])
-    except:
-        await update.message.reply_text('❌ Invalid input!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT name FROM shop WHERE id=?", (player_id,))
-    player = c.fetchone()
-    
-    if not player:
-        await update.message.reply_text(f'❌ Player ID {player_id} not found!')
-        conn.close()
-        return
-    
-    c.execute("UPDATE shop SET price = ? WHERE id=?", (new_price, player_id))
-    conn.commit()
-    conn.close()
-    
-    await update.message.reply_text(f"✅ PRICE UPDATED!\n\n{player[0]}\n💰 New Price: {new_price:,} 💰")
-
-# ============ ACHIEVEMENTS ============
-async def achieve(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    
-    if not update.message.reply_to_message:
-        await update.message.reply_text('❌ Reply to user with /achieve ACHIEVEMENT_NAME')
-        return
-    
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text('❌ /achieve ACHIEVEMENT_NAME')
-        return
-    
-    achievement = ' '.join(args)
-    target = update.message.reply_to_message.from_user
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("INSERT INTO achievements (user_id, achievement) VALUES (?, ?)", (target.id, achievement))
-    conn.commit()
-    conn.close()
-    
-    await update.message.reply_text(f"✅ ACHIEVEMENT GIVEN!\n\nUser: {target.first_name}\nAchievement: {achievement} 🏆")
-
-async def rmachieve(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text('❌ /rmachieve <number>')
-        return
-    
-    try:
-        num = int(args[0])
-    except:
-        await update.message.reply_text('❌ Invalid number')
-        return
-    
-    target_id = update.effective_user.id
-    if update.message.reply_to_message:
-        target_id = update.message.reply_to_message.from_user.id
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT rowid, achievement FROM achievements WHERE user_id=?", (target_id,))
-    ach = c.fetchall()
-    
-    if num < 1 or num > len(ach):
-        await update.message.reply_text(f'❌ Choose 1-{len(ach)}')
-        conn.close()
-        return
-    
-    removed = ach[num-1]
-    c.execute("DELETE FROM achievements WHERE rowid=?", (removed[0],))
-    conn.commit()
-    conn.close()
-    
-    await update.message.reply_text(f"✅ ACHIEVEMENT REMOVED!\n\nRemoved: {removed[1]} 🏆")
-
-# ============ ADMIN SHOP2 ============
-async def addplayer2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    
-    args = context.args
-    if len(args) < 2:
-        await update.message.reply_text('❌ /addplayer2 <name> <price>\nExample: /addplayer2 "Navdeep Saini" 8000')
-        return
-    
-    name = ' '.join(args[:-1])
-    try:
-        price = int(args[-1])
-    except:
-        await update.message.reply_text('❌ Invalid price!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("INSERT INTO shop2 (name, price) VALUES (?, ?)", (name, price))
-    conn.commit()
-    player_id = c.lastrowid
-    conn.close()
-    
-    await update.message.reply_text(f"✅ PLAYER ADDED!\n\nID: {player_id} | {name}\n💰 Price: {price:,} 💰")
-
-async def setprice2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    
-    args = context.args
-    if len(args) < 2:
-        await update.message.reply_text('❌ /setprice2 <id> <new_price>\nExample: /setprice2 1 15000')
-        return
-    
-    try:
-        player_id = int(args[0])
-        new_price = int(args[1])
-    except:
-        await update.message.reply_text('❌ Invalid input!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT name FROM shop2 WHERE id=?", (player_id,))
-    player = c.fetchone()
-    
-    if not player:
-        await update.message.reply_text(f'❌ Player ID {player_id} not found!')
-        conn.close()
-        return
-    
-    c.execute("UPDATE shop2 SET price = ? WHERE id=?", (new_price, player_id))
-    conn.commit()
-    conn.close()
-    
-    await update.message.reply_text(f"✅ PRICE UPDATED!\n{player[0]}\n💰 New Price: {new_price:,} 💰")
-
-async def removeplayer2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text('❌ /removeplayer2 <id>\nExample: /removeplayer2 1')
-        return
-    
-    try:
-        player_id = int(args[0])
-    except:
-        await update.message.reply_text('❌ Invalid ID!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT name FROM shop2 WHERE id=?", (player_id,))
-    player = c.fetchone()
-    
-    if not player:
-        await update.message.reply_text(f'❌ Player ID {player_id} not found!')
-        conn.close()
-        return
-    
-    c.execute("DELETE FROM shop2 WHERE id=?", (player_id,))
-    c.execute("DELETE FROM user_players2 WHERE player_id=?", (player_id,))
-    conn.commit()
-    conn.close()
-    
-    await update.message.reply_text(f"✅ PLAYER REMOVED!\n{player[0]}")
-
-# ============ BANK SYSTEM ==========
 async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
@@ -2016,43 +732,26 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     conn = get_db()
     c = conn.cursor()
-    
     c.execute("INSERT OR IGNORE INTO bank (user_id, balance, last_interest) VALUES (?, 0, ?)", (user_id, datetime.now().isoformat()))
     c.execute("SELECT balance, last_interest FROM bank WHERE user_id=?", (user_id,))
     row = c.fetchone()
-    
-    if row:
-        bank_bal, last_interest = row
-    else:
-        bank_bal, last_interest = 0, None
+    bank_bal = row[0] if row else 0
+    last_interest = row[1] if row else None
     
     c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
     wallet_bal = c.fetchone()[0]
-    
-    next_time_str = "Available now"
-    if last_interest:
-        last = datetime.fromisoformat(last_interest)
-        next_time = last + timedelta(hours=24)
-        now = datetime.now()
-        if now < next_time:
-            remaining = next_time - now
-            hours = remaining.seconds // 3600
-            mins = (remaining.seconds % 3600) // 60
-            next_time_str = f"{hours}h {mins}m"
-    
     conn.close()
     
+    next_time = "Available now"
+    if last_interest:
+        last = datetime.fromisoformat(last_interest)
+        next_t = last + timedelta(hours=24)
+        if datetime.now() < next_t:
+            remaining = next_t - datetime.now()
+            next_time = f"{remaining.seconds//3600}h {(remaining.seconds%3600)//60}m"
+    
     await update.message.reply_text(
-        f"🏦 MY BANK ACCOUNT\n\n"
-        f"💰 Bank Balance: {bank_bal:,} 💰\n"
-        f"👛 Wallet Balance: {wallet_bal:,} 💰\n"
-        f"📈 Interest Rate: 5% daily\n"
-        f"⏰ Next interest: {next_time_str}\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"💡 /deposit <amount>\n"
-        f"💡 /withdraw <amount>\n"
-        f"💡 /claim_interest"
-    )
+        f"🏦 MY BANK\n\n💰 Bank: {bank_bal:,}\n👛 Wallet: {wallet_bal:,}\n📈 Interest: 5% daily\n⏰ Next: {next_time}\n\n💡 /deposit <amount>\n💡 /withdraw <amount>\n💡 /claim_interest")
 
 async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -2062,7 +761,7 @@ async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     args = context.args
     if len(args) < 1:
-        await update.message.reply_text('❌ /deposit <amount>\nExample: /deposit 5000')
+        await update.message.reply_text('❌ /deposit <amount>')
         return
     
     try:
@@ -2072,37 +771,25 @@ async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if amount < 100:
-        await update.message.reply_text('❌ Minimum deposit is 100 credits')
+        await update.message.reply_text('❌ Minimum 100 credits')
         return
     
     conn = get_db()
     c = conn.cursor()
-    
-    c.execute("INSERT OR IGNORE INTO bank (user_id, balance, last_interest) VALUES (?, 0, ?)", (user_id, datetime.now().isoformat()))
     c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-    wallet_bal = c.fetchone()[0]
+    wallet = c.fetchone()[0]
     
-    if wallet_bal < amount:
-        await update.message.reply_text(f'❌ Insufficient wallet balance!\n\nNeed: {amount:,} 💰\nHave: {wallet_bal:,} 💰')
+    if wallet < amount:
+        await update.message.reply_text(f'❌ Need {amount:,}, have {wallet:,}')
         conn.close()
         return
     
     c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (amount, user_id))
     c.execute("UPDATE bank SET balance = balance + ? WHERE user_id=?", (amount, user_id))
     conn.commit()
-    
-    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-    new_wallet = c.fetchone()[0]
-    c.execute("SELECT balance FROM bank WHERE user_id=?", (user_id,))
-    new_bank = c.fetchone()[0]
     conn.close()
     
-    await update.message.reply_text(
-        f"✅ DEPOSITED!\n\n"
-        f"Amount: +{amount:,} 💰\n"
-        f"Wallet: {wallet_bal:,} → {new_wallet:,} 💰\n"
-        f"Bank: {new_bank - amount:,} → {new_bank:,} 💰"
-    )
+    await update.message.reply_text(f"✅ Deposited {amount:,} credits!")
 
 async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -2112,7 +799,7 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     args = context.args
     if len(args) < 1:
-        await update.message.reply_text('❌ /withdraw <amount>\nExample: /withdraw 5000')
+        await update.message.reply_text('❌ /withdraw <amount>')
         return
     
     try:
@@ -2122,37 +809,25 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if amount < 100:
-        await update.message.reply_text('❌ Minimum withdrawal is 100 credits')
+        await update.message.reply_text('❌ Minimum 100 credits')
         return
     
     conn = get_db()
     c = conn.cursor()
-    
-    c.execute("INSERT OR IGNORE INTO bank (user_id, balance, last_interest) VALUES (?, 0, ?)", (user_id, datetime.now().isoformat()))
     c.execute("SELECT balance FROM bank WHERE user_id=?", (user_id,))
-    bank_bal = c.fetchone()[0]
+    bank_bal = c.fetchone()
     
-    if bank_bal < amount:
-        await update.message.reply_text(f'❌ Insufficient bank balance!\n\nNeed: {amount:,} 💰\nHave: {bank_bal:,} 💰')
+    if not bank_bal or bank_bal[0] < amount:
+        await update.message.reply_text(f'❌ Insufficient bank balance!')
         conn.close()
         return
     
     c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount, user_id))
     c.execute("UPDATE bank SET balance = balance - ? WHERE user_id=?", (amount, user_id))
     conn.commit()
-    
-    c.execute("SELECT balance FROM bank WHERE user_id=?", (user_id,))
-    new_bank = c.fetchone()[0]
-    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-    new_wallet = c.fetchone()[0]
     conn.close()
     
-    await update.message.reply_text(
-        f"✅ WITHDRAWN!\n\n"
-        f"Amount: -{amount:,} 💰\n"
-        f"Bank: {bank_bal:,} → {new_bank:,} 💰\n"
-        f"Wallet: {new_wallet - amount:,} → {new_wallet:,} 💰"
-    )
+    await update.message.reply_text(f"✅ Withdrawn {amount:,} credits!")
 
 async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -2162,13 +837,11 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     conn = get_db()
     c = conn.cursor()
-    
-    c.execute("INSERT OR IGNORE INTO bank (user_id, balance, last_interest) VALUES (?, 0, ?)", (user_id, datetime.now().isoformat()))
     c.execute("SELECT balance, last_interest FROM bank WHERE user_id=?", (user_id,))
     row = c.fetchone()
     
     if not row:
-        await update.message.reply_text('❌ No bank account found! Use /bank first.')
+        await update.message.reply_text('❌ No bank account! Use /bank first')
         conn.close()
         return
     
@@ -2177,589 +850,45 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if last_interest:
         last = datetime.fromisoformat(last_interest)
-        next_time = last + timedelta(hours=24)
-        if now < next_time:
-            remaining = next_time - now
-            hours = remaining.seconds // 3600
-            mins = (remaining.seconds % 3600) // 60
-            await update.message.reply_text(f"⏰ Interest not ready yet!\n\nCome back in {hours}h {mins}m")
+        if now < last + timedelta(hours=24):
+            remaining = (last + timedelta(hours=24) - now)
+            await update.message.reply_text(f"⏰ Come back in {remaining.seconds//3600}h")
             conn.close()
             return
     
     interest = int(bank_bal * 0.05)
     new_bank = bank_bal + interest
-    
     c.execute("UPDATE bank SET balance = ?, last_interest = ? WHERE user_id=?", (new_bank, now.isoformat(), user_id))
     conn.commit()
     conn.close()
     
-    await update.message.reply_text(
-        f"💰 INTEREST CLAIMED!\n\n"
-        f"Rate: 5%\n"
-        f"Interest: +{interest:,} 💰\n"
-        f"New Bank Balance: {new_bank:,} 💰\n\n"
-        f"⏰ Next interest: 24h"
-    )
+    await update.message.reply_text(f"💰 Interest claimed! +{interest:,} credits!\n🏦 New balance: {new_bank:,}")
 
-# ============ SHOP3 (CHEAPEST PLAYERS) ==========
+# ============ PART 6: CLAIM CODE SYSTEM ============
 
-async def shop3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT id, name, price FROM shop3 ORDER BY price ASC")
-    players = c.fetchall()
-    conn.close()
-    
-    if not players:
-        await update.message.reply_text('🛒 SHOP3\n\nNo players yet.\n👑 Admin: /addplayer3 <name> <price>')
-        return
-    
-    msg = "🛒 SHOP3\n\n"
-    for p in players:
-        msg += f"{p[0]}. {p[1]} - {p[2]:,} 💰\n"
-    msg += "\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /buy3 <id> to purchase"
-    await update.message.reply_text(msg)
-
-async def buy3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text('❌ /buy3 <player_id>\nExample: /buy3 1')
-        return
-    
-    try:
-        player_id = int(args[0])
-    except:
-        await update.message.reply_text('❌ Invalid ID')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT name, price FROM shop3 WHERE id=?", (player_id,))
-    player = c.fetchone()
-    
-    if not player:
-        await update.message.reply_text(f'❌ Player ID {player_id} not found!')
-        conn.close()
-        return
-    
-    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-    balance = c.fetchone()[0]
-    
-    if balance < player[1]:
-        await update.message.reply_text(f'❌ Need {player[1]:,}, have {balance:,}')
-        conn.close()
-        return
-    
-    c.execute("SELECT * FROM user_players3 WHERE user_id=? AND player_id=?", (user_id, player_id))
-    if c.fetchone():
-        await update.message.reply_text(f'❌ You already own {player[0]}!')
-        conn.close()
-        return
-    
-    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (player[1], user_id))
-    c.execute("INSERT INTO user_players3 (user_id, player_id) VALUES (?, ?)", (user_id, player_id))
-    conn.commit()
-    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-    new_bal = c.fetchone()[0]
-    conn.close()
-    
-    await update.message.reply_text(f"✅ PURCHASED!\n\n🏏 {player[0]}\n💰 Price: {player[1]:,} 💰\n📊 New balance: {new_bal:,} 💰")
-
-async def myteam3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("""
-        SELECT s.name, s.price FROM user_players3 u 
-        JOIN shop3 s ON u.player_id = s.id 
-        WHERE u.user_id = ?
-    """, (user_id,))
-    players = c.fetchall()
-    conn.close()
-    
-    if not players:
-        await update.message.reply_text('📭 No shop3 players owned.\nUse /shop3 to buy!')
-        return
-    
-    total = sum(p[1] for p in players)
-    msg = "🤑 MY SHOP3 PLAYERS (Under 10k)\n\n"
-    for i, p in enumerate(players, 1):
-        msg += f"{i}. {p[0]} - {p[1]:,} 💰\n"
-    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💰 Total spent: {total:,} 💰"
-    await update.message.reply_text(msg)
-
-async def top3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("""
-        SELECT u.name, COUNT(up.player_id) as count, COALESCE(SUM(s.price), 0) as total
-        FROM users u
-        JOIN user_players3 up ON u.user_id = up.user_id
-        JOIN shop3 s ON up.player_id = s.id
-        GROUP BY u.user_id
-        ORDER BY total DESC LIMIT 10
-    """)
-    tops = c.fetchall()
-    
-    if not tops:
-        await update.message.reply_text('🏆 SHOP3 TOP COLLECTORS\n\nNo one owns any yet!')
-        conn.close()
-        return
-    
-    msg = "🏆 SHOP3 TOP COLLECTORS\n\n"
-    for i, t in enumerate(tops, 1):
-        medal = "👑" if i==1 else "🥈" if i==2 else "🥉" if i==3 else f"{i}."
-        msg += f"{medal} {t[0]} - {t[1]} players ({t[2]:,} 💰)\n"
-    
-    c.execute("SELECT COUNT(*) FROM user_players3 WHERE user_id=?", (user_id,))
-    my_count = c.fetchone()[0]
-    msg += f"\n📊 You own: {my_count} players"
-    await update.message.reply_text(msg)
-    conn.close()
-
-# ============ ADMIN SHOP3 ============
-async def addplayer3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    
-    args = context.args
-    if len(args) < 2:
-        await update.message.reply_text('❌ /addplayer3 <name> <price>\nExample: /addplayer3 "Player Name" 5000')
-        return
-    
-    name = ' '.join(args[:-1])
-    try:
-        price = int(args[-1])
-    except:
-        await update.message.reply_text('❌ Invalid price!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("INSERT INTO shop3 (name, price) VALUES (?, ?)", (name, price))
-    conn.commit()
-    player_id = c.lastrowid
-    conn.close()
-    
-    await update.message.reply_text(f"✅ PLAYER ADDED TO SHOP3!\n\nID: {player_id} | {name}\n💰 Price: {price:,} 💰")
-
-async def setprice3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    
-    args = context.args
-    if len(args) < 2:
-        await update.message.reply_text('❌ /setprice3 <id> <new_price>\nExample: /setprice3 1 8000')
-        return
-    
-    try:
-        player_id = int(args[0])
-        new_price = int(args[1])
-    except:
-        await update.message.reply_text('❌ Invalid input!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT name FROM shop3 WHERE id=?", (player_id,))
-    player = c.fetchone()
-    
-    if not player:
-        await update.message.reply_text(f'❌ Player ID {player_id} not found!')
-        conn.close()
-        return
-    
-    c.execute("UPDATE shop3 SET price = ? WHERE id=?", (new_price, player_id))
-    conn.commit()
-    conn.close()
-    
-    await update.message.reply_text(f"✅ SHOP3 PRICE UPDATED!\n{player[0]}\nNew Price: {new_price:,} 💰")
-
-async def removeplayer3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text('❌ /removeplayer3 <id>\nExample: /removeplayer3 1')
-        return
-    
-    try:
-        player_id = int(args[0])
-    except:
-        await update.message.reply_text('❌ Invalid ID!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT name FROM shop3 WHERE id=?", (player_id,))
-    player = c.fetchone()
-    
-    if not player:
-        await update.message.reply_text(f'❌ Player ID {player_id} not found!')
-        conn.close()
-        return
-    
-    c.execute("DELETE FROM shop3 WHERE id=?", (player_id,))
-    c.execute("DELETE FROM user_players3 WHERE player_id=?", (player_id,))
-    conn.commit()
-    conn.close()
-    
-    await update.message.reply_text(f"✅ PLAYER REMOVED FROM SHOP3!\n{player[0]}")
-
-# ============ BROADCAST SYSTEM (Admin Only) ============
-
-def get_known_users():
-    """Get all users who have started the bot"""
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT user_id FROM users")
-    users = [row[0] for row in c.fetchall()]
-    conn.close()
-    return users
-
-def get_known_groups():
-    """Get all groups where bot has been added"""
-    conn = get_db()
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS groups 
-                 (group_id INTEGER PRIMARY KEY, group_name TEXT, added_at TEXT)''')
-    c.execute("SELECT group_id FROM groups")
-    groups = [row[0] for row in c.fetchall()]
-    conn.close()
-    return groups
-
-async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Send broadcast to all users and groups - ADMIN ONLY"""
-    
-    user = update.effective_user
-    
-    # 🔥 ADMIN CHECK 🔥
-    if user.id not in ADMIN_IDS:
-        await update.message.reply_text("❌ ONLY ADMIN CAN USE THIS COMMAND!\n\n👑 Admin ID: 7687078555")
-        return
-    
-    msg = update.message
-    
-    known_users = get_known_users()
-    known_groups = get_known_groups()
-    
-    sent_users = 0
-    sent_groups = 0
-    failed = 0
-    
-    # ========== PHOTO BROADCAST ==========
-    if msg.reply_to_message and msg.reply_to_message.photo:
-        
-        photo = msg.reply_to_message.photo[-1].file_id
-        caption = msg.reply_to_message.caption or ""
-        
-        for uid in known_users:
-            try:
-                await context.bot.send_photo(uid, photo, caption=caption)
-                sent_users += 1
-            except:
-                failed += 1
-        
-        for gid in known_groups:
-            try:
-                await context.bot.send_photo(gid, photo, caption=caption)
-                sent_groups += 1
-            except:
-                pass
-        
-        await update.message.reply_text(
-            f"📸 PHOTO BROADCAST SENT!\n\n"
-            f"👤 Users: {sent_users}\n"
-            f"👥 Groups: {sent_groups}\n"
-            f"❌ Failed: {failed}\n"
-            f"📊 Total: {sent_users + sent_groups}"
-        )
-        return
-    
-    # ========== VIDEO BROADCAST ==========
-    if msg.reply_to_message and msg.reply_to_message.video:
-        
-        video = msg.reply_to_message.video.file_id
-        caption = msg.reply_to_message.caption or ""
-        
-        for uid in known_users:
-            try:
-                await context.bot.send_video(uid, video, caption=caption)
-                sent_users += 1
-            except:
-                failed += 1
-        
-        for gid in known_groups:
-            try:
-                await context.bot.send_video(gid, video, caption=caption)
-                sent_groups += 1
-            except:
-                pass
-        
-        await update.message.reply_text(
-            f"🎥 VIDEO BROADCAST SENT!\n\n"
-            f"👤 Users: {sent_users}\n"
-            f"👥 Groups: {sent_groups}\n"
-            f"❌ Failed: {failed}"
-        )
-        return
-    
-    # ========== TEXT BROADCAST ==========
-    if msg.reply_to_message:
-        content = msg.reply_to_message.text or msg.reply_to_message.caption
-    else:
-        if not context.args:
-            await msg.reply_text(
-                "📢 BROADCAST USAGE (ADMIN ONLY):\n\n"
-                "📝 TEXT:\n"
-                "   /broadcast Hello everyone!\n\n"
-                "🖼️ PHOTO:\n"
-                "   Reply to a photo with /broadcast\n\n"
-                "🎥 VIDEO:\n"
-                "   Reply to a video with /broadcast\n\n"
-                "📊 STATS:\n"
-                "   /broadcast_stats"
-            )
-            return
-        content = " ".join(context.args)
-    
-    # Send to USERS
-    for uid in known_users:
-        try:
-            await context.bot.send_message(uid, content)
-            sent_users += 1
-        except:
-            failed += 1
-    
-    # Send to GROUPS
-    for gid in known_groups:
-        try:
-            await context.bot.send_message(gid, content)
-            sent_groups += 1
-        except:
-            pass
-    
-    await msg.reply_text(
-        f"📢 BROADCAST SENT!\n\n"
-        f"👤 Users: {sent_users}\n"
-        f"👥 Groups: {sent_groups}\n"
-        f"❌ Failed: {failed}\n"
-        f"📊 Total reached: {sent_users + sent_groups}"
-    )
-
-
-# ============ BROADCAST STATS ============
-async def broadcast_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Check broadcast reach - ADMIN ONLY"""
-    
-    user = update.effective_user
-    
-    # 🔥 ADMIN CHECK 🔥
-    if user.id not in ADMIN_IDS:
-        await update.message.reply_text("❌ ONLY ADMIN CAN USE THIS COMMAND!")
-        return
-    
-    known_users = get_known_users()
-    known_groups = get_known_groups()
-    
-    await update.message.reply_text(
-        f"📊 BROADCAST REACH STATS\n\n"
-        f"👤 Total Users: {len(known_users)}\n"
-        f"👥 Total Groups: {len(known_groups)}\n"
-        f"📡 Total Reach: {len(known_users) + len(known_groups)}\n\n"
-        f"👑 Admin IDs: {ADMIN_IDS}\n\n"
-        f"💡 Use /broadcast to send message to everyone!"
-    )
-
-# ============ ADMIN: UNLOCK MATCH ============
-async def unlockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Unlock a locked match - Admin only"""
-    
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    
-    args = context.args
-    if len(args) < 3:
-        await update.message.reply_text('❌ /unlockmatch TEAM1 vs TEAM2\nExample: /unlockmatch IND vs AUS')
-        return
-    
-    team1 = args[0].upper()
-    team2 = args[2].upper()
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT id, team1, team2, locked FROM matches WHERE (team1=? AND team2=?)", (team1, team2))
-    match = c.fetchone()
-    
-    if not match:
-        await update.message.reply_text(f'❌ Match not found: {team1} vs {team2}')
-        conn.close()
-        return
-    
-    if match[3] == 0:
-        await update.message.reply_text(f'⚠️ Match is already UNLOCKED!\n\n🏏 {match[1]} vs {match[2]}')
-        conn.close()
-        return
-    
-    # Unlock the match
-    c.execute("UPDATE matches SET locked=0 WHERE id=?", (match[0],))
-    conn.commit()
-    
-    # Get bet count
-    c.execute("SELECT COUNT(*), SUM(amount) FROM bets WHERE match_id=?", (match[0],))
-    result = c.fetchone()
-    count = result[0] or 0
-    total = result[1] or 0
-    
-    conn.close()
-    
-    await update.message.reply_text(
-        f"🔓 MATCH UNLOCKED!\n\n"
-        f"🏏 {match[1]} vs {match[2]}\n"
-        f"📊 Current Bets: {count}\n"
-        f"💰 Current Pool: {total:,} 💰\n\n"
-        f"✅ New bets are now accepted again!"
-    )
-
-# ============ CLAIM CODE SYSTEM (COMPLETE) ============
-
-# ============ GROUP TRACKING FUNCTIONS (Add these before main()) ============
-
-async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Auto-track groups where bot is added"""
-    if update.message and update.message.chat.type in ['group', 'supergroup']:
-        group_id = update.message.chat.id
-        group_name = update.message.chat.title or "Unknown Group"
-        
-        conn = get_db()
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS groups 
-                     (group_id INTEGER PRIMARY KEY, 
-                      group_name TEXT, 
-                      added_at TEXT)''')
-        c.execute("INSERT OR IGNORE INTO groups (group_id, group_name, added_at) VALUES (?, ?, ?)",
-                  (group_id, group_name, datetime.now().isoformat()))
-        conn.commit()
-        conn.close()
-
-async def new_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Auto-add group when bot is added"""
-    if update.message.new_chat_members:
-        for member in update.message.new_chat_members:
-            if member.id == context.bot.id:
-                group_id = update.message.chat.id
-                group_name = update.message.chat.title or "Unknown Group"
-                
-                conn = get_db()
-                c = conn.cursor()
-                c.execute('''CREATE TABLE IF NOT EXISTS groups 
-                             (group_id INTEGER PRIMARY KEY, 
-                              group_name TEXT, 
-                              added_at TEXT)''')
-                c.execute("INSERT OR IGNORE INTO groups (group_id, group_name, added_at) VALUES (?, ?, ?)",
-                          (group_id, group_name, datetime.now().isoformat()))
-                conn.commit()
-                conn.close()
-                break
-
-async def left_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Auto-remove group when bot is removed"""
-    if update.message.left_chat_member and update.message.left_chat_member.id == context.bot.id:
-        group_id = update.message.chat.id
-        
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("DELETE FROM groups WHERE group_id = ?", (group_id,))
-        conn.commit()
-        conn.close()
-
-def init_claimcode_db():
-    conn = get_db()
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS claim_codes 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  code TEXT UNIQUE,
-                  amount INTEGER,
-                  max_claims INTEGER,
-                  claimed_count INTEGER DEFAULT 0,
-                  created_by INTEGER,
-                  created_at TEXT,
-                  expires_at TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS code_claims 
-                 (code TEXT, user_id INTEGER, claimed_at TEXT,
-                  PRIMARY KEY (code, user_id))''')
-    conn.commit()
-    conn.close()
-    print("✅ Claim code tables ready!")
-
-# Call this after init_db()
-init_claimcode_db()
-
-
-# ============ ADMIN: CREATE CODE ============
 async def createcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    if user_id not in ADMIN_IDS:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Admin only!")
         return
     
     args = context.args
     if len(args) < 2:
-        await update.message.reply_text(
-            "📝 **CREATE CODE**\n\n"
-            "Usage: `/createcode <amount> <code>`\n"
-            "Example: `/createcode 1000 FESTIVAL10`\n\n"
-            "💰 Amount: 100-10000 credits\n"
-            "🔑 Code: Any word/number\n"
-            "👥 Max: 5 claims\n"
-            "⏰ Expires: 24 hours",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text("Usage: /createcode <amount> <code>\nExample: /createcode 1000 FESTIVAL10")
         return
     
     try:
         amount = int(args[0])
         code = args[1].upper()
-        max_claims = 5
     except:
-        await update.message.reply_text("❌ Invalid! Use: /createcode 1000 CODE123")
+        await update.message.reply_text("❌ Invalid!")
         return
     
     if amount < 100:
-        await update.message.reply_text("❌ Minimum amount 100 credits!")
-        return
-    
-    if len(code) > 20:
-        await update.message.reply_text("❌ Code too long! Max 20 chars")
+        await update.message.reply_text("❌ Minimum 100 credits!")
         return
     
     now = datetime.now()
-    expires_at = now + timedelta(hours=24)
+    expires = now + timedelta(hours=24)
     
     conn = get_db()
     c = conn.cursor()
@@ -2770,26 +899,13 @@ async def createcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
         return
     
-    c.execute("""INSERT INTO claim_codes 
-                 (code, amount, max_claims, created_by, created_at, expires_at)
-                 VALUES (?, ?, ?, ?, ?, ?)""",
-              (code, amount, max_claims, user_id, now.isoformat(), expires_at.isoformat()))
-    
+    c.execute("INSERT INTO claim_codes (code, amount, created_at, expires_at) VALUES (?, ?, ?, ?)",
+              (code, amount, now.isoformat(), expires.isoformat()))
     conn.commit()
     conn.close()
     
-    await update.message.reply_text(
-        f"✅ **CODE CREATED!**\n\n"
-        f"🔑 Code: `{code}`\n"
-        f"💰 Amount: {amount:,} credits\n"
-        f"👥 Max claims: {max_claims} users\n"
-        f"⏰ Expires: 24 hours\n\n"
-        f"Users can claim with: `/claimcode {code}`",
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text(f"✅ CODE CREATED!\n🔑 {code}\n💰 {amount:,} credits\n⏰ Expires: 24 hours\n\n/claimcode {code}")
 
-
-# ============ USER: CLAIM CODE ============
 async def claimcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -2799,11 +915,7 @@ async def claimcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     args = context.args
     if len(args) < 1:
-        await update.message.reply_text(
-            "❌ **Usage:** `/claimcode <code>`\n"
-            "Example: `/claimcode FESTIVAL10`",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text("❌ Usage: /claimcode <code>")
         return
     
     code = args[0].upper()
@@ -2815,7 +927,7 @@ async def claimcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = c.fetchone()
     
     if not result:
-        await update.message.reply_text(f"❌ Code `{code}` not found!\n💡 Try `/activecodes`", parse_mode="Markdown")
+        await update.message.reply_text(f"❌ Code '{code}' not found!")
         conn.close()
         return
     
@@ -2823,18 +935,18 @@ async def claimcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     expires = datetime.fromisoformat(expires_at)
     if datetime.now() > expires:
-        await update.message.reply_text(f"❌ Code `{code}` has expired!", parse_mode="Markdown")
+        await update.message.reply_text(f"❌ Code expired!")
         conn.close()
         return
     
     c.execute("SELECT * FROM code_claims WHERE code = ? AND user_id = ?", (code, user_id))
     if c.fetchone():
-        await update.message.reply_text(f"❌ You already claimed code `{code}`!", parse_mode="Markdown")
+        await update.message.reply_text(f"❌ You already claimed this code!")
         conn.close()
         return
     
     if claimed_count >= max_claims:
-        await update.message.reply_text(f"❌ Code `{code}` has reached max claims!", parse_mode="Markdown")
+        await update.message.reply_text(f"❌ Code fully claimed!")
         conn.close()
         return
     
@@ -2849,17 +961,8 @@ async def claimcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     remaining = max_claims - (claimed_count + 1)
     conn.close()
     
-    await update.message.reply_text(
-        f"🎉 **CODE CLAIMED!**\n\n"
-        f"🔑 Code: `{code}`\n"
-        f"💰 +{amount:,} credits\n"
-        f"💳 New balance: {new_bal:,}\n"
-        f"📊 Remaining: {remaining}/{max_claims}",
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text(f"🎉 CODE CLAIMED!\n🔑 {code}\n💰 +{amount:,} credits\n💳 Balance: {new_bal:,}\n👥 {remaining} claims left")
 
-
-# ============ VIEW ACTIVE CODES ============
 async def activecodes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -2871,61 +974,35 @@ async def activecodes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     c = conn.cursor()
     
     now = datetime.now().isoformat()
-    c.execute("""SELECT code, amount, max_claims, claimed_count, expires_at 
-                 FROM claim_codes 
-                 WHERE expires_at > ? AND claimed_count < max_claims
-                 ORDER BY created_at DESC LIMIT 10""", (now,))
-    
+    c.execute("SELECT code, amount, max_claims, claimed_count FROM claim_codes WHERE expires_at > ? AND claimed_count < max_claims", (now,))
     codes = c.fetchall()
     conn.close()
     
     if not codes:
-        await update.message.reply_text(
-            "📭 **NO ACTIVE CODES**\n\n"
-            "No codes available right now!\n"
-            "Check back later for rewards! 🎁",
-            parse_mode="Markdown"
-        )
+        await update.message.reply_text("📭 No active codes!")
         return
     
-    msg = "🎁 **ACTIVE CLAIM CODES**\n\n"
-    for code, amount, max_c, claimed, expires in codes:
+    msg = "🎁 ACTIVE CODES\n\n"
+    for code, amount, max_c, claimed in codes:
         remaining = max_c - claimed
-        msg += f"🔑 `{code}`\n"
-        msg += f"💰 {amount:,} credits\n"
-        msg += f"👥 {remaining}/{max_c} left\n"
-        msg += f"💡 `/claimcode {code}`\n\n"
-    
-    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
-    msg += "Use `/claimcode <code>` to claim!"
-    
-    await update.message.reply_text(msg, parse_mode="Markdown")
+        msg += f"🔑 {code} → {amount:,} credits ({remaining} left)\n"
+    msg += "\n💡 /claimcode <code>"
+    await update.message.reply_text(msg)
 
-
-# ============ ADMIN: DELETE CODE ============
 async def deletecode(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    if user_id not in ADMIN_IDS:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Admin only!")
         return
     
     args = context.args
     if len(args) < 1:
-        await update.message.reply_text("❌ Usage: /deletecode CODE123")
+        await update.message.reply_text("Usage: /deletecode CODE123")
         return
     
     code = args[0].upper()
     
     conn = get_db()
     c = conn.cursor()
-    
-    c.execute("SELECT code FROM claim_codes WHERE code = ?", (code,))
-    if not c.fetchone():
-        await update.message.reply_text(f"❌ Code '{code}' not found!")
-        conn.close()
-        return
-    
     c.execute("DELETE FROM claim_codes WHERE code = ?", (code,))
     c.execute("DELETE FROM code_claims WHERE code = ?", (code,))
     conn.commit()
@@ -2933,378 +1010,155 @@ async def deletecode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(f"✅ Code '{code}' deleted!")
 
+# ============ PART 7: BROADCAST & MAIN ============
 
-# ============ ADMIN: CODE STATS ============
-async def codestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+def get_known_users():
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT user_id FROM users")
+    users = [row[0] for row in c.fetchall()]
+    conn.close()
+    return users
+
+def get_known_groups():
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT group_id FROM groups")
+    groups = [row[0] for row in c.fetchall()]
+    conn.close()
+    return groups
+
+async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
     
-    if user_id not in ADMIN_IDS:
+    msg = update.message
+    
+    known_users = get_known_users()
+    known_groups = get_known_groups()
+    
+    sent = 0
+    failed = 0
+    
+    if msg.reply_to_message and msg.reply_to_message.photo:
+        photo = msg.reply_to_message.photo[-1].file_id
+        caption = msg.reply_to_message.caption or ""
+        for uid in known_users:
+            try:
+                await context.bot.send_photo(uid, photo, caption=caption)
+                sent += 1
+            except:
+                failed += 1
+        for gid in known_groups:
+            try:
+                await context.bot.send_photo(gid, photo, caption=caption)
+                sent += 1
+            except:
+                pass
+        await update.message.reply_text(f"📸 Broadcast sent!\n👤 {sent} chats\n❌ {failed} failed")
+        return
+    
+    if msg.reply_to_message and msg.reply_to_message.video:
+        video = msg.reply_to_message.video.file_id
+        caption = msg.reply_to_message.caption or ""
+        for uid in known_users:
+            try:
+                await context.bot.send_video(uid, video, caption=caption)
+                sent += 1
+            except:
+                failed += 1
+        for gid in known_groups:
+            try:
+                await context.bot.send_video(gid, video, caption=caption)
+                sent += 1
+            except:
+                pass
+        await update.message.reply_text(f"🎥 Broadcast sent!\n👤 {sent} chats\n❌ {failed} failed")
+        return
+    
+    if msg.reply_to_message:
+        content = msg.reply_to_message.text or msg.reply_to_message.caption
+    else:
+        if not context.args:
+            await msg.reply_text("Usage: /broadcast <message> or reply to photo/video")
+            return
+        content = " ".join(context.args)
+    
+    for uid in known_users:
+        try:
+            await context.bot.send_message(uid, content)
+            sent += 1
+        except:
+            failed += 1
+    
+    for gid in known_groups:
+        try:
+            await context.bot.send_message(gid, content)
+            sent += 1
+        except:
+            pass
+    
+    await msg.reply_text(f"📢 Broadcast sent!\n👤 {sent} chats\n❌ {failed} failed")
+
+async def broadcast_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    users = get_known_users()
+    groups = get_known_groups()
+    
+    await update.message.reply_text(f"📊 BROADCAST STATS\n\n👤 Users: {len(users)}\n👥 Groups: {len(groups)}\n📡 Total: {len(users) + len(groups)}")
+
+async def track_all_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message and update.message.chat.type in ['group', 'supergroup']:
+        group_id = update.message.chat.id
+        group_name = update.message.chat.title or "Unknown"
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("INSERT OR IGNORE INTO groups (group_id, group_name, added_at) VALUES (?, ?, datetime('now'))", (group_id, group_name))
+        conn.commit()
+        conn.close()
+
+async def add_default_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Admin only!")
         return
     
     conn = get_db()
     c = conn.cursor()
     
-    c.execute("SELECT COUNT(*) FROM claim_codes")
-    total_codes = c.fetchone()[0]
+    c.execute("DELETE FROM shop")
     
-    now = datetime.now().isoformat()
-    c.execute("SELECT COUNT(*) FROM claim_codes WHERE expires_at > ? AND claimed_count < max_claims", (now,))
-    active_codes = c.fetchone()[0]
+    players = [
+        ("Virat Kohli", 2000000, "India", "current"),
+        ("Rohit Sharma", 1900000, "India", "current"),
+        ("Shubman Gill", 1700000, "India", "current"),
+        ("Hardik Pandya", 1800000, "India", "current"),
+        ("Jasprit Bumrah", 2000000, "India", "current"),
+        ("Pat Cummins", 1900000, "Australia", "current"),
+        ("Steve Smith", 2000000, "Australia", "current"),
+        ("Joe Root", 1800000, "England", "current"),
+        ("Ben Stokes", 1900000, "England", "current"),
+        ("Kane Williamson", 1900000, "New Zealand", "current"),
+        ("Wanindu Hasaranga", 1600000, "Sri Lanka", "current"),
+    ]
     
-    c.execute("SELECT COUNT(*) FROM code_claims")
-    total_claims = c.fetchone()[0]
+    for name, price, country, ptype in players:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
     
-    c.execute("SELECT SUM(amount) FROM code_claims cc JOIN claim_codes c ON cc.code = c.code")
-    total_given = c.fetchone()[0] or 0
-    
-    c.execute("SELECT COUNT(DISTINCT user_id) FROM code_claims")
-    unique_users = c.fetchone()[0] or 0
-    
-    conn.close()
-    
-    await update.message.reply_text(
-        f"📊 **CODE STATS**\n\n"
-        f"📝 Total codes: {total_codes}\n"
-        f"🟢 Active codes: {active_codes}\n"
-        f"🎯 Total claims: {total_claims}\n"
-        f"💰 Credits given: {total_given:,}\n"
-        f"👥 Unique users: {unique_users}",
-        parse_mode="Markdown"
-    )
-
-# ============ MINES GAME ============
-
-import random
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import CallbackQueryHandler, CommandHandler
-
-# Store active games
-active_mines_games = {}
-
-# EXACT MULTIPLIER TABLE (as per your data - 1 bomb only)
-MULTIPLIER_TABLE = {
-    1: {1: 1.03, 2: 1.08, 3: 1.13, 4: 1.18, 5: 1.24,
-        6: 1.30, 7: 1.37, 8: 1.46, 9: 1.55, 10: 1.67,
-        11: 1.80, 12: 1.95, 13: 2.14, 14: 2.35, 15: 2.61,
-        16: 2.93, 17: 3.35, 18: 3.91, 19: 4.69, 20: 5.87,
-        21: 7.82, 22: 11.73, 23: 23.47, 24: 24.75}
-}
-
-class MinesGame:
-    def __init__(self, user_id, bet_amount, bomb_count, message_id):
-        self.user_id = user_id
-        self.bet_amount = bet_amount
-        self.bomb_count = bomb_count
-        self.total_boxes = 25
-        self.opened_boxes = []
-        self.safe_clicks = 0
-        self.message_id = message_id
-        self.bomb_positions = self._place_bombs()
-        self.game_active = True
-        
-    def _place_bombs(self):
-        all_positions = list(range(1, 26))
-        random.shuffle(all_positions)
-        return set(all_positions[:self.bomb_count])
-    
-    def get_multiplier(self):
-        if self.bomb_count == 1:
-            table = MULTIPLIER_TABLE[1]
-            if self.safe_clicks in table:
-                return table[self.safe_clicks]
-        
-        if self.safe_clicks == 0:
-            return 1.00
-        
-        multiplier = 1.0
-        for i in range(self.safe_clicks):
-            multiplier = multiplier * (25 - i) / (25 - self.bomb_count - i)
-        return round(multiplier, 2)
-    
-    def get_win_amount(self):
-        return int(self.bet_amount * self.get_multiplier())
-    
-    def open_box(self, box_number):
-        if box_number in self.opened_boxes:
-            return None, None, None
-        
-        self.opened_boxes.append(box_number)
-        
-        if box_number in self.bomb_positions:
-            self.game_active = False
-            return True, 0, 0
-        
-        self.safe_clicks += 1
-        multiplier = self.get_multiplier()
-        win_amount = self.get_win_amount()
-        return False, multiplier, win_amount
-    
-    def is_complete(self):
-        return self.safe_clicks >= (25 - self.bomb_count)
-
-
-def get_mines_keyboard(game, show_all=False):
-    keyboard = []
-    
-    for row in range(5):
-        row_buttons = []
-        for col in range(5):
-            box_num = row * 5 + col + 1
-            
-            if show_all:
-                if box_num in game.bomb_positions:
-                    text = "💣"
-                elif box_num in game.opened_boxes:
-                    text = "💎"
-                else:
-                    text = str(box_num)
-            else:
-                if box_num in game.opened_boxes:
-                    text = "💎"
-                else:
-                    text = str(box_num)
-            
-            row_buttons.append(InlineKeyboardButton(text, callback_data=f"mine_{box_num}"))
-        keyboard.append(row_buttons)
-    
-    keyboard.append([
-        InlineKeyboardButton("💰 CASHOUT 💰", callback_data="mine_cashout"),
-        InlineKeyboardButton("❌ QUIT ❌", callback_data="mine_quit")
-    ])
-    
-    return InlineKeyboardMarkup(keyboard)
-
-
-async def mines(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    args = context.args
-    if len(args) < 2:
-        await update.message.reply_text(
-            "💎 **MINES GAME** 💎\n\n"
-            "Usage: `/mines <amount> <bombs>`\n"
-            "Example: `/mines 1000 1`\n\n"
-            "⚡ Min bet: 100\n"
-            "⚡ Max bet: 10,000\n"
-            "💣 Bombs: 1-24\n\n"
-            "📊 Multiplier (1 bomb):\n"
-            "1💎→1.03x │ 5💎→1.24x │ 10💎→1.67x\n"
-            "15💎→2.61x │ 20💎→5.87x │ 24💎→24.75x\n\n"
-            "💎 Find diamonds, avoid bombs!",
-            parse_mode="Markdown"
-        )
-        return
-    
-    try:
-        bet_amount = int(args[0])
-        bomb_count = int(args[1])
-    except:
-        await update.message.reply_text("❌ Invalid amount or bombs!")
-        return
-    
-    if bet_amount < 100:
-        await update.message.reply_text("❌ Minimum bet is 100 credits!")
-        return
-    
-    if bet_amount > 10000:
-        await update.message.reply_text("❌ Maximum bet is 10,000 credits!")
-        return
-    
-    if bomb_count < 1 or bomb_count > 24:
-        await update.message.reply_text("❌ Bombs must be between 1 and 24!")
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-    balance = c.fetchone()[0]
-    conn.close()
-    
-    if balance < bet_amount:
-        await update.message.reply_text(f"❌ Need {bet_amount:,}, have {balance:,}")
-        return
-    
-    # Deduct bet
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (bet_amount, user_id))
     conn.commit()
     conn.close()
     
-    # Send game message
-    msg = await update.message.reply_text("🎲 Creating game...")
-    
-    game = MinesGame(user_id, bet_amount, bomb_count, msg.message_id)
-    active_mines_games[user_id] = game
-    
-    multiplier = game.get_multiplier()
-    win_amount = game.get_win_amount()
-    keyboard = get_mines_keyboard(game)
-    
-    await msg.edit_text(
-        f"💎 **MINES GAME** 💎\n\n"
-        f"💰 Bet: {bet_amount:,} credits\n"
-        f"💣 Bombs: {bomb_count}\n"
-        f"📈 Multiplier: {multiplier:.2f}x\n"
-        f"💎 Win amount: {win_amount:,} credits\n\n"
-        f"⬇️ Click on numbers to reveal ⬇️",
-        reply_markup=keyboard,
-        parse_mode="Markdown"
-    )
-
-
-async def mines_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    user_id = update.effective_user.id
-    
-    # Check if user has active game
-    if user_id not in active_mines_games:
-        await query.edit_message_text(
-            "❌ **No active game!**\n\n"
-            "Start a new game:\n"
-            "`/mines <amount> <bombs>`\n\n"
-            "Example: `/mines 1000 1`",
-            parse_mode="Markdown"
-        )
-        return
-    
-    game = active_mines_games[user_id]
-    data = query.data
-    
-    # Cashout
-    if data == "mine_cashout":
-        multiplier = game.get_multiplier()
-        win_amount = game.get_win_amount()
-        
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-        current_bal = c.fetchone()[0]
-        c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (win_amount, user_id))
-        conn.commit()
-        conn.close()
-        
-        keyboard = get_mines_keyboard(game, show_all=True)
-        
-        await query.edit_message_text(
-            f"🎉 **CASHOUT!** 🎉\n\n"
-            f"💰 Bet: {game.bet_amount:,}\n"
-            f"💣 Bombs: {game.bomb_count}\n"
-            f"✅ Safe clicks: {game.safe_clicks}\n"
-            f"📈 Multiplier: {multiplier:.2f}x\n"
-            f"💎 You won: {win_amount:,}\n"
-            f"💳 Balance: {current_bal + win_amount:,}",
-            reply_markup=keyboard,
-            parse_mode="Markdown"
-        )
-        
-        del active_mines_games[user_id]
-        return
-    
-    # Quit
-    if data == "mine_quit":
-        await query.edit_message_text(
-            f"❌ **GAME QUIT** ❌\n\n"
-            f"💰 Bet lost: {game.bet_amount:,}\n"
-            f"💣 Bombs: {game.bomb_count}\n"
-            f"✅ Safe clicks: {game.safe_clicks}\n\n"
-            f"Start new: `/mines <amount> <bombs>`",
-            parse_mode="Markdown"
-        )
-        del active_mines_games[user_id]
-        return
-    
-    # Open box
-    if data.startswith("mine_"):
-        try:
-            box_num = int(data.split("_")[1])
-        except:
-            return
-        
-        if box_num in game.opened_boxes:
-            await query.answer("Already opened!", show_alert=True)
-            return
-        
-        is_bomb, multiplier, win_amount = game.open_box(box_num)
-        
-        if is_bomb:
-            keyboard = get_mines_keyboard(game, show_all=True)
-            
-            await query.edit_message_text(
-                f"💣 **BOMB HIT!** 💣\n\n"
-                f"💰 Bet: {game.bet_amount:,}\n"
-                f"💣 Bombs: {game.bomb_count}\n"
-                f"❌ Box {box_num} had a bomb!\n"
-                f"💀 You lost: {game.bet_amount:,}",
-                reply_markup=keyboard,
-                parse_mode="Markdown"
-            )
-            
-            del active_mines_games[user_id]
-            return
-        
-        if game.is_complete():
-            multiplier = game.get_multiplier()
-            win_amount = game.get_win_amount()
-            
-            conn = get_db()
-            c = conn.cursor()
-            c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-            current_bal = c.fetchone()[0]
-            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (win_amount, user_id))
-            conn.commit()
-            conn.close()
-            
-            keyboard = get_mines_keyboard(game, show_all=True)
-            
-            await query.edit_message_text(
-                f"🎉 **GAME COMPLETE!** 🎉\n\n"
-                f"💰 Bet: {game.bet_amount:,}\n"
-                f"💣 Bombs: {game.bomb_count}\n"
-                f"✅ All safe boxes found!\n"
-                f"📈 Multiplier: {multiplier:.2f}x\n"
-                f"💎 You won: {win_amount:,}\n"
-                f"💳 Balance: {current_bal + win_amount:,}",
-                reply_markup=keyboard,
-                parse_mode="Markdown"
-            )
-            
-            del active_mines_games[user_id]
-            return
-        
-        # Update game board
-        keyboard = get_mines_keyboard(game)
-        multiplier = game.get_multiplier()
-        win_amount = game.get_win_amount()
-        safe_left = (25 - game.bomb_count) - game.safe_clicks
-        
-        await query.edit_message_text(
-            f"💎 **MINES GAME** 💎\n\n"
-            f"💰 Bet: {game.bet_amount:,}\n"
-            f"💣 Bombs: {game.bomb_count}\n"
-            f"✅ Safe: {game.safe_clicks}/{25 - game.bomb_count}\n"
-            f"💚 Left: {safe_left}\n\n"
-            f"📈 Multiplier: {multiplier:.2f}x\n"
-            f"💎 Win: {win_amount:,}\n\n"
-            f"⬇️ Click boxes ⬇️",
-            reply_markup=keyboard,
-            parse_mode="Markdown"
-        )
+    await update.message.reply_text(f"✅ Added {len(players)} players to shop!")
 
 # ============ MAIN ==========
+
 def main():
-    threading.Thread(target=run_flask, daemon=True).start()
-
     app = Application.builder().token(TOKEN).build()
-
-    # User commands
+    
+    # Basic commands
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help))
     app.add_handler(CommandHandler("profile", profile))
@@ -3312,82 +1166,47 @@ def main():
     app.add_handler(CommandHandler("rmpfp", rmpfp))
     app.add_handler(CommandHandler("claim", claim))
     app.add_handler(CommandHandler("spin", spin))
+    
+    # Games
     app.add_handler(CommandHandler("dice", dice))
     app.add_handler(CommandHandler("flip", flip))
+    
+    # Betting
     app.add_handler(CommandHandler("matches", matches))
     app.add_handler(CommandHandler("bet", bet))
     app.add_handler(CommandHandler("mybets", mybets))
     app.add_handler(CommandHandler("cancel", cancel))
-    app.add_handler(CommandHandler("allbets", allbets))
-    app.add_handler(CommandHandler("leaderboard", leaderboard))
-    app.add_handler(CommandHandler("top_fantasy", top_fantasy))
-    app.add_handler(CommandHandler("history", history))
-    app.add_handler(CommandHandler("tip", tip))
-    app.add_handler(CommandHandler("achievements", achievements))
-
-    # Shop commands
+    
+    # Shop
     app.add_handler(CommandHandler("shop", shop))
     app.add_handler(CommandHandler("buy", buy))
     app.add_handler(CommandHandler("buyw", buyw))
     app.add_handler(CommandHandler("myteam", myteam))
-    app.add_handler(CommandHandler("top", top))
     app.add_handler(CallbackQueryHandler(shop_callback, pattern="^shop_"))
-
-    # Shop2 commands
-    app.add_handler(CommandHandler("shop2", shop2))
-    app.add_handler(CommandHandler("buy2", buy2))
-    app.add_handler(CommandHandler("myteam2", myteam2))
-    app.add_handler(CommandHandler("top2", top2))
-    app.add_handler(CommandHandler("addplayer2", addplayer2))
-    app.add_handler(CommandHandler("setprice2", setprice2))
-    app.add_handler(CommandHandler("removeplayer2", removeplayer2))
-
-    # Bank commands
+    
+    # Leaderboard
+    app.add_handler(CommandHandler("leaderboard", leaderboard))
+    
+    # Bank
     app.add_handler(CommandHandler("bank", bank))
     app.add_handler(CommandHandler("deposit", deposit))
     app.add_handler(CommandHandler("withdraw", withdraw))
     app.add_handler(CommandHandler("claim_interest", claim_interest))
-
-    # Admin commands
-    app.add_handler(CommandHandler("addmatch", addmatch))
-    app.add_handler(CommandHandler("deletematch", deletematch))
-    app.add_handler(CommandHandler("lockmatch", lockmatch))
-    app.add_handler(CommandHandler("result", result))
-    app.add_handler(CommandHandler("add", add))
-    app.add_handler(CommandHandler("remove", remove))
-    app.add_handler(CommandHandler("setprice", setprice))
-    app.add_handler(CommandHandler("achieve", achieve))
-    app.add_handler(CommandHandler("rmachieve", rmachieve))
-    app.add_handler(CommandHandler("unlockmatch", unlockmatch))
-
-    # Shop3 commands
-    app.add_handler(CommandHandler("shop3", shop3))
-    app.add_handler(CommandHandler("buy3", buy3))
-    app.add_handler(CommandHandler("myteam3", myteam3))
-    app.add_handler(CommandHandler("top3", top3))
-    app.add_handler(CommandHandler("addplayer3", addplayer3))
-    app.add_handler(CommandHandler("setprice3", setprice3))
-    app.add_handler(CommandHandler("removeplayer3", removeplayer3))
-
-    # Broadcast commands
-    app.add_handler(CommandHandler("broadcast", broadcast_cmd))
-    app.add_handler(CommandHandler("broadcast_stats", broadcast_stats))
-    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_chat_member))
-    app.add_handler(MessageHandler(filters.StatusUpdate.LEFT_CHAT_MEMBER, left_chat_member))
-    app.add_handler(MessageHandler(filters.ChatType.GROUP | filters.ChatType.SUPERGROUP, track_group))
-
-    # Claim code commands
+    
+    # Claim Codes
+    app.add_handler(CommandHandler("createcode", createcode))
     app.add_handler(CommandHandler("claimcode", claimcode))
     app.add_handler(CommandHandler("activecodes", activecodes))
-    app.add_handler(CommandHandler("createcode", createcode))
     app.add_handler(CommandHandler("deletecode", deletecode))
-    app.add_handler(CommandHandler("codestats", codestats))
-
-    # Mines Game - FIXED PATTERN
-    app.add_handler(CommandHandler("mines", mines))
-    app.add_handler(CallbackQueryHandler(mines_callback, pattern="^mine_"))
+    
+    # Broadcast
+    app.add_handler(CommandHandler("broadcast", broadcast_cmd))
+    app.add_handler(CommandHandler("broadcast_stats", broadcast_stats))
+    app.add_handler(MessageHandler(filters.ChatType.GROUP | filters.ChatType.SUPERGROUP, track_all_groups))
+    
+    # Admin
     app.add_handler(CommandHandler("add_default_players", add_default_players))
-
+    
     print("🤖 Bot is running...")
     app.run_polling()
 
