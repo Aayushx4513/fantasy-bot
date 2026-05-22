@@ -3065,13 +3065,13 @@ from telegram.ext import ContextTypes
 
 # ============ CROP DATA ============
 CROPS = {
-    "potato": {"name": "🥔 Potato", "price": 100, "sell": 150, "time": 30, "emoji": "🥔"},
-    "carrot": {"name": "🥕 Carrot", "price": 200, "sell": 300, "time": 60, "emoji": "🥕"},
-    "tomato": {"name": "🍅 Tomato", "price": 300, "sell": 450, "time": 120, "emoji": "🍅"},
-    "corn": {"name": "🌽 Corn", "price": 500, "sell": 750, "time": 240, "emoji": "🌽"},
-    "wheat": {"name": "🌾 Wheat", "price": 700, "sell": 1050, "time": 360, "emoji": "🌾"},
-    "strawberry": {"name": "🍓 Strawberry", "price": 800, "sell": 1200, "time": 480, "emoji": "🍓"},
-    "watermelon": {"name": "🍉 Watermelon", "price": 1000, "sell": 1500, "time": 720, "emoji": "🍉"},
+    "potato": {"name": "🥔 Potato", "price": 1000, "sell": 1500, "time": 30, "emoji": "🥔"},
+    "carrot": {"name": "🥕 Carrot", "price": 2000, "sell": 3000, "time": 60, "emoji": "🥕"},
+    "tomato": {"name": "🍅 Tomato", "price": 3000, "sell": 4500, "time": 120, "emoji": "🍅"},
+    "corn": {"name": "🌽 Corn", "price": 5000, "sell": 7500, "time": 240, "emoji": "🌽"},
+    "wheat": {"name": "🌾 Wheat", "price": 7000, "sell": 10500, "time": 360, "emoji": "🌾"},
+    "strawberry": {"name": "🍓 Strawberry", "price": 8000, "sell": 12000, "time": 480, "emoji": "🍓"},
+    "watermelon": {"name": "🍉 Watermelon", "price": 10000, "sell": 15000, "time": 720, "emoji": "🍉"},
 }
 
 # ============ GLOBAL VARIABLES ============
@@ -3116,29 +3116,31 @@ def get_grow_time(crop_time):
 
 async def crops(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    
+
     msg = "🌾 **CROP MARKET**\n\n"
     msg += "┌────────────┬──────────┬──────────┬──────────┐\n"
     msg += "│ CROP       │ COST     │ SELL     │ TIME     │\n"
     msg += "├────────────┼──────────┼──────────┼──────────┤\n"
-    msg += "│ 🥔 Potato  │ 💰100    │ 💰150    │ ⏰ 30m    │\n"
+    msg += "│ 🥔 Potato  │ 💰1,000  │ 💰1,500  │ ⏰ 30m    │\n"
     msg += "├────────────┼──────────┼──────────┼──────────┤\n"
-    msg += "│ 🥕 Carrot  │ 💰200    │ 💰300    │ ⏰ 1h     │\n"
+    msg += "│ 🥕 Carrot  │ 💰2,000  │ 💰3,000  │ ⏰ 1h     │\n"
     msg += "├────────────┼──────────┼──────────┼──────────┤\n"
-    msg += "│ 🍅 Tomato  │ 💰300    │ 💰450    │ ⏰ 2h     │\n"
+    msg += "│ 🍅 Tomato  │ 💰3,000  │ 💰4,500  │ ⏰ 2h     │\n"
     msg += "├────────────┼──────────┼──────────┼──────────┤\n"
-    msg += "│ 🌽 Corn    │ 💰500    │ 💰750    │ ⏰ 4h     │\n"
+    msg += "│ 🌽 Corn    │ 💰5,000  │ 💰7,500  │ ⏰ 4h     │\n"
     msg += "├────────────┼──────────┼──────────┼──────────┤\n"
-    msg += "│ 🌾 Wheat   │ 💰700    │ 💰1,050  │ ⏰ 6h     │\n"
+    msg += "│ 🌾 Wheat   │ 💰7,000  │ 💰10,500 │ ⏰ 6h     │\n"
     msg += "├────────────┼──────────┼──────────┼──────────┤\n"
-    msg += "│ 🍓 Strawb. │ 💰800    │ 💰1,200  │ ⏰ 8h     │\n"
+    msg += "│ 🍓 Strawb. │ 💰8,000  │ 💰12,000 │ ⏰ 8h     │\n"
     msg += "├────────────┼──────────┼──────────┼──────────┤\n"
-    msg += "│ 🍉 Waterm. │ 💰1,000  │ 💰1,500  │ ⏰ 12h    │\n"
+    msg += "│ 🍉 Waterm. │ 💰10,000 │ 💰15,000 │ ⏰ 12h    │\n"
     msg += "└────────────┴──────────┴──────────┴──────────┘\n"
-    
+
+
     global rain_percentage
     if rain_percentage > 0:
         msg += f"\n🌧️ **Rain Active:** {rain_percentage}% faster growth for NEW crops!\n"
@@ -3669,23 +3671,6 @@ def main():
     app.add_handler(CommandHandler("removeplayer3", removeplayer3))
 
     # Broadcast commands
-    app.add_handler(CommandHandler("broadcast", broadcast_cmd))
-    app.add_handler(CommandHandler("broadcast_stats", broadcast_stats))
-    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_chat_member))
-    app.add_handler(MessageHandler(filters.StatusUpdate.LEFT_CHAT_MEMBER, left_chat_member))
-    app.add_handler(MessageHandler(filters.ChatType.GROUP | filters.ChatType.SUPERGROUP, track_group))
-
-    # Claim code commands
-    app.add_handler(CommandHandler("claimcode", claimcode))
-    app.add_handler(CommandHandler("activecodes", activecodes))
-    app.add_handler(CommandHandler("createcode", createcode))
-    app.add_handler(CommandHandler("deletecode", deletecode))
-    app.add_handler(CommandHandler("codestats", codestats))
-    app.add_handler(CommandHandler("add_default_players", add_default_players))
-
-
-    # ============ HANDLERS ============
-
     app.add_handler(CommandHandler("farm", farm))
     app.add_handler(CommandHandler("grow", grow))
     app.add_handler(CommandHandler("harvest", harvest))
@@ -3694,8 +3679,12 @@ def main():
     app.add_handler(CommandHandler("farm_stats", farm_stats))
     app.add_handler(CommandHandler("farm_leaderboard", farm_leaderboard))
     app.add_handler(CommandHandler("rain", rain))
-
-
+    app.add_handler(CommandHandler("claimcode", claimcode))
+    app.add_handler(CommandHandler("activecodes", activecodes))
+    app.add_handler(CommandHandler("createcode", createcode))
+    app.add_handler(CommandHandler("deletecode", deletecode))
+    app.add_handler(CommandHandler("codestats", codestats))
+    app.add_handler(CommandHandler("add_default_players", add_default_players))
 
     print("🤖 Bot is running...")
     app.run_polling()
