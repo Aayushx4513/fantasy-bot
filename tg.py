@@ -3581,6 +3581,301 @@ async def rain(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
+# ============ TIC TAC TOE - FULLY FIXED ============
+
+import random
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import CallbackQueryHandler, CommandHandler
+
+# Store active games
+ttt_games = {}
+ttt_lobby = {}
+ttt_next_id = 1
+
+class TicTacToe:
+    def __init__(self, game_id, player1_id, player1_name, player2_name, bet, chat_id):
+        self.game_id = game_id
+        self.player1_id = player1_id
+        self.player1_name = player1_name
+        self.player2_id = None
+        self.player2_name = player2_name
+        self.bet = bet
+        self.chat_id = chat_id
+        self.board = ['⬜', '⬜', '⬜', '⬜', '⬜', '⬜', '⬜', '⬜', '⬜']
+        self.current_turn = player1_id
+        self.game_active = False
+        self.winner = None
+    
+    def make_move(self, position, user_id):
+        if not self.game_active:
+            return False, "Game not active"
+        
+        if user_id != self.current_turn:
+            return False, "Not your turn!"
+        
+        if self.board[position] != '⬜':
+            return False, "Position already taken!"
+        
+        symbol = '❌' if user_id == self.player1_id else '⭕'
+        self.board[position] = symbol
+        
+        if self.check_win(symbol):
+            self.winner = user_id
+            self.game_active = False
+            return True, "win"
+        
+        if self.check_draw():
+            self.game_active = False
+            return True, "draw"
+        
+        self.current_turn = self.player2_id if user_id == self.player1_id else self.player1_id
+        return True, "continue"
+    
+    def check_win(self, symbol):
+        wins = [(0,1,2), (3,4,5), (6,7,8), (0,3,6), (1,4,7), (2,5,8), (0,4,8), (2,4,6)]
+        for a,b,c in wins:
+            if self.board[a] == symbol and self.board[b] == symbol and self.board[c] == symbol:
+                return True
+        return False
+    
+    def check_draw(self):
+        return all(cell != '⬜' for cell in self.board)
+    
+    def get_keyboard(self):
+        keyboard = []
+        row = []
+        for i in range(9):
+            row.append(InlineKeyboardButton(self.board[i], callback_data=f"ttt_{self.game_id}_{i}"))
+            if len(row) == 3:
+                keyboard.append(row)
+                row = []
+        return InlineKeyboardMarkup(keyboard)
+
+
+async def ttt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    chat_id = update.message.chat.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    bet = 0
+    if args:
+        try:
+            bet = int(args[0])
+            if bet < 100:
+                await update.message.reply_text("❌ Minimum bet is 100 credits!")
+                return
+        except:
+            await update.message.reply_text("❌ Invalid bet amount!")
+            return
+    
+    if bet > 0:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+        balance = c.fetchone()[0]
+        conn.close()
+        
+        if balance < bet:
+            await update.message.reply_text(f"❌ You need {bet:,} credits!")
+            return
+    
+    global ttt_next_id
+    game_id = ttt_next_id
+    ttt_next_id += 1
+    
+    ttt_lobby[game_id] = {
+        "creator_id": user_id,
+        "creator_name": user_name,
+        "bet": bet,
+        "chat_id": chat_id
+    }
+    
+    keyboard = [[InlineKeyboardButton("🔵 JOIN GAME", callback_data=f"ttt_join_{game_id}")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    bet_text = f"💰 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Normal Game"
+    
+    await update.message.reply_text(
+        f"🎯 **TIC TAC TOE**\n\n"
+        f"👑 {user_name} (❌)\n"
+        f"{bet_text}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"⚡ Waiting for opponent...\n"
+        f"━━━━━━━━━━━━━━━━━━━━",
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
+    )
+
+
+async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    data = query.data
+    
+    # Handle join game
+    if data.startswith("ttt_join_"):
+        game_id = int(data.split("_")[2])
+        
+        if game_id not in ttt_lobby:
+            await query.edit_message_text("❌ Game lobby expired!")
+            return
+        
+        lobby = ttt_lobby[game_id]
+        creator_id = lobby["creator_id"]
+        creator_name = lobby["creator_name"]
+        bet = lobby["bet"]
+        chat_id = lobby["chat_id"]
+        
+        if creator_id == user_id:
+            await query.answer("You cannot join your own game!", show_alert=True)
+            return
+        
+        # Check balance for joiner
+        if bet > 0:
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+            balance = c.fetchone()[0]
+            conn.close()
+            
+            if balance < bet:
+                await query.edit_message_text(f"❌ You need {bet:,} credits to join!")
+                return
+        
+        # Create game
+        game = TicTacToe(game_id, creator_id, creator_name, user_name, bet, chat_id)
+        game.player2_id = user_id
+        game.game_active = True
+        
+        # Deduct bets if any
+        if bet > 0:
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (bet, creator_id))
+            c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (bet, user_id))
+            conn.commit()
+            conn.close()
+        
+        ttt_games[game_id] = game
+        del ttt_lobby[game_id]
+        
+        bet_text = f"💰 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Normal Game"
+        
+        await query.edit_message_text(
+            f"🎯 **TIC TAC TOE**\n\n"
+            f"❌ {creator_name} vs ⭕ {user_name}\n"
+            f"{bet_text}\n\n"
+            f"🎯 {creator_name}'s Turn",
+            reply_markup=game.get_keyboard(),
+            parse_mode="Markdown"
+        )
+        return
+    
+    # Handle move
+    if data.startswith("ttt_"):
+        parts = data.split("_")
+        if len(parts) < 3:
+            return
+        
+        try:
+            game_id = int(parts[1])
+            pos = int(parts[2])
+        except:
+            return
+        
+        if game_id not in ttt_games:
+            await query.answer("Game not found!", show_alert=True)
+            return
+        
+        game = ttt_games[game_id]
+        
+        if user_id != game.player1_id and user_id != game.player2_id:
+            await query.answer("Not your game!", show_alert=True)
+            return
+        
+        result, msg = game.make_move(pos, user_id)
+        
+        if not result:
+            await query.answer(msg, show_alert=True)
+            return
+        
+        if msg == "win":
+            winner_id = game.winner
+            winner_name = game.player1_name if winner_id == game.player1_id else game.player2_name
+            loser_name = game.player2_name if winner_id == game.player1_id else game.player1_name
+            
+            if game.bet > 0:
+                conn = get_db()
+                c = conn.cursor()
+                c.execute("SELECT balance FROM users WHERE user_id=?", (winner_id,))
+                current_bal = c.fetchone()[0]
+                new_bal = current_bal + (game.bet * 2)
+                c.execute("UPDATE users SET balance = ? WHERE user_id=?", (new_bal, winner_id))
+                conn.commit()
+                conn.close()
+                
+                result_text = f"🏆 **WINNER: {winner_name.upper()}** 🏆\n💰 +{game.bet*2:,} credits\n💳 New Balance: {new_bal:,}"
+            else:
+                result_text = f"🏆 **WINNER: {winner_name.upper()}** 🏆"
+            
+            # Final message with board and result
+            await query.edit_message_text(
+                f"🎯 **TIC TAC TOE**\n\n"
+                f"❌ {game.player1_name} vs ⭕ {game.player2_name}\n\n"
+                f"{result_text}",
+                reply_markup=game.get_keyboard(),
+                parse_mode="Markdown"
+            )
+            
+            del ttt_games[game_id]
+            return
+        
+        elif msg == "draw":
+            if game.bet > 0:
+                conn = get_db()
+                c = conn.cursor()
+                c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game.bet, game.player1_id))
+                c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game.bet, game.player2_id))
+                conn.commit()
+                conn.close()
+            
+            await query.edit_message_text(
+                f"🎯 **TIC TAC TOE**\n\n"
+                f"❌ {game.player1_name} vs ⭕ {game.player2_name}\n\n"
+                f"🤝 **DRAW** 🤝",
+                reply_markup=game.get_keyboard(),
+                parse_mode="Markdown"
+            )
+            
+            del ttt_games[game_id]
+            return
+        
+        else:  # continue
+            turn_name = game.player1_name if game.current_turn == game.player1_id else game.player2_name
+            turn_symbol = "❌" if game.current_turn == game.player1_id else "⭕"
+            
+            bet_text = f"💰 Bet: {game.bet:,} | Prize: {game.bet*2:,}" if game.bet > 0 else "🎮 Normal Game"
+            
+            await query.edit_message_text(
+                f"🎯 **TIC TAC TOE**\n\n"
+                f"❌ {game.player1_name} vs ⭕ {game.player2_name}\n"
+                f"{bet_text}\n\n"
+                f"🎯 {turn_name}'s Turn ({turn_symbol})",
+                reply_markup=game.get_keyboard(),
+                parse_mode="Markdown"
+            )
+            return
+
+
+
 # ============ MAIN ==========
 def main():
     threading.Thread(target=run_flask, daemon=True).start()
@@ -3669,6 +3964,8 @@ def main():
     app.add_handler(CommandHandler("deletecode", deletecode))
     app.add_handler(CommandHandler("codestats", codestats))
     app.add_handler(CommandHandler("add_default_players", add_default_players))
+    app.add_handler(CommandHandler("ttt", ttt))
+    app.add_handler(CallbackQueryHandler(ttt_callback, pattern="^ttt_"))
 
     print("🤖 Bot is running...")
     app.run_polling()
