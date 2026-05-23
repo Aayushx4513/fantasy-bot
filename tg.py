@@ -261,7 +261,7 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /storage - Check space\n"
         "• /upgrade_storage - More slots\n\n"
         
-        "👨‍🌾 WORKERS\n"
+        "👨‍🌾 WORKEBNC\n"
         "• /hire - Hire workers\n"
         "• /workers - Your workers\n\n"
         
@@ -954,7 +954,7 @@ async def achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\nTotal: {len(ach)} achievements"
     await update.message.reply_text(msg)
 
-# ============ ADD DEFAULT PLAYERS (20 per category) ============
+# ============ ADD DEFAULT PLAYEBNC (20 per category) ============
 async def add_default_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Add default players to shop - Admin only"""
     
@@ -1231,7 +1231,7 @@ async def add_default_players(update: Update, context: ContextTypes.DEFAULT_TYPE
     conn.close()
     
     await update.message.reply_text(
-        f"✅ **20 PLAYERS ADDED PER CATEGORY!**\n\n"
+        f"✅ **20 PLAYEBNC ADDED PER CATEGORY!**\n\n"
         f"🏏 Total Men: {shop_count}\n"
         f"👩 Total Women: {women_count}\n\n"
         f"🇮🇳 India: 40 (20 Current + 20 Legends)\n"
@@ -1326,10 +1326,10 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
         
         if not players:
-            await query.edit_message_text("👩 WOMEN CRICKETERS\n\nNo players yet!")
+            await query.edit_message_text("👩 WOMEN CRICKETEBNC\n\nNo players yet!")
             return
         
-        msg = "👩 WOMEN CRICKETERS\n\n"
+        msg = "👩 WOMEN CRICKETEBNC\n\n"
         for p in players:
             msg += f"{p[0]}. {p[1]} - {p[2]:,} 💰\n"
         msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /buyw <number> to purchase"
@@ -1354,7 +1354,7 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"❌ No players found")
         return
     
-    msg = f"🛒 {country} {ptype.upper()} PLAYERS\n\n"
+    msg = f"🛒 {country} {ptype.upper()} PLAYEBNC\n\n"
     for p in players:
         msg += f"{p[0]}. {p[1]} - {p[2]:,} 💰\n"
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /buy <number> to purchase"
@@ -1474,10 +1474,10 @@ async def shop2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     
     if not players:
-        await update.message.reply_text('🛒 CHEAP SHOP\n\nNo players yet.\n👑 Admin: /addplayer2 <name> <price>')
+        await update.message.reply_text('🛒 AFFORDABLE SHOP\n\nNo players yet.\n👑 Admin: /addplayer2 <name> <price>')
         return
     
-    msg = "🛒 CHEAP PLAYERS SHOP\n\n"
+    msg = "🛒 CHEAP PLAYEBNC SHOP\n\n"
     for p in players:
         msg += f"{p[0]}. {p[1]} - {p[2]:,} 💰\n"
     msg += "\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /buy2 <id> to purchase"
@@ -1546,11 +1546,11 @@ async def myteam2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     
     if not players:
-        await update.message.reply_text('📭 No cheap players owned.\nUse /shop2 to buy!')
+        await update.message.reply_text('📭 No shop2 players owned.\nUse /shop2 to buy!')
         return
     
     total = sum(p[1] for p in players)
-    msg = "🤑 MY CHEAP PLAYERS\n\n"
+    msg = "🤑 MY CHEAP PLAYEBNC\n\n"
     for i, p in enumerate(players, 1):
         msg += f"{i}. {p[0]} - {p[1]:,} 💰\n"
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💰 Total spent: {total:,} 💰"
@@ -1568,11 +1568,11 @@ async def top2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tops = c.fetchall()
     
     if not tops:
-        await update.message.reply_text('🏆 CHEAP PLAYERS TOP\n\nNo one owns any yet!')
+        await update.message.reply_text('🏆 CHEAP PLAYEBNC TOP\n\nNo one owns any yet!')
         conn.close()
         return
     
-    msg = "🏆 CHEAP PLAYERS TOP\n\n"
+    msg = "🏆 CHEAP PLAYEBNC TOP\n\n"
     for i, t in enumerate(tops, 1):
         medal = "👑" if i==1 else "🥈" if i==2 else "🥉" if i==3 else f"{i}."
         msg += f"{medal} {t[0]} - {t[1]} players ({t[2]:,} 💰)\n"
@@ -1597,13 +1597,13 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     c.execute("SELECT w.name, w.price FROM user_players u JOIN shop_women w ON u.player_id=w.id WHERE u.user_id=? AND u.type='women'", (user_id,))
     women = c.fetchall()
     c.execute("SELECT s.name, s.price FROM user_players2 u JOIN shop2 s ON u.player_id=s.id WHERE u.user_id=?", (user_id,))
-    cheap = c.fetchall()
+    shop2 = c.fetchall()
     
     conn.close()
     
     mens_total = sum(p[1] for p in mens)
     women_total = sum(w[1] for w in women)
-    cheap_total = sum(c[1] for c in cheap)
+    shop2_total = sum(c[1] for c in shop2)
     
     msg = "🏏 MY CRICKET TEAM\n\n━━━━━━━━━━━━━━━━━━━━━━\n👨 MENS"
     if mens:
@@ -1615,13 +1615,13 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += "\n\nNo mens players. /shop to buy!"
     
     msg += "\n\n━━━━━━━━━━━━━━━━━━━━━━\n🤑 CHEAP"
-    if cheap:
-        msg += f" ({len(cheap)})\n\n"
-        for i, c in enumerate(cheap, 1):
+    if shop2:
+        msg += f" ({len(shop2)})\n\n"
+        for i, c in enumerate(shop2, 1):
             msg += f"{i}. {c[0]} - {c[1]:,} 💰\n"
-        msg += f"\nTotal: {cheap_total:,} 💰"
+        msg += f"\nTotal: {shop2_total:,} 💰"
     else:
-        msg += "\n\nNo cheap players. /shop2 to buy!"
+        msg += "\n\nNo shop2 players. /shop2 to buy!"
     
     msg += "\n\n━━━━━━━━━━━━━━━━━━━━━━\n👩 WOMEN"
     if women:
@@ -1632,9 +1632,9 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         msg += "\n\nNo women players. /shop women section"
     
-    grand_total = mens_total + cheap_total + women_total
-    total_players = len(mens) + len(cheap) + len(women)
-    msg += f"\n\n━━━━━━━━━━━━━━━━━━━━━━\n💰 GRAND TOTAL: {grand_total:,} 💰\n🏆 TOTAL PLAYERS: {total_players}"
+    grand_total = mens_total + shop2_total + women_total
+    total_players = len(mens) + len(shop2) + len(women)
+    msg += f"\n\n━━━━━━━━━━━━━━━━━━━━━━\n💰 GRAND TOTAL: {grand_total:,} 💰\n🏆 TOTAL PLAYEBNC: {total_players}"
     await update.message.reply_text(msg)
 
 async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1892,13 +1892,13 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     
     msg = f"📢 MATCH RESULT!\n\n🏏 {match[1]} vs {match[2]}\n🏆 WINNER: {winner}\n\n"
-    msg += f"✅ WINNERS (+10 pts max): {winners} users\n"
+    msg += f"✅ WINNEBNC (+10 pts max): {winners} users\n"
     for w in winner_list[:5]:
         msg += f"   • {w}\n"
     if len(winner_list) > 5:
         msg += f"   • +{len(winner_list)-5} more\n"
     
-    msg += f"\n❌ LOSERS (-5 pts max): {losers} users\n"
+    msg += f"\n❌ LOSEBNC (-5 pts max): {losers} users\n"
     for l in loser_list[:5]:
         msg += f"   • {l}\n"
     if len(loser_list) > 5:
@@ -2369,7 +2369,7 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⏰ Next interest: 24h"
     )
 
-# ============ SHOP3 (CHEAPEST PLAYERS) ==========
+# ============ SHOP3 (CHEAPEST PLAYEBNC) ==========
 
 async def shop3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -2464,7 +2464,7 @@ async def myteam3(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     total = sum(p[1] for p in players)
-    msg = "🤑 MY SHOP3 PLAYERS (Under 10k)\n\n"
+    msg = "🤑 MY SHOP3 PLAYEBNC (Under 10k)\n\n"
     for i, p in enumerate(players, 1):
         msg += f"{i}. {p[0]} - {p[1]:,} 💰\n"
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💰 Total spent: {total:,} 💰"
@@ -2714,7 +2714,7 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         content = " ".join(context.args)
     
-    # Send to USERS
+    # Send to USEBNC
     for uid in known_users:
         try:
             await context.bot.send_message(uid, content)
@@ -3392,7 +3392,7 @@ async def farm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     msg += "\n"
 
-    # 🔥 SHOW AUTO-GROWN CROPS FROM WORKERS 🔥
+    # 🔥 SHOW AUTO-GROWN CROPS FROM WORKEBNC 🔥
     if storage_crops:
         msg += "🤖 **WORKER CROPS (Auto-Grown - Ready to Sell):**\n"
         for crop_name, count in storage_crops.items():
@@ -3530,7 +3530,7 @@ async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sell_price = crop_info['sell'] * quantity
     sold = False
     
-    # 🔥 FIRST CHECK STORAGE (auto-grown by workers) 🔥
+    # 🔥 FIBNCT CHECK STORAGE (auto-grown by workers) 🔥
     c.execute("SELECT crops FROM user_storage WHERE user_id = ?", (user_id,))
     storage_result = c.fetchone()
     
@@ -3691,7 +3691,7 @@ async def farm_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_stats = c.fetchone()
     conn.close()
     
-    msg = "🏆 **TOP FARMERS** 🏆\n\n"
+    msg = "🏆 **TOP FARMEBNC** 🏆\n\n"
     
     medals = ["👑", "🥈", "🥉", "", ""]
     for i, farmer in enumerate(top_farmers):
@@ -4110,7 +4110,7 @@ STORAGE_LEVELS = {
 }
 
 # Worker data (Price = Crop Price × 8)
-WORKERS = {
+WORKEBNC = {
     "potato": {"name": "🥔 Potato", "price": 8000, "crop_price": 1000, "sell": 1500, "time": 30, "emoji": "🥔"},
     "carrot": {"name": "🥕 Carrot", "price": 16000, "crop_price": 2000, "sell": 3000, "time": 60, "emoji": "🥕"},
     "tomato": {"name": "🍅 Tomato", "price": 24000, "crop_price": 3000, "sell": 4500, "time": 120, "emoji": "🍅"},
@@ -4188,7 +4188,7 @@ async def storage(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     crops_text = ""
     for crop_name, count in crops.items():
-        crop = WORKERS.get(crop_name, CROPS.get(crop_name))
+        crop = WORKEBNC.get(crop_name, CROPS.get(crop_name))
         if crop:
             crops_text += f"{crop['emoji']} {crop['name']} x{count}\n"
     
@@ -4306,7 +4306,7 @@ async def hire(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     keyboard = []
-    for key, worker in WORKERS.items():
+    for key, worker in WORKEBNC.items():
         keyboard.append([InlineKeyboardButton(
             f"{worker['emoji']} {worker['name']} - {worker['price']:,} credits",
             callback_data=f"hire_{key}"
@@ -4330,7 +4330,7 @@ async def hire_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     crop_key = data[5:]  # "hire_potato" -> "potato"
-    worker = WORKERS.get(crop_key)
+    worker = WORKEBNC.get(crop_key)
 
     if not worker:
         await query.edit_message_text("❌ Invalid worker!")
@@ -4385,7 +4385,7 @@ async def hire_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if "_" in crop_key:
             crop_key = crop_key.split("_")[0]
         
-        worker = WORKERS.get(crop_key)
+        worker = WORKEBNC.get(crop_key)
         
         if not worker:
             await query.edit_message_text(f"❌ Invalid worker!")
@@ -4433,25 +4433,25 @@ async def workers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     
     if not result:
-        await update.message.reply_text("👨‍🌾 YOUR WORKERS\n\nNo workers hired yet!\n\n💡 /hire - Hire workers")
+        await update.message.reply_text("👨‍🌾 YOUR WORKEBNC\n\nNo workers hired yet!\n\n💡 /hire - Hire workers")
         return
     
     workers_list = json.loads(result[0]) if result[0] else []
     
     if not workers_list:
-        await update.message.reply_text("👨‍🌾 YOUR WORKERS\n\nNo workers hired yet!\n\n💡 /hire - Hire workers")
+        await update.message.reply_text("👨‍🌾 YOUR WORKEBNC\n\nNo workers hired yet!\n\n💡 /hire - Hire workers")
         return
     
     now = time.time()
     total_cost = 0
-    msg = "👨‍🌾 YOUR WORKERS\n\n"
+    msg = "👨‍🌾 YOUR WORKEBNC\n\n"
     
     # Count workers
     from collections import Counter
     worker_counts = Counter(workers_list)
     
     for worker_key, count in worker_counts.items():
-        worker = WORKERS.get(worker_key)
+        worker = WORKEBNC.get(worker_key)
         if worker:
             # Get last grow time for this worker type
             key = f"{user_id}_{worker_key}"
@@ -4517,7 +4517,7 @@ def auto_grow_worker():
                     free_slots = 50
                 
                 for w in workers:
-                    worker = WORKERS.get(w)
+                    worker = WORKEBNC.get(w)
                     if not worker:
                         continue
                     
@@ -4572,7 +4572,7 @@ cricket_next_id = 1
 
 # Delivery rules
 DELIVERIES = {
-    "RS": {"name": "🔄 RS", "out_on": 1},
+    "BNC": {"name": "🔄 BNC", "out_on": 1},
     "YRK": {"name": "🎯 YRK", "out_on": 2},
     "SHT": {"name": "⏬ SHT", "out_on": 3},
     "SLW": {"name": "🐌 SLW", "out_on": 4},
@@ -4878,7 +4878,7 @@ async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_
 
 # ============ CRICKET GAME - PART 5 (BOWLING & BATTING) ============
 
-# ============ FIXED CALLBACK HANDLERS ============
+# ============ FIXED CALLBACK HANDLEBNC ============
 
 async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -5026,43 +5026,71 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return
         
-        # Second innings - Game over
+        # Second innings - Check for DRAW
         else:
-            game.game_active = False
-            game.winner = game.player2_id if game.current_batsman == game.player1_id else game.player1_id
+            # DRAW condition: target - score = 1 and wicket falls
+            if game.score == game.target - 1:
+                game.game_active = False
+                
+                # Return money to both players
+                conn = get_db()
+                c = conn.cursor()
+                c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game.bet, game.player1_id))
+                c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game.bet, game.player2_id))
+                conn.commit()
+                conn.close()
+                
+                await query.edit_message_text(
+                    f"🏏 **CRICKET GAME**\n\n"
+                    f"❌ **OUT!** {delivery['name']} vs {shot}\n\n"
+                    f"📊 Final Score: {game.score}/{game.wickets}\n"
+                    f"🎯 Target: {game.target}\n\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🤝 **DRAW!** 🤝\n"
+                    f"💰 Money returned: {game.bet} credits each\n"
+                    f"━━━━━━━━━━━━━━━━━━━━",
+                    parse_mode="Markdown"
+                )
+                del cricket_games[game_id]
+                return
             
-            # Transfer prize
-            conn = get_db()
-            c = conn.cursor()
-            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game.bet*2, game.winner))
-            conn.commit()
-            conn.close()
-            
-            winner_name = game.player1_name if game.winner == game.player1_id else game.player2_name
-            loser_name = game.player2_name if game.winner == game.player1_id else game.player1_name
-            
-            await query.edit_message_text(
-                f"🏏 **CRICKET GAME**\n\n"
-                f"❌ **OUT!** {delivery['name']} vs {shot}\n\n"
-                f"📊 Final Score: {game.score}/{game.wickets}\n"
-                f"🎯 Target: {game.target}\n\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"🏆 **WINNER: {winner_name}** 🏆\n"
-                f"💰 Prize: {game.bet*2:,} credits\n\n"
-                f"💳 {winner_name}: +{game.bet*2:,}\n"
-                f"💳 {loser_name}: -{game.bet:,}\n"
-                f"━━━━━━━━━━━━━━━━━━━━",
-                parse_mode="Markdown"
-            )
-            del cricket_games[game_id]
-            return
+            # Normal loss
+            else:
+                game.game_active = False
+                game.winner = game.player2_id if game.current_batsman == game.player1_id else game.player1_id
+                
+                # Transfer prize to winner
+                conn = get_db()
+                c = conn.cursor()
+                c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game.bet*2, game.winner))
+                conn.commit()
+                conn.close()
+                
+                winner_name = game.player1_name if game.winner == game.player1_id else game.player2_name
+                loser_name = game.player2_name if game.winner == game.player1_id else game.player1_name
+                
+                await query.edit_message_text(
+                    f"🏏 **CRICKET GAME**\n\n"
+                    f"❌ **OUT!** {delivery['name']} vs {shot}\n\n"
+                    f"📊 Final Score: {game.score}/{game.wickets}\n"
+                    f"🎯 Target: {game.target}\n\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🏆 **WINNER: {winner_name}** 🏆\n"
+                    f"💰 Prize: {game.bet*2:,} credits\n\n"
+                    f"💳 {winner_name}: +{game.bet*2:,}\n"
+                    f"💳 {loser_name}: -{game.bet:,}\n"
+                    f"━━━━━━━━━━━━━━━━━━━━",
+                    parse_mode="Markdown"
+                )
+                del cricket_games[game_id]
+                return
     
     # SAFE - Add runs
     else:
         game.score += shot
         game.balls += 1
         
-        # Check if target reached (second innings)
+        # Check if target reached (second innings win)
         if game.target and game.score >= game.target:
             game.game_active = False
             game.winner = game.current_batsman
@@ -5130,10 +5158,224 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             reply_markup=reply_markup,
             parse_mode="Markdown"
         )
+# ============ MINES GAME (High Multiplier) ============
+
+import random
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import CallbackQueryHandler, CommandHandler
+
+active_mines = {}
+
+# Max multiplier based on bombs
+MAX_MULTIPLIER = {
+    1: 5.0, 2: 7.0, 3: 9.0, 4: 10.5, 5: 12.0,
+    6: 13.5, 7: 15.0, 8: 16.5, 9: 18.0, 10: 20.0,
+    11: 22.0, 12: 24.0, 13: 26.0, 14: 28.0, 15: 30.0,
+    16: 32.5, 17: 35.0, 18: 37.5, 19: 40.0, 20: 42.5,
+    21: 45.0, 22: 47.5, 23: 49.0, 24: 50.0,
+}
+
+def calc_multiplier(bombs, safe):
+    total_safe = 25 - bombs
+    if safe == 0:
+        return 1.0
+    progress = safe / total_safe
+    max_mult = MAX_MULTIPLIER.get(bombs, 50.0)
+    mult = 1.0 + (max_mult - 1.0) * progress
+    return round(mult, 2)
+
+
+async def mines(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "💣 **MINES**\n"
+            "`/mines <amount> <bombs>`\n"
+            "Example: `/mines 1000 3`\n\n"
+            "⚡ Min:100 | Max:10,000\n"
+            "💣 Bombs:1-24\n"
+            "🎯 More bombs = bigger reward!",
+            parse_mode="Markdown"
+        )
+        return
+    
+    try:
+        bet = int(args[0])
+        bombs = int(args[1])
+    except:
+        await update.message.reply_text("❌ Invalid!")
+        return
+    
+    if bet < 100 or bet > 10000:
+        await update.message.reply_text("❌ Bet 100-10,000!")
+        return
+    
+    if bombs < 1 or bombs > 24:
+        await update.message.reply_text("❌ Bombs 1-24!")
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    balance = c.fetchone()[0]
+    conn.close()
+    
+    if balance < bet:
+        await update.message.reply_text(f"❌ Need {bet:,}, have {balance:,}")
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (bet, user_id))
+    conn.commit()
+    conn.close()
+    
+    bomb_pos = random.sample(range(25), bombs)
+    max_mult = MAX_MULTIPLIER.get(bombs, 50.0)
+    
+    active_mines[user_id] = {
+        'bet': bet,
+        'bombs': bomb_pos,
+        'revealed': [],
+        'active': True,
+        'bomb_count': bombs,
+        'max_mult': max_mult
+    }
+    
+    keyboard = []
+    for i in range(5):
+        row = []
+        for j in range(5):
+            row.append(InlineKeyboardButton("❓", callback_data=f"mine_{user_id}_{i*5+j}"))
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("💰 CASHOUT", callback_data=f"mine_cashout_{user_id}")])
+    
+    await update.message.reply_text(
+        f"💣 **MINES**\n"
+        f"💰 {bet:,} | 💣 {bombs}\n"
+        f"🎯 Max: {max_mult}x\n"
+        f"📈 1.00x | 💎 {bet:,}\n\n"
+        f"⬇️ Click tiles ⬇️",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+
+
+async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    data = query.data
+    
+    if user_id not in active_mines:
+        await query.edit_message_text("❌ No game! /mines")
+        return
+    
+    game = active_mines[user_id]
+    
+    if data.startswith("mine_cashout_"):
+        safe = len([t for t in game['revealed'] if t not in game['bombs']])
+        mult = calc_multiplier(game['bomb_count'], safe)
+        win = int(game['bet'] * mult)
+        
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+        bal = c.fetchone()[0]
+        c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (win, user_id))
+        conn.commit()
+        conn.close()
+        
+        await query.edit_message_text(
+            f"💰 **CASHOUT**\n"
+            f"✅ +{win:,}\n"
+            f"📈 {mult}x\n"
+            f"💳 {bal + win:,}",
+            parse_mode="Markdown"
+        )
+        del active_mines[user_id]
+        return
+    
+    if data.startswith("mine_"):
+        idx = int(data.split("_")[2])
+        
+        if idx in game['revealed']:
+            await query.answer("Already opened!")
+            return
+        
+        game['revealed'].append(idx)
+        
+        if idx in game['bombs']:
+            await query.edit_message_text(
+                f"💣 **BOMB!**\n"
+                f"💰 Lost: {game['bet']:,}\n"
+                f"😵 Game over!",
+                parse_mode="Markdown"
+            )
+            del active_mines[user_id]
+            return
+        
+        safe = len([t for t in game['revealed'] if t not in game['bombs']])
+        total_safe = 25 - game['bomb_count']
+        mult = calc_multiplier(game['bomb_count'], safe)
+        win = int(game['bet'] * mult)
+        
+        if safe >= total_safe:
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+            bal = c.fetchone()[0]
+            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (win, user_id))
+            conn.commit()
+            conn.close()
+            
+            await query.edit_message_text(
+                f"🎉 **WIN!**\n"
+                f"✅ All safe tiles!\n"
+                f"💰 +{win:,}\n"
+                f"📈 {mult}x\n"
+                f"💳 {bal + win:,}",
+                parse_mode="Markdown"
+            )
+            del active_mines[user_id]
+            return
+        
+        keyboard = []
+        for i in range(5):
+            row = []
+            for j in range(5):
+                pos = i*5+j
+                if pos in game['revealed']:
+                    row.append(InlineKeyboardButton("💎", callback_data=f"mine_{user_id}_{pos}"))
+                else:
+                    row.append(InlineKeyboardButton("❓", callback_data=f"mine_{user_id}_{pos}"))
+            keyboard.append(row)
+        keyboard.append([InlineKeyboardButton("💰 CASHOUT", callback_data=f"mine_cashout_{user_id}")])
+        
+        left = total_safe - safe
+        max_mult = game['max_mult']
+        
+        await query.edit_message_text(
+            f"💎 **SAFE**\n"
+            f"💰 {game['bet']:,}\n"
+            f"✅ {safe}/{total_safe}\n"
+            f"📈 {mult}x (Max: {max_mult}x)\n"
+            f"💎 {win:,}\n"
+            f"💚 {left} left\n\n"
+            f"⬇️ Click or CASHOUT",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
 
 
 
-# ============ MAIN ==========
 def main():
 #    threading.Thread(target=run_flask, daemon=True).start()
 
@@ -5198,13 +5440,15 @@ def main():
     app.add_handler(CommandHandler("achieve", achieve))
     app.add_handler(CommandHandler("rmachieve", rmachieve))
     app.add_handler(CommandHandler("unlockmatch", unlockmatch))
-   # ============ CRICKET GAME - PART 6 (HANDLERS) ============
+   # ============ CRICKET GAME - PART 6 (HANDLEBNC) ============
     app.add_handler(CommandHandler("CLcricket", clcricket))
     app.add_handler(CallbackQueryHandler(cricket_join_callback, pattern="^cricket_join_"))
     app.add_handler(CallbackQueryHandler(cricket_toss_callback, pattern="^cricket_toss_"))
     app.add_handler(CallbackQueryHandler(cricket_choice_callback, pattern="^cricket_choice_"))
     app.add_handler(CallbackQueryHandler(cricket_bowl_callback, pattern="^cricket_bowl_"))
     app.add_handler(CallbackQueryHandler(cricket_bat_callback, pattern="^cricket_bat_"))
+    app.add_handler(CommandHandler("mines", mines))
+    app.add_handler(CallbackQueryHandler(mine_callback, pattern="^mine_"))
 
 
     # Shop3 commands
