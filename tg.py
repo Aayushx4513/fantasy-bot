@@ -206,25 +206,25 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     msg = (
-        "📋 CL ZONE - COMMAND LIST\n\n"
+        "📋 **CL ZONE - COMMAND LIST**\n\n"
         
-        "👤 PROFILE\n"
+        "👤 **PROFILE**\n"
         "• /start - Start bot\n"
-        "• /profile - Your stats\n"
+        "• /profile - Your stats & collection\n"
         "• /leaderboard - Top 10 Richest users\n"
         "• /setbio <text> - Set bio\n"
         "• /rmbio - Remove bio\n"
         "• /setpfp - Set photo (reply to pic)\n"
         "• /rmpfp - Remove photo\n\n"
         
-        "💰 EARN CREDITS\n"
+        "💰 **EARN CREDITS**\n"
         "• /claim - 500 daily\n"
         "• /spin - 1,000-10,000 daily\n"
         "• /dice <amount> - 0x to 2.5x\n"
         "• /flip heads/tails <amount> - 2x\n"
         "• /tip <amount> (reply) - Send credits\n\n"
         
-        "🏏 CRICKET BETTING\n"
+        "🏏 **CRICKET BETTING**\n"
         "• /matches - Live matches\n"
         "• /bet <team> <amount> - Place bet\n"
         "• /mybets - Your bets\n"
@@ -233,22 +233,41 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /history - Win/loss record\n"
         "• /top_fantasy - Fantasy points ranking\n\n"
         
-        "🏆 ACHIEVEMENTS\n"
+        "🏆 **ACHIEVEMENTS**\n"
         "• /achievements - Your badges\n\n"
         
-        "🛒 SHOP\n"
-        "• /shop - Buy players\n"
-        "• /buy <id> - Purchase\n"
+        "🛒 **SHOP**\n"
+        "• /shop - Buy players (India, Aus, Eng, NZ, SL)\n"
+        "• /buy <id> - Purchase mens player\n"
+        "• /buyw <id> - Purchase women player\n"
         "• /myteam - Your collection\n"
         "• /top - Top collectors\n\n"
         
-        "🏦 BANK\n"
+        "🛍️ **AFFORDABLE STORE**\n"
+        "• /shop2 - Budget players\n"
+        "• /buy2 <id> - Purchase\n"
+        "• /myteam2 - Your collection\n"
+        "• /top2 - Top collectors\n\n"
+        
+        "🛒 **SHOP3**\n"
+        "• /shop3 - Special players\n"
+        "• /buy3 <id> - Purchase\n"
+        "• /myteam3 - Your collection\n"
+        "• /top3 - Top collectors\n\n"
+        
+        "🛒 **SHOP4**\n"
+        "• /shop4 - Exclusive players\n"
+        "• /buy4 <id> - Purchase\n"
+        "• /myteam4 - Your collection\n"
+        "• /top4 - Top collectors\n\n"
+        
+        "🏦 **BANK**\n"
         "• /bank - Check balance\n"
         "• /deposit <amount> - Add to bank\n"
         "• /withdraw <amount> - Take from bank\n"
         "• /claim_interest - 5% daily\n\n"
         
-        "🌾 FARM\n"
+        "🌾 **FARM**\n"
         "• /farm - Your farm\n"
         "• /crops - Crop prices\n"
         "• /grow <crop> <qty> - Grow crops\n"
@@ -257,27 +276,29 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /farm_stats - Your stats\n"
         "• /farm_leaderboard - Top farmers\n\n"
         
-        "📦 STORAGE\n"
+        "📦 **STORAGE**\n"
         "• /storage - Check space\n"
         "• /upgrade_storage - More slots\n\n"
         
-        "👨‍🌾 WORKEBNC\n"
+        "👨‍🌾 **WORKERS**\n"
         "• /hire - Hire workers\n"
         "• /workers - Your workers\n\n"
         
-        "🎮 GAMES\n"
+        "🎮 **GAMES**\n"
         "• /ttt [amount] - Tic Tac Toe\n"
+        "• /mines <amount> <bombs> - Mines game\n"
+        "• /CLcricket <amount> - Cricket game\n"
         "• /claimcode <code> - Claim rewards\n"
         "• /activecodes - Active codes\n\n"
         
-        "🎁 REFERRAL\n"
+        "🎁 **REFERRAL**\n"
         "• /refer - Get your link (1k per refer)\n\n"
         
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "💡 Need help? Ask in @CLZoneGroup"
+        "💡 Need help? Ask in @CLBotHelp"
     )
     
-    await update.message.reply_text(msg)
+    await update.message.reply_text(msg, parse_mode="Markdown")
 
 # ============ BIO FEATURE ============
 
@@ -5374,6 +5395,257 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
+# ============ SHOP4 (Similar to Shop2/Shop3) ============
+
+async def shop4(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT id, name, price FROM shop4 ORDER BY price ASC")
+    players = c.fetchall()
+    conn.close()
+    
+    if not players:
+        await update.message.reply_text('🛒 **SHOP4**\n\nNo players yet.\n👑 Admin: /addplayer4 <name> <price>', parse_mode="Markdown")
+        return
+    
+    msg = "🛒 **SHOP4**\n\n"
+    for p in players:
+        msg += f"{p[0]}. {p[1]} - {p[2]:,} 💰\n"
+    msg += "\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /buy4 <id> to purchase"
+    
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+
+async def buy4(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text('❌ /buy4 <player_id>\nExample: /buy4 1')
+        return
+    
+    try:
+        player_id = int(args[0])
+    except:
+        await update.message.reply_text('❌ Invalid ID')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT name, price FROM shop4 WHERE id=?", (player_id,))
+    player = c.fetchone()
+    
+    if not player:
+        await update.message.reply_text(f'❌ Player ID {player_id} not found!')
+        conn.close()
+        return
+    
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    balance = c.fetchone()[0]
+    
+    if balance < player[1]:
+        await update.message.reply_text(f'❌ Need {player[1]:,}, have {balance:,}')
+        conn.close()
+        return
+    
+    c.execute("SELECT * FROM user_players4 WHERE user_id=? AND player_id=?", (user_id, player_id))
+    if c.fetchone():
+        await update.message.reply_text(f'❌ You already own {player[0]}!')
+        conn.close()
+        return
+    
+    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (player[1], user_id))
+    c.execute("INSERT INTO user_players4 (user_id, player_id) VALUES (?, ?)", (user_id, player_id))
+    conn.commit()
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    new_bal = c.fetchone()[0]
+    conn.close()
+    
+    await update.message.reply_text(f"✅ PURCHASED!\n\n🏏 {player[0]}\n💰 Price: {player[1]:,} 💰\n📊 New balance: {new_bal:,} 💰")
+
+
+async def myteam4(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("""
+        SELECT s.name, s.price FROM user_players4 u 
+        JOIN shop4 s ON u.player_id = s.id 
+        WHERE u.user_id = ?
+    """, (user_id,))
+    players = c.fetchall()
+    conn.close()
+    
+    if not players:
+        await update.message.reply_text('📭 No shop4 players owned.\nUse /shop4 to buy!')
+        return
+    
+    total = sum(p[1] for p in players)
+    msg = "🤑 **MY SHOP4 PLAYERS**\n\n"
+    for i, p in enumerate(players, 1):
+        msg += f"{i}. {p[0]} - {p[1]:,} 💰\n"
+    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💰 Total spent: {total:,} 💰"
+    await update.message.reply_text(msg)
+
+
+async def top4(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("""
+        SELECT u.name, COUNT(up.player_id) as count, COALESCE(SUM(s.price), 0) as total
+        FROM users u
+        JOIN user_players4 up ON u.user_id = up.user_id
+        JOIN shop4 s ON up.player_id = s.id
+        GROUP BY u.user_id
+        ORDER BY total DESC LIMIT 10
+    """)
+    tops = c.fetchall()
+    
+    if not tops:
+        await update.message.reply_text('🏆 SHOP4 TOP COLLECTORS\n\nNo one owns any yet!')
+        conn.close()
+        return
+    
+    msg = "🏆 **SHOP4 TOP COLLECTORS**\n\n"
+    for i, t in enumerate(tops, 1):
+        medal = "👑" if i==1 else "🥈" if i==2 else "🥉" if i==3 else f"{i}."
+        msg += f"{medal} {t[0]} - {t[1]} players ({t[2]:,} 💰)\n"
+    
+    c.execute("SELECT COUNT(*) FROM user_players4 WHERE user_id=?", (user_id,))
+    my_count = c.fetchone()[0]
+    msg += f"\n📊 You own: {my_count} players"
+    await update.message.reply_text(msg)
+    conn.close()
+
+
+# Admin commands for shop4
+async def addplayer4(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text('❌ Admin only!')
+        return
+    
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text('❌ /addplayer4 <name> <price>\nExample: /addplayer4 "Player Name" 5000')
+        return
+    
+    name = ' '.join(args[:-1])
+    try:
+        price = int(args[-1])
+    except:
+        await update.message.reply_text('❌ Invalid price!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("INSERT INTO shop4 (name, price) VALUES (?, ?)", (name, price))
+    conn.commit()
+    player_id = c.lastrowid
+    conn.close()
+    
+    await update.message.reply_text(f"✅ PLAYER ADDED TO SHOP4!\n\nID: {player_id} | {name}\n💰 Price: {price:,} 💰")
+
+
+async def setprice4(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text('❌ Admin only!')
+        return
+    
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text('❌ /setprice4 <id> <new_price>\nExample: /setprice4 1 8000')
+        return
+    
+    try:
+        player_id = int(args[0])
+        new_price = int(args[1])
+    except:
+        await update.message.reply_text('❌ Invalid input!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT name FROM shop4 WHERE id=?", (player_id,))
+    player = c.fetchone()
+    
+    if not player:
+        await update.message.reply_text(f'❌ Player ID {player_id} not found!')
+        conn.close()
+        return
+    
+    c.execute("UPDATE shop4 SET price = ? WHERE id=?", (new_price, player_id))
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(f"✅ SHOP4 PRICE UPDATED!\n{player[0]}\nNew Price: {new_price:,} 💰")
+
+
+async def removeplayer4(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text('❌ Admin only!')
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text('❌ /removeplayer4 <id>\nExample: /removeplayer4 1')
+        return
+    
+    try:
+        player_id = int(args[0])
+    except:
+        await update.message.reply_text('❌ Invalid ID!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT name FROM shop4 WHERE id=?", (player_id,))
+    player = c.fetchone()
+    
+    if not player:
+        await update.message.reply_text(f'❌ Player ID {player_id} not found!')
+        conn.close()
+        return
+    
+    c.execute("DELETE FROM shop4 WHERE id=?", (player_id,))
+    c.execute("DELETE FROM user_players4 WHERE player_id=?", (player_id,))
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(f"✅ PLAYER REMOVED FROM SHOP4!\n{player[0]}")
+
+# ============ GROUP TRACKING HANDLER ============
+
+async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Auto-track groups where bot is added"""
+    if update.message and update.message.chat.type in ['group', 'supergroup']:
+        group_id = update.message.chat.id
+        group_name = update.message.chat.title or "Unknown Group"
+        
+        conn = get_db()
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS groups 
+                     (group_id INTEGER PRIMARY KEY, group_name TEXT, added_at TEXT)''')
+        c.execute("INSERT OR IGNORE INTO groups (group_id, group_name, added_at) VALUES (?, ?, ?)",
+                  (group_id, group_name, datetime.now().isoformat()))
+        conn.commit()
+        conn.close()
 
 
 def main():
@@ -5487,7 +5759,17 @@ def main():
     app.add_handler(CallbackQueryHandler(hire_callback, pattern="^hire_"))
     app.add_handler(CommandHandler("workers", workers))
     app.add_handler(CallbackQueryHandler(hire_callback, pattern="^hire_now_"))
-    
+    # ============ SHOP4 HANDLERS ============
+
+    app.add_handler(CommandHandler("shop4", shop4))
+    app.add_handler(CommandHandler("buy4", buy4))
+    app.add_handler(CommandHandler("myteam4", myteam4))
+    app.add_handler(CommandHandler("top4", top4))
+    app.add_handler(CommandHandler("addplayer4", addplayer4))
+    app.add_handler(CommandHandler("setprice4", setprice4))
+    app.add_handler(CommandHandler("removeplayer4", removeplayer4))
+    app.add_handler(MessageHandler(filters.ChatType.GROUP | filters.ChatType.SUPERGROUP, track_group))
+
 
     print("🤖 Bot is running...")
     app.run_polling()
