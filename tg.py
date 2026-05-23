@@ -4717,6 +4717,7 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
             await query.answer("You cannot join your own game!", show_alert=True)
             return
         
+        # 🔥 CHECK BALANCE - SIRF ALERT, BUTTON HATANA MAT 🔥
         conn = get_db()
         c = conn.cursor()
         c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
@@ -4724,9 +4725,10 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
         conn.close()
         
         if balance < bet:
-            await query.edit_message_text(f"❌ You need {bet:,} credits to join!")
+            # 🔥 SIRF MESSAGE AAYEGA, BUTTON RAHEGA 🔥
+            await query.answer(f"❌ {user_name}, you do not have enough credit for this game!", show_alert=True)
             return
-        
+                
         # Deduct bets
         conn = get_db()
         c = conn.cursor()
