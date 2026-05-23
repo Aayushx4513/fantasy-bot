@@ -4558,6 +4558,580 @@ def auto_grow_worker():
 # Start background thread
 threading.Thread(target=auto_grow_worker, daemon=True).start()
 
+# ============ CRICKET GAME - PART 1 (IMPORTS & INIT) ============
+
+import random
+import json
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import CallbackQueryHandler, CommandHandler
+
+# Store active cricket games
+cricket_games = {}
+cricket_lobby = {}
+cricket_next_id = 1
+
+# Delivery rules
+DELIVERIES = {
+    "RS": {"name": "🔄 RS", "out_on": 1},
+    "YRK": {"name": "🎯 YRK", "out_on": 2},
+    "SHT": {"name": "⏬ SHT", "out_on": 3},
+    "SLW": {"name": "🐌 SLW", "out_on": 4},
+    "LC": {"name": "✂️ LC", "out_on": 5},
+    "KNC": {"name": "🤜 KNC", "out_on": 6},
+}
+
+# ============ CRICKET GAME - PART 2 (GAME CLASS) ============
+
+class CricketGame:
+    def __init__(self, game_id, player1_id, player1_name, bet, chat_id):
+        self.game_id = game_id
+        self.player1_id = player1_id
+        self.player1_name = player1_name
+        self.player2_id = None
+        self.player2_name = None
+        self.bet = bet
+        self.chat_id = chat_id
+        self.toss_winner = None
+        self.batting_first = None
+        self.current_bowler = None
+        self.current_batsman = None
+        self.score = 0
+        self.wickets = 0
+        self.balls = 0
+        self.target = None
+        self.game_active = False
+        self.waiting_for = None  # "bowl" or "bat"
+        self.last_delivery = None
+        self.last_shot = None
+    
+    def get_status(self):
+        if self.target is None:
+            return f"🏏 {self.player1_name} vs {self.player2_name}\n💰 Bet: {self.bet} | Prize: {self.bet*2}\n📊 Score: {self.score}/{self.wickets} | Balls: {self.balls}"
+        else:
+            need = self.target - self.score
+            return f"🏏 {self.player1_name} vs {self.player2_name}\n💰 Bet: {self.bet} | Prize: {self.bet*2}\n📊 Score: {self.score}/{self.wickets} | Need: {need} runs | Balls: {self.balls}"
+
+# ============ CRICKET GAME - PART 3 (CREATE & JOIN) ============
+
+async def clcricket(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    chat_id = update.message.chat.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    bet = 100
+    if args:
+        try:
+            bet = int(args[0])
+            if bet < 1:
+                await update.message.reply_text("❌ Minimum bet is 1 credit!")
+                return
+        except:
+            await update.message.reply_text("❌ Invalid bet amount!")
+            return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    balance = c.fetchone()[0]
+    conn.close()
+    
+    if balance < bet:
+        await update.message.reply_text(f"❌ You need {bet:,} credits!")
+        return
+    
+    global cricket_next_id
+    game_id = cricket_next_id
+    cricket_next_id += 1
+    
+    cricket_lobby[game_id] = {
+        "creator_id": user_id,
+        "creator_name": user_name,
+        "bet": bet,
+        "chat_id": chat_id
+    }
+    
+    keyboard = [[InlineKeyboardButton("🔵 JOIN GAME", callback_data=f"cricket_join_{game_id}")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        f"🏏 **CRICKET GAME**\n\n"
+        f"👑 Host: {user_name}\n"
+        f"💰 Bet: {bet:,} credits\n"
+        f"🏆 Prize: {bet*2:,}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"⚡ Waiting for opponent...\n"
+        f"━━━━━━━━━━━━━━━━━━━━",
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
+    )
+
+
+async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    data = query.data
+    
+    if data.startswith("cricket_join_"):
+        game_id = int(data.split("_")[2])
+        
+        if game_id not in cricket_lobby:
+            await query.edit_message_text("❌ Game lobby expired!")
+            return
+        
+        lobby = cricket_lobby[game_id]
+        creator_id = lobby["creator_id"]
+        creator_name = lobby["creator_name"]
+        bet = lobby["bet"]
+        chat_id = lobby["chat_id"]
+        
+        if creator_id == user_id:
+            await query.answer("You cannot join your own game!", show_alert=True)
+            return
+        
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+        balance = c.fetchone()[0]
+        conn.close()
+        
+        if balance < bet:
+            await query.edit_message_text(f"❌ You need {bet:,} credits to join!")
+            return
+        
+        # Deduct bets
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (bet, creator_id))
+        c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (bet, user_id))
+        conn.commit()
+        conn.close()
+        
+        # Create game
+        game = CricketGame(game_id, creator_id, creator_name, bet, chat_id)
+        game.player2_id = user_id
+        game.player2_name = user_name
+        game.game_active = True
+        
+        cricket_games[game_id] = game
+        del cricket_lobby[game_id]
+        
+        # Show toss
+        keyboard = [
+            [InlineKeyboardButton("🪙 HEADS", callback_data=f"cricket_toss_{game_id}_heads")],
+            [InlineKeyboardButton("🪙 TAILS", callback_data=f"cricket_toss_{game_id}_tails")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            f"🏏 **CRICKET GAME**\n\n"
+            f"{creator_name} vs {user_name}\n"
+            f"💰 Bet: {bet} | Prize: {bet*2}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🪙 **TOSS TIME!**\n\n"
+            f"{creator_name}, choose Heads or Tails:\n"
+            f"━━━━━━━━━━━━━━━━━━━━",
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+
+# ============ CRICKET GAME - PART 4 (TOSS & CHOICE) ============
+
+async def cricket_toss_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    data = query.data
+    
+    parts = data.split("_")
+    if len(parts) < 4:
+        await query.answer("Invalid!", show_alert=True)
+        return
+    
+    try:
+        game_id = int(parts[2])
+        choice = parts[3]
+    except:
+        await query.answer("Error!", show_alert=True)
+        return
+    
+    if game_id not in cricket_games:
+        await query.edit_message_text("❌ Game not found!")
+        return
+    
+    game = cricket_games[game_id]
+    
+    if user_id != game.player1_id:
+        await query.answer("Wait for host to call toss!", show_alert=True)
+        return
+    
+    toss_result = random.choice(["heads", "tails"])
+    
+    if choice == toss_result:
+        winner_id = game.player1_id
+        winner_name = game.player1_name
+    else:
+        winner_id = game.player2_id
+        winner_name = game.player2_name
+    
+    game.toss_winner = winner_id
+    
+    keyboard = [
+        [InlineKeyboardButton("🏏 BAT", callback_data=f"cricket_choice_{game_id}_bat")],
+        [InlineKeyboardButton("🎯 BOWL", callback_data=f"cricket_choice_{game_id}_bowl")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        f"🏏 **CRICKET GAME**\n\n"
+        f"{game.player1_name} vs {game.player2_name}\n"
+        f"💰 Bet: {game.bet} | Prize: {game.bet*2}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🪙 **TOSS: {toss_result.upper()}!**\n\n"
+        f"🏆 {winner_name} won the toss!\n\n"
+        f"Choose Bat or Bowl:\n"
+        f"━━━━━━━━━━━━━━━━━━━━",
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
+    )
+
+async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    data = query.data
+    
+    parts = data.split("_")
+    if len(parts) < 4:
+        await query.answer("Invalid!", show_alert=True)
+        return
+    
+    try:
+        game_id = int(parts[2])
+        choice = parts[3]
+    except:
+        await query.answer("Error!", show_alert=True)
+        return
+    
+    if game_id not in cricket_games:
+        await query.edit_message_text("❌ Game not found!")
+        return
+    
+    game = cricket_games[game_id]
+    
+    if user_id != game.toss_winner:
+        await query.answer("Toss winner chooses!", show_alert=True)
+        return
+    
+    # Set batting/bowling based on choice
+    if choice == "bat":
+        game.batting_first = user_id
+        game.current_batsman = user_id
+        game.current_bowler = game.player2_id if user_id == game.player1_id else game.player1_id
+    else:  # bowl
+        game.batting_first = game.player2_id if user_id == game.player1_id else game.player1_id
+        game.current_batsman = game.batting_first
+        game.current_bowler = user_id
+    
+    # Reset game stats for first innings
+    game.score = 0
+    game.wickets = 0
+    game.balls = 0
+    game.target = None
+    game.waiting_for = "bowl"
+    
+    # Create bowling buttons
+    keyboard = []
+    row = []
+    for key, d in DELIVERIES.items():
+        row.append(InlineKeyboardButton(d["name"], callback_data=f"cricket_bowl_{game_id}_{key}"))
+        if len(row) == 3:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
+    bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
+    
+    await query.edit_message_text(
+        f"🏏 **CRICKET GAME**\n\n"
+        f"{batsman_name} Batting | {bowler_name} Bowling\n"
+        f"💰 Bet: {game.bet} | Prize: {game.bet*2}\n"
+        f"📊 Score: {game.score}/{game.wickets}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🎯 {bowler_name}'s turn to bowl:\n"
+        f"━━━━━━━━━━━━━━━━━━━━",
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
+    )
+
+# ============ CRICKET GAME - PART 5 (BOWLING & BATTING) ============
+
+# ============ FIXED CALLBACK HANDLERS ============
+
+async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    data = query.data
+    
+    parts = data.split("_")
+    if len(parts) < 4:
+        await query.answer("Invalid!", show_alert=True)
+        return
+    
+    try:
+        game_id = int(parts[2])
+        delivery_key = parts[3]
+    except:
+        await query.answer("Error!", show_alert=True)
+        return
+    
+    if game_id not in cricket_games:
+        await query.edit_message_text("❌ Game not found!")
+        return
+    
+    game = cricket_games[game_id]
+    
+    if user_id != game.current_bowler:
+        await query.answer("Not your turn!", show_alert=True)
+        return
+    
+    if game.waiting_for != "bowl":
+        await query.answer("Wait!", show_alert=True)
+        return
+    
+    game.last_delivery = delivery_key
+    game.waiting_for = "bat"
+    
+    keyboard = [
+        [InlineKeyboardButton("1", callback_data=f"cricket_bat_{game_id}_1"),
+         InlineKeyboardButton("2", callback_data=f"cricket_bat_{game_id}_2"),
+         InlineKeyboardButton("3", callback_data=f"cricket_bat_{game_id}_3")],
+        [InlineKeyboardButton("4", callback_data=f"cricket_bat_{game_id}_4"),
+         InlineKeyboardButton("5", callback_data=f"cricket_bat_{game_id}_5"),
+         InlineKeyboardButton("6", callback_data=f"cricket_bat_{game_id}_6")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
+    
+    await query.edit_message_text(
+        f"🏏 **CRICKET GAME**\n\n"
+        f"{batsman_name} Batting\n"
+        f"💰 Bet: {game.bet} | Prize: {game.bet*2}\n"
+        f"📊 Score: {game.score}/{game.wickets}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🏏 {batsman_name}'s turn to bat:\n"
+        f"━━━━━━━━━━━━━━━━━━━━",
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
+    )
+
+
+async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    data = query.data
+    
+    parts = data.split("_")
+    if len(parts) < 4:
+        await query.answer("Invalid!", show_alert=True)
+        return
+    
+    try:
+        game_id = int(parts[2])
+        shot = int(parts[3])
+    except:
+        await query.answer("Error!", show_alert=True)
+        return
+    
+    if game_id not in cricket_games:
+        await query.edit_message_text("❌ Game not found!")
+        return
+    
+    game = cricket_games[game_id]
+    
+    if user_id != game.current_batsman:
+        await query.answer("Not your turn!", show_alert=True)
+        return
+    
+    if game.waiting_for != "bat":
+        await query.answer("Wait for bowler!", show_alert=True)
+        return
+    
+    game.last_shot = shot
+    game.waiting_for = "bowl"
+    
+    delivery = DELIVERIES[game.last_delivery]
+    
+    # Check if OUT
+    if shot == delivery["out_on"]:
+        game.wickets += 1
+        game.balls += 1
+        
+        # First innings (target not set yet)
+        if game.target is None:
+            # Set target
+            game.target = game.score + 1
+            
+            # Switch sides for second innings
+            game.current_batsman = game.player2_id if game.current_batsman == game.player1_id else game.player1_id
+            game.current_bowler = game.player2_id if game.current_bowler == game.player1_id else game.player1_id
+            game.score = 0
+            game.wickets = 0
+            game.waiting_for = "bowl"
+            
+            # Show bowling buttons for second innings
+            keyboard = []
+            row = []
+            for key, d in DELIVERIES.items():
+                row.append(InlineKeyboardButton(d["name"], callback_data=f"cricket_bowl_{game_id}_{key}"))
+                if len(row) == 3:
+                    keyboard.append(row)
+                    row = []
+            if row:
+                keyboard.append(row)
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
+            bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
+            
+            await query.edit_message_text(
+                f"🏏 **CRICKET GAME**\n\n"
+                f"❌ **OUT!** {delivery['name']} vs {shot}\n\n"
+                f"📊 First Innings Score: {game.target - 1}\n"
+                f"🎯 Target: {game.target} runs\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🏏 {batsman_name} Batting | {bowler_name} Bowling\n"
+                f"📊 Score: {game.score}/{game.wickets}\n\n"
+                f"🎯 {bowler_name}'s turn to bowl:\n"
+                f"━━━━━━━━━━━━━━━━━━━━",
+                reply_markup=reply_markup,
+                parse_mode="Markdown"
+            )
+            return
+        
+        # Second innings - Game over
+        else:
+            game.game_active = False
+            game.winner = game.player2_id if game.current_batsman == game.player1_id else game.player1_id
+            
+            # Transfer prize
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game.bet*2, game.winner))
+            conn.commit()
+            conn.close()
+            
+            winner_name = game.player1_name if game.winner == game.player1_id else game.player2_name
+            loser_name = game.player2_name if game.winner == game.player1_id else game.player1_name
+            
+            await query.edit_message_text(
+                f"🏏 **CRICKET GAME**\n\n"
+                f"❌ **OUT!** {delivery['name']} vs {shot}\n\n"
+                f"📊 Final Score: {game.score}/{game.wickets}\n"
+                f"🎯 Target: {game.target}\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🏆 **WINNER: {winner_name}** 🏆\n"
+                f"💰 Prize: {game.bet*2:,} credits\n\n"
+                f"💳 {winner_name}: +{game.bet*2:,}\n"
+                f"💳 {loser_name}: -{game.bet:,}\n"
+                f"━━━━━━━━━━━━━━━━━━━━",
+                parse_mode="Markdown"
+            )
+            del cricket_games[game_id]
+            return
+    
+    # SAFE - Add runs
+    else:
+        game.score += shot
+        game.balls += 1
+        
+        # Check if target reached (second innings)
+        if game.target and game.score >= game.target:
+            game.game_active = False
+            game.winner = game.current_batsman
+            
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game.bet*2, game.winner))
+            conn.commit()
+            conn.close()
+            
+            winner_name = game.player1_name if game.winner == game.player1_id else game.player2_name
+            loser_name = game.player2_name if game.winner == game.player1_id else game.player1_name
+            
+            await query.edit_message_text(
+                f"🏏 **CRICKET GAME**\n\n"
+                f"✅ **{shot} runs!** {delivery['name']} vs {shot}\n\n"
+                f"📊 Final Score: {game.score}/{game.wickets}\n"
+                f"🎯 Target: {game.target}\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🏆 **WINNER: {winner_name}** 🏆\n"
+                f"💰 Prize: {game.bet*2:,} credits\n\n"
+                f"💳 {winner_name}: +{game.bet*2:,}\n"
+                f"💳 {loser_name}: -{game.bet:,}\n"
+                f"━━━━━━━━━━━━━━━━━━━━",
+                parse_mode="Markdown"
+            )
+            del cricket_games[game_id]
+            return
+        
+        # Continue game
+        game.waiting_for = "bowl"
+        
+        # Show bowling buttons
+        keyboard = []
+        row = []
+        for key, d in DELIVERIES.items():
+            row.append(InlineKeyboardButton(d["name"], callback_data=f"cricket_bowl_{game_id}_{key}"))
+            if len(row) == 3:
+                keyboard.append(row)
+                row = []
+        if row:
+            keyboard.append(row)
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
+        bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
+        
+        overs = game.balls // 6
+        balls = game.balls % 6
+        
+        if game.target:
+            need = game.target - game.score
+            status = f"📊 Score: {game.score}/{game.wickets} | Need: {need} | Overs: {overs}.{balls}"
+        else:
+            status = f"📊 Score: {game.score}/{game.wickets} | Overs: {overs}.{balls}"
+        
+        await query.edit_message_text(
+            f"🏏 **CRICKET GAME**\n\n"
+            f"✅ **{shot} runs!** {delivery['name']} vs {shot}\n\n"
+            f"{status}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🏏 {batsman_name} Batting | {bowler_name} Bowling\n\n"
+            f"🎯 {bowler_name}'s turn to bowl:\n"
+            f"━━━━━━━━━━━━━━━━━━━━",
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+
+
 
 # ============ MAIN ==========
 def main():
@@ -4624,6 +5198,14 @@ def main():
     app.add_handler(CommandHandler("achieve", achieve))
     app.add_handler(CommandHandler("rmachieve", rmachieve))
     app.add_handler(CommandHandler("unlockmatch", unlockmatch))
+   # ============ CRICKET GAME - PART 6 (HANDLERS) ============
+    app.add_handler(CommandHandler("CLcricket", clcricket))
+    app.add_handler(CallbackQueryHandler(cricket_join_callback, pattern="^cricket_join_"))
+    app.add_handler(CallbackQueryHandler(cricket_toss_callback, pattern="^cricket_toss_"))
+    app.add_handler(CallbackQueryHandler(cricket_choice_callback, pattern="^cricket_choice_"))
+    app.add_handler(CallbackQueryHandler(cricket_bowl_callback, pattern="^cricket_bowl_"))
+    app.add_handler(CallbackQueryHandler(cricket_bat_callback, pattern="^cricket_bat_"))
+
 
     # Shop3 commands
     app.add_handler(CommandHandler("shop3", shop3))
