@@ -206,9 +206,9 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     msg = (
-        "📋 **CL ZONE - COMMAND LIST**\n\n"
+        "📋 CL ZONE - COMMAND LIST\n\n"
         
-        "👤 **PROFILE**\n"
+        "👤 PROFILE\n"
         "• /start - Start bot\n"
         "• /profile - Your stats & collection\n"
         "• /leaderboard - Top 10 Richest users\n"
@@ -217,14 +217,14 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /setpfp - Set photo (reply to pic)\n"
         "• /rmpfp - Remove photo\n\n"
         
-        "💰 **EARN CREDITS**\n"
+        "💰 EARN CREDITS\n"
         "• /claim - 500 daily\n"
         "• /spin - 1,000-10,000 daily\n"
         "• /dice <amount> - 0x to 2.5x\n"
         "• /flip heads/tails <amount> - 2x\n"
         "• /tip <amount> (reply) - Send credits\n\n"
         
-        "🏏 **CRICKET BETTING**\n"
+        "🏏 CRICKET BETTING\n"
         "• /matches - Live matches\n"
         "• /bet <team> <amount> - Place bet\n"
         "• /mybets - Your bets\n"
@@ -233,41 +233,35 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /history - Win/loss record\n"
         "• /top_fantasy - Fantasy points ranking\n\n"
         
-        "🏆 **ACHIEVEMENTS**\n"
+        "🏆 ACHIEVEMENTS\n"
         "• /achievements - Your badges\n\n"
         
-        "🛒 **SHOP**\n"
+        "🛒 SHOP\n"
         "• /shop - Buy players (India, Aus, Eng, NZ, SL)\n"
         "• /buy <id> - Purchase mens player\n"
         "• /buyw <id> - Purchase women player\n"
         "• /myteam - Your collection\n"
         "• /top - Top collectors\n\n"
         
-        "🛍️ **AFFORDABLE STORE**\n"
+        "🛍️ AFFORDABLE STORE\n"
         "• /shop2 - Budget players\n"
         "• /buy2 <id> - Purchase\n"
         "• /myteam2 - Your collection\n"
         "• /top2 - Top collectors\n\n"
         
-        "🛒 **SHOP3**\n"
+        "🛒 SHOP3\n"
         "• /shop3 - Special players\n"
         "• /buy3 <id> - Purchase\n"
         "• /myteam3 - Your collection\n"
         "• /top3 - Top collectors\n\n"
         
-        "🛒 **SHOP4**\n"
-        "• /shop4 - Exclusive players\n"
-        "• /buy4 <id> - Purchase\n"
-        "• /myteam4 - Your collection\n"
-        "• /top4 - Top collectors\n\n"
-        
-        "🏦 **BANK**\n"
+        "🏦 BANK\n"
         "• /bank - Check balance\n"
         "• /deposit <amount> - Add to bank\n"
         "• /withdraw <amount> - Take from bank\n"
         "• /claim_interest - 5% daily\n\n"
         
-        "🌾 **FARM**\n"
+        "🌾 FARM\n"
         "• /farm - Your farm\n"
         "• /crops - Crop prices\n"
         "• /grow <crop> <qty> - Grow crops\n"
@@ -276,29 +270,30 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /farm_stats - Your stats\n"
         "• /farm_leaderboard - Top farmers\n\n"
         
-        "📦 **STORAGE**\n"
+        "📦 STORAGE\n"
         "• /storage - Check space\n"
         "• /upgrade_storage - More slots\n\n"
         
-        "👨‍🌾 **WORKERS**\n"
+        "👨‍🌾 WORKERS\n"
         "• /hire - Hire workers\n"
         "• /workers - Your workers\n\n"
         
-        "🎮 **GAMES**\n"
+        "🎮 GAMES\n"
         "• /ttt [amount] - Tic Tac Toe\n"
         "• /mines <amount> <bombs> - Mines game\n"
         "• /CLcricket <amount> - Cricket game\n"
         "• /claimcode <code> - Claim rewards\n"
         "• /activecodes - Active codes\n\n"
         
-        "🎁 **REFERRAL**\n"
+        "🎁 REFERRAL\n"
         "• /refer - Get your link (1k per refer)\n\n"
         
         "━━━━━━━━━━━━━━━━━━━━\n"
         "💡 Need help? Ask in @CLBotHelp"
     )
     
-    await update.message.reply_text(msg, parse_mode="Markdown")
+    # 🔥 PARSE MODE HATAYA 🔥
+    await update.message.reply_text(msg)
 
 # ============ BIO FEATURE ============
 
@@ -440,9 +435,16 @@ async def rmpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============ CLAIM ============
 async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    chat_id = update.message.chat.id
+    chat_type = update.message.chat.type
+    
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
+    
+    # 🔥 CL ZONE GROUP ID 🔥
+    CL_GROUP_ID = -1001661258033
+    CL_GROUP_LINK = "https://t.me/+eTD1m8Cjc_wyOTNl"
     
     conn = get_db()
     c = conn.cursor()
@@ -460,8 +462,19 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.close()
             return
     
+    # 🔥 GROUP CHECK 🔥
+    if chat_type in ['group', 'supergroup'] and chat_id == CL_GROUP_ID:
+        reward = 1000
+        extra_note = "\n\n✨ **BONUS:** You get 1000 credits in CL Zone Group!"
+    else:
+        reward = 500
+        if chat_type in ['group', 'supergroup']:
+            extra_note = f"\n\n💡 **Tip:** Join [CL Zone Group]({CL_GROUP_LINK}) to get 1000 credits daily!"
+        else:
+            extra_note = f"\n\n💡 **Tip:** Use /claim in [CL Zone Group]({CL_GROUP_LINK}) to get 1000 credits!"
+    
     c.execute("INSERT OR REPLACE INTO claim (user_id, last_claim) VALUES (?, ?)", (user_id, today.isoformat()))
-    c.execute("UPDATE users SET balance = balance + 500 WHERE user_id=?", (user_id,))
+    c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (reward, user_id))
     conn.commit()
     
     c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
@@ -469,10 +482,13 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     
     await update.message.reply_text(
-        f"✅ Claimed Daily Rewards of 500 Credits\n"
-        f"at {today_str}\n\n"
-        f"💰 New balance: {new_bal:,} 💰\n"
-        f"📅 Next claim: tomorrow"
+        f"✅ **Claimed Daily Rewards!**\n\n"
+        f"💰 +{reward} credits\n"
+        f"📅 {today_str}\n"
+        f"💳 New balance: {new_bal:,}{extra_note}\n\n"
+        f"🔄 Next claim: tomorrow",
+        parse_mode="Markdown",
+        disable_web_page_preview=True
     )
 
 # ============ SPIN ============
@@ -4634,6 +4650,8 @@ class CricketGame:
 
 # ============ CRICKET GAME - PART 3 (CREATE & JOIN) ============
 
+# ============ CRICKET GAME (TTT Style) ============
+
 async def clcricket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
@@ -4644,26 +4662,29 @@ async def clcricket(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     args = context.args
-    bet = 100
+    bet = 0
+    
     if args:
         try:
             bet = int(args[0])
-            if bet < 1:
-                await update.message.reply_text("❌ Minimum bet is 1 credit!")
+            if bet < 100:
+                await update.message.reply_text("❌ Minimum bet is 100 credits!")
                 return
         except:
             await update.message.reply_text("❌ Invalid bet amount!")
             return
     
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-    balance = c.fetchone()[0]
-    conn.close()
-    
-    if balance < bet:
-        await update.message.reply_text(f"❌ You need {bet:,} credits!")
-        return
+    # If bet > 0, check balance
+    if bet > 0:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+        balance = c.fetchone()[0]
+        conn.close()
+        
+        if balance < bet:
+            await update.message.reply_text(f"❌ You need {bet:,} credits to play!")
+            return
     
     global cricket_next_id
     game_id = cricket_next_id
@@ -4679,11 +4700,13 @@ async def clcricket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("🔵 JOIN GAME", callback_data=f"cricket_join_{game_id}")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
+    bet_text = f"💰 Bet: {bet:,} credits" if bet > 0 else "🎮 Normal Game (No Bet)"
+    
     await update.message.reply_text(
         f"🏏 **CRICKET GAME**\n\n"
         f"👑 Host: {user_name}\n"
-        f"💰 Bet: {bet:,} credits\n"
-        f"🏆 Prize: {bet*2:,}\n\n"
+        f"{bet_text}\n"
+        f"🏆 Prize: {bet*2:,}" if bet > 0 else f"🏆 Prize: 🎮 Friendly Match" + "\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"⚡ Waiting for opponent...\n"
         f"━━━━━━━━━━━━━━━━━━━━",
