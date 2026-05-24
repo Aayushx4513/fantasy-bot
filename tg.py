@@ -3245,6 +3245,8 @@ CROPS = {
     "wheat": {"name": "🌾 Wheat", "price": 7000, "sell": 10500, "time": 360, "emoji": "🌾"},
     "strawberry": {"name": "🍓 Strawberry", "price": 8000, "sell": 12000, "time": 480, "emoji": "🍓"},
     "watermelon": {"name": "🍉 Watermelon", "price": 10000, "sell": 15000, "time": 720, "emoji": "🍉"},
+    "orange": {"name": "🍊 Orange", "price": 12000, "sell": 18000, "time": 960, "emoji": "🍊"},
+    "mango": {"name": "🥭 Mango", "price": 20000, "sell": 30000, "time": 1440, "emoji": "🥭"},
     "ganja": {"name": "🌿 Ganja", "price": 14000, "sell": 21000, "time": 720, "emoji": "🌿"},
 }
 
@@ -3254,7 +3256,7 @@ async def crops(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    
+
     msg = "🌾 *CROP MARKET*\n\n```\n"
     msg += "🥔 Potato      💰1,000  →  💰1,500  (30m)\n"
     msg += "🥕 Carrot      💰2,000  →  💰3,000  (1h)\n"
@@ -3263,10 +3265,13 @@ async def crops(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += "🌾 Wheat       💰7,000  →  💰10,500 (6h)\n"
     msg += "🍓 Strawberry  💰8,000  →  💰12,000 (8h)\n"
     msg += "🍉 Watermelon  💰10,000 →  💰15,000 (12h)\n"
+    msg += "🍊 Orange      💰12,000 →  💰18,000 (16h)\n"
+    msg += "🥭 Mango       💰20,000 →  💰30,000 (24h)\n"
     msg += "🌿 Ganja       💰14,000 →  💰21,000 (12h)\n"
     msg += "```\n💡 /grow <crop> <quantity>"
     
     await update.message.reply_text(msg, parse_mode="Markdown")
+
 
 async def grow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -5966,136 +5971,6 @@ def get_top_5(stat_type):
     return top
 
 
-# ============ MY STATS COMMAND ============
-async def mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_name = update.effective_user.first_name
-    
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT runs, wickets, wins, losses, highest_score FROM cricket_stats WHERE user_id = ?", (user_id,))
-    stats = c.fetchone()
-    conn.close()
-    
-    if not stats:
-        await update.message.reply_text(
-            f"🏏 MY CRICKET STATS\n\n"
-            f"👤 {user_name}\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🏏 Runs: 0\n"
-            f"🎯 Wickets: 0\n"
-            f"⭐ Highest Score: 0\n"
-            f"✅ Wins: 0\n"
-            f"❌ Losses: 0\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"💡 Play /CLcricket to start!"
-        )
-        return
-    
-    runs, wickets, wins, losses, highest = stats
-    
-    runs_rank = get_user_rank(user_id, "runs")
-    wickets_rank = get_user_rank(user_id, "wickets")
-    highest_rank = get_user_rank(user_id, "highest_score")
-    wins_rank = get_user_rank(user_id, "wins")
-    losses_rank = get_user_rank(user_id, "losses")
-    
-    await update.message.reply_text(
-        f"🏏 MY CRICKET STATS\n\n"
-        f"👤 {user_name}\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"🏏 Runs: {runs:,} (📊 Rank: #{runs_rank})\n"
-        f"🎯 Wickets: {wickets} (📊 Rank: #{wickets_rank})\n"
-        f"⭐ Highest Score: {highest} (📊 Rank: #{highest_rank})\n"
-        f"✅ Wins: {wins} (📊 Rank: #{wins_rank})\n"
-        f"❌ Losses: {losses} (📊 Rank: #{losses_rank})\n"
-        f"━━━━━━━━━━━━━━━━━━━━"
-    )
-
-
-# ============ STATS LEADERBOARD ============
-async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    keyboard = [
-        [InlineKeyboardButton("🏏 RUNS", callback_data="stats_runs")],
-        [InlineKeyboardButton("🎯 WICKETS", callback_data="stats_wickets")],
-        [InlineKeyboardButton("⭐ HIGHEST SCORE", callback_data="stats_highest")],
-        [InlineKeyboardButton("✅ WINS", callback_data="stats_wins")],
-        [InlineKeyboardButton("❌ LOSSES", callback_data="stats_losses")],
-        [InlineKeyboardButton("🔙 BACK", callback_data="stats_back")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(
-        "🏆 CRICKET LEADERBOARD\n\n"
-        "Select category:",
-        reply_markup=reply_markup
-    )
-
-
-async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    data = query.data
-    
-    if data == "stats_back":
-        # 🔥 WAPAS MENU 🔥
-        keyboard = [
-            [InlineKeyboardButton("🏏 RUNS", callback_data="stats_runs")],
-            [InlineKeyboardButton("🎯 WICKETS", callback_data="stats_wickets")],
-            [InlineKeyboardButton("⭐ HIGHEST SCORE", callback_data="stats_highest")],
-            [InlineKeyboardButton("✅ WINS", callback_data="stats_wins")],
-            [InlineKeyboardButton("❌ LOSSES", callback_data="stats_losses")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # 🔥 EDIT MESSAGE 🔥
-        await query.edit_message_text(
-            "🏆 CRICKET LEADERBOARD\n\nSelect category:",
-            reply_markup=reply_markup
-        )
-        return
-    
-    # Rest of the code...
-
-    stat_type = data.split("_")[1]
-    
-    stat_names = {
-        "runs": "MOST RUNS",
-        "wickets": "MOST WICKETS",
-        "highest": "HIGHEST SCORE",
-        "wins": "MOST WINS",
-        "losses": "MOST LOSSES"
-    }
-    
-    top_players = get_top_5(stat_type)
-    
-    if not top_players:
-        await query.edit_message_text(f"🏆 TOP 5 - {stat_names[stat_type]}\n\nNo data yet!\nPlay /CLcricket to start!")
-        return
-    
-    medals = ["👑", "🥈", "🥉", "4️⃣", "5️⃣"]
-    msg = f"🏆 TOP 5 - {stat_names[stat_type]}\n\n"
-    
-    for i, (name, value) in enumerate(top_players):
-        medal = medals[i] if i < 3 else f"{i+1}."
-        msg += f"{medal} {name} - {value:,}\n"
-    
-    keyboard = [[InlineKeyboardButton("🔙 BACK", callback_data="stats_back")]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(msg, reply_markup=reply_markup)
-
 
 
 def main():
@@ -6141,10 +6016,6 @@ def main():
     app.add_handler(CommandHandler("addhof", addhof))
     app.add_handler(CommandHandler("rmhof", rmhof))
     app.add_handler(CommandHandler("edithof", edithof))
-    # Cricket Stats commands
-    app.add_handler(CommandHandler("mystats", mystats))
-    app.add_handler(CommandHandler("stats", stats_cmd))
-    app.add_handler(CallbackQueryHandler(stats_callback, pattern="^stats_"))
 
     # Shop2 commands
     app.add_handler(CommandHandler("shop2", shop2))
