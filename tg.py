@@ -249,8 +249,8 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /myteam2 - Your collection\n"
         "• /top2 - Top collectors\n\n"
         
-        "🛒 SHOP3\n"
-        "• /shop3 - Special players\n"
+        "🛒 TG PLAYERS\n"
+        "• /shop3 - Telegram players\n"
         "• /buy3 <id> - Purchase\n"
         "• /myteam3 - Your collection\n"
         "• /top3 - Top collectors\n\n"
@@ -281,7 +281,8 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🎮 GAMES\n"
         "• /ttt [amount] - Tic Tac Toe\n"
         "• /mines <amount> <bombs> - Mines game\n"
-        "• /CLcricket <amount> - Cricket game\n"
+        "• /CLcricket [amount] - Cricket game\n"
+        "• /rps [amount] - Rock Paper Scissors\n"
         "• /claimcode <code> - Claim rewards\n"
         "• /activecodes - Active codes\n\n"
         
@@ -289,10 +290,10 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /refer - Get your link (1k per refer)\n\n"
         
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "💡 Need help? Ask in @CLBotHelp"
+        "💡 Need help? @clbothelp"
     )
     
-    # 🔥 PARSE MODE HATAYA 🔥
+    # 🔥 NO parse_mode 🔥
     await update.message.reply_text(msg)
 
 # ============ BIO FEATURE ============
@@ -5970,6 +5971,294 @@ def get_top_5(stat_type):
     conn.close()
     return top
 
+# ============ ROCK PAPER SCISSORS GAME ============
+
+import random
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import CallbackQueryHandler, CommandHandler
+
+# Store active games
+rps_games = {}
+rps_lobby = {}
+rps_next_id = 1
+
+class RPSGame:
+    def __init__(self, game_id, player1_id, player1_name, bet, chat_id):
+        self.game_id = game_id
+        self.player1_id = player1_id
+        self.player1_name = player1_name
+        self.player2_id = None
+        self.player2_name = None
+        self.bet = bet
+        self.chat_id = chat_id
+        self.player1_choice = None
+        self.player2_choice = None
+        self.game_active = False
+        self.waiting_for = player1_id
+    
+    def check_winner(self):
+        choices = {"rock": "✊", "paper": "📄", "scissors": "✂️"}
+        p1 = self.player1_choice
+        p2 = self.player2_choice
+        
+        if p1 == p2:
+            return "draw"
+        
+        if (p1 == "rock" and p2 == "scissors") or \
+           (p1 == "paper" and p2 == "rock") or \
+           (p1 == "scissors" and p2 == "paper"):
+            return self.player1_id
+        else:
+            return self.player2_id
+    
+    def get_result_text(self):
+        p1_emoji = {"rock": "✊", "paper": "📄", "scissors": "✂️"}[self.player1_choice]
+        p2_emoji = {"rock": "✊", "paper": "📄", "scissors": "✂️"}[self.player2_choice]
+        
+        winner = self.check_winner()
+        
+        if winner == "draw":
+            return f"{p1_emoji} {self.player1_name}: {self.player1_choice.upper()}\n{p2_emoji} {self.player2_name}: {self.player2_choice.upper()}\n\n🤝 **DRAW!** 🤝"
+        else:
+            winner_name = self.player1_name if winner == self.player1_id else self.player2_name
+            return f"{p1_emoji} {self.player1_name}: {self.player1_choice.upper()}\n{p2_emoji} {self.player2_name}: {self.player2_choice.upper()}\n\n🏆 **WINNER: {winner_name.upper()}** 🏆"
+
+
+async def rps(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    chat_id = update.message.chat.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    bet = 0
+    if args:
+        try:
+            bet = int(args[0])
+            if bet < 100:
+                await update.message.reply_text("❌ Minimum bet is 100 credits!")
+                return
+        except:
+            await update.message.reply_text("❌ Invalid bet amount!")
+            return
+    
+    if bet > 0:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+        balance = c.fetchone()[0]
+        conn.close()
+        
+        if balance < bet:
+            await update.message.reply_text(f"❌ You need {bet:,} credits to play!")
+            return
+    
+    global rps_next_id
+    game_id = rps_next_id
+    rps_next_id += 1
+    
+    rps_lobby[game_id] = {
+        "creator_id": user_id,
+        "creator_name": user_name,
+        "bet": bet,
+        "chat_id": chat_id
+    }
+    
+    keyboard = [[InlineKeyboardButton("🔵 JOIN GAME", callback_data=f"rps_join_{game_id}")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    bet_text = f"💰 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Free Play"
+    
+    await update.message.reply_text(
+        f"✊ **ROCK PAPER SCISSORS**\n\n"
+        f"👑 Host: {user_name}\n"
+        f"{bet_text}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"⚡ Waiting for opponent...\n"
+        f"━━━━━━━━━━━━━━━━━━━━",
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
+    )
+
+
+async def rps_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    data = query.data
+    
+    if data.startswith("rps_join_"):
+        game_id = int(data.split("_")[2])
+        
+        if game_id not in rps_lobby:
+            await query.edit_message_text("❌ Game lobby expired!")
+            return
+        
+        lobby = rps_lobby[game_id]
+        creator_id = lobby["creator_id"]
+        creator_name = lobby["creator_name"]
+        bet = lobby["bet"]
+        chat_id = lobby["chat_id"]
+        
+        if creator_id == user_id:
+            await query.answer("You cannot join your own game!", show_alert=True)
+            return
+        
+        if bet > 0:
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+            result = c.fetchone()
+            
+            if not result:
+                await query.edit_message_text("❌ You are not registered! Send /start first.")
+                conn.close()
+                return
+            
+            balance = result[0]
+            conn.close()
+            
+            if balance < bet:
+                await query.answer(f"❌ {user_name}, you need {bet:,} credits to join!", show_alert=True)
+                return
+            
+            # Deduct bets
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (bet, creator_id))
+            c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (bet, user_id))
+            conn.commit()
+            conn.close()
+        
+        # Create game
+        game = RPSGame(game_id, creator_id, creator_name, bet, chat_id)
+        game.player2_id = user_id
+        game.player2_name = user_name
+        game.game_active = True
+        
+        rps_games[game_id] = game
+        del rps_lobby[game_id]
+        
+        # Show move buttons
+        keyboard = [
+            [InlineKeyboardButton("✊ ROCK", callback_data=f"rps_move_{game_id}_rock")],
+            [InlineKeyboardButton("📄 PAPER", callback_data=f"rps_move_{game_id}_paper")],
+            [InlineKeyboardButton("✂️ SCISSORS", callback_data=f"rps_move_{game_id}_scissors")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        bet_text = f"💰 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Free Play"
+        
+        await query.edit_message_text(
+            f"✊ **ROCK PAPER SCISSORS**\n\n"
+            f"{creator_name} vs {user_name}\n"
+            f"{bet_text}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🎯 {creator_name}'s turn!\n"
+            f"━━━━━━━━━━━━━━━━━━━━",
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+
+
+async def rps_move_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    data = query.data
+    
+    parts = data.split("_")
+    game_id = int(parts[2])
+    choice = parts[3]
+    
+    if game_id not in rps_games:
+        await query.edit_message_text("❌ Game not found!")
+        return
+    
+    game = rps_games[game_id]
+    
+    if user_id != game.waiting_for:
+        await query.answer("Not your turn!", show_alert=True)
+        return
+    
+    if user_id == game.player1_id:
+        game.player1_choice = choice
+        game.waiting_for = game.player2_id
+        
+        # 🔥 OPPONENT KO CHOICE MAT DIKHA 🔥
+        keyboard = [
+            [InlineKeyboardButton("✊ ROCK", callback_data=f"rps_move_{game_id}_rock")],
+            [InlineKeyboardButton("📄 PAPER", callback_data=f"rps_move_{game_id}_paper")],
+            [InlineKeyboardButton("✂️ SCISSORS", callback_data=f"rps_move_{game_id}_scissors")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        bet_text = f"💰 Bet: {game.bet:,} | Prize: {game.bet*2:,}" if game.bet > 0 else "🎮 Free Play"
+        
+        # 🔥 SIRF TURN BATAYO, CHOICE NAHI 🔥
+        await query.edit_message_text(
+            f"✊ **ROCK PAPER SCISSORS**\n\n"
+            f"{game.player1_name} vs {game.player2_name}\n"
+            f"{bet_text}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"✅ {game.player1_name} made their choice!\n\n"
+            f"🎯 {game.player2_name}'s turn!\n"
+            f"━━━━━━━━━━━━━━━━━━━━",
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
+        )
+        return
+    
+    else:
+        game.player2_choice = choice
+        game.waiting_for = None
+        game.game_active = False
+        
+        result_text = game.get_result_text()
+        winner = game.check_winner()
+        
+        # Transfer credits if bet and winner
+        if game.bet > 0 and winner != "draw":
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game.bet*2, winner))
+            conn.commit()
+            conn.close()
+            
+            winner_name = game.player1_name if winner == game.player1_id else game.player2_name
+            loser_name = game.player2_name if winner == game.player1_id else game.player1_name
+            
+            result_text += f"\n\n💰 Prize: {game.bet*2:,} credits\n💳 {winner_name}: +{game.bet*2:,}\n💳 {loser_name}: -{game.bet:,}"
+        elif game.bet > 0 and winner == "draw":
+            # Return money to both
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game.bet, game.player1_id))
+            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game.bet, game.player2_id))
+            conn.commit()
+            conn.close()
+            
+            result_text += f"\n\n💰 Money returned: {game.bet:,} each"
+        
+        # 🔥 RESULT KE BAAD BUTTONS HATAO 🔥
+        await query.edit_message_text(
+            f"✊ **ROCK PAPER SCISSORS**\n\n"
+            f"{result_text}",
+            parse_mode="Markdown"
+        )
+        
+        del rps_games[game_id]
+        return
+
+async def rps_none_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer("Game Over!", show_alert=True)
 
 
 
@@ -6010,6 +6299,10 @@ def main():
     app.add_handler(CommandHandler("myteam", myteam))
     app.add_handler(CommandHandler("top", top))
     app.add_handler(CallbackQueryHandler(shop_callback, pattern="^shop_"))
+    app.add_handler(CommandHandler("rps", rps))
+    app.add_handler(CallbackQueryHandler(rps_join_callback, pattern="^rps_join_"))  
+    app.add_handler(CallbackQueryHandler(rps_move_callback, pattern="^rps_move_"))
+    app.add_handler(CallbackQueryHandler(rps_none_callback, pattern="^rps_none"))
 
     # Hall of Fame commands (sahi naam se)
     app.add_handler(CommandHandler("hof", hof))
