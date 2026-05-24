@@ -991,7 +991,7 @@ async def achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\nTotal: {len(ach)} achievements"
     await update.message.reply_text(msg)
 
-# ============ ADD DEFAULT PLAYEBNC (20 per category) ============
+# ============ ADD DEFAULT PLAYERS (20 per category) ============
 async def add_default_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Add default players to shop - Admin only"""
     
@@ -1268,7 +1268,7 @@ async def add_default_players(update: Update, context: ContextTypes.DEFAULT_TYPE
     conn.close()
     
     await update.message.reply_text(
-        f"✅ **20 PLAYEBNC ADDED PER CATEGORY!**\n\n"
+        f"✅ **20 PLAYERS ADDED PER CATEGORY!**\n\n"
         f"🏏 Total Men: {shop_count}\n"
         f"👩 Total Women: {women_count}\n\n"
         f"🇮🇳 India: 40 (20 Current + 20 Legends)\n"
@@ -1391,7 +1391,7 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"❌ No players found")
         return
     
-    msg = f"🛒 {country} {ptype.upper()} PLAYEBNC\n\n"
+    msg = f"🛒 {country} {ptype.upper()} PLAYERS\n\n"
     for p in players:
         msg += f"{p[0]}. {p[1]} - {p[2]:,} 💰\n"
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /buy <number> to purchase"
@@ -1514,7 +1514,7 @@ async def shop2(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('🛒 AFFORDABLE SHOP\n\nNo players yet.\n👑 Admin: /addplayer2 <name> <price>')
         return
     
-    msg = "🛒 CHEAP PLAYEBNC SHOP\n\n"
+    msg = "🛒 CHEAP PLAYERS SHOP\n\n"
     for p in players:
         msg += f"{p[0]}. {p[1]} - {p[2]:,} 💰\n"
     msg += "\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /buy2 <id> to purchase"
@@ -1587,7 +1587,7 @@ async def myteam2(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     total = sum(p[1] for p in players)
-    msg = "🤑 MY CHEAP PLAYEBNC\n\n"
+    msg = "🤑 MY CHEAP PLAYERS\n\n"
     for i, p in enumerate(players, 1):
         msg += f"{i}. {p[0]} - {p[1]:,} 💰\n"
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💰 Total spent: {total:,} 💰"
@@ -1605,11 +1605,11 @@ async def top2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tops = c.fetchall()
     
     if not tops:
-        await update.message.reply_text('🏆 CHEAP PLAYEBNC TOP\n\nNo one owns any yet!')
+        await update.message.reply_text('🏆 CHEAP PLAYERS TOP\n\nNo one owns any yet!')
         conn.close()
         return
     
-    msg = "🏆 CHEAP PLAYEBNC TOP\n\n"
+    msg = "🏆 CHEAP PLAYERS TOP\n\n"
     for i, t in enumerate(tops, 1):
         medal = "👑" if i==1 else "🥈" if i==2 else "🥉" if i==3 else f"{i}."
         msg += f"{medal} {t[0]} - {t[1]} players ({t[2]:,} 💰)\n"
@@ -1671,7 +1671,7 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     grand_total = mens_total + shop2_total + women_total
     total_players = len(mens) + len(shop2) + len(women)
-    msg += f"\n\n━━━━━━━━━━━━━━━━━━━━━━\n💰 GRAND TOTAL: {grand_total:,} 💰\n🏆 TOTAL PLAYEBNC: {total_players}"
+    msg += f"\n\n━━━━━━━━━━━━━━━━━━━━━━\n💰 GRAND TOTAL: {grand_total:,} 💰\n🏆 TOTAL PLAYERS: {total_players}"
     await update.message.reply_text(msg)
 
 async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2406,7 +2406,7 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⏰ Next interest: 24h"
     )
 
-# ============ SHOP3 (CHEAPEST PLAYEBNC) ==========
+# ============ SHOP3 (CHEAPEST PLAYERS) ==========
 
 async def shop3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -2501,7 +2501,7 @@ async def myteam3(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     total = sum(p[1] for p in players)
-    msg = "🤑 MY SHOP3 PLAYEBNC (Under 10k)\n\n"
+    msg = "🤑 MY SHOP3 PLAYERS (Under 10k)\n\n"
     for i, p in enumerate(players, 1):
         msg += f"{i}. {p[0]} - {p[1]:,} 💰\n"
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💰 Total spent: {total:,} 💰"
@@ -3728,7 +3728,7 @@ async def farm_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_stats = c.fetchone()
     conn.close()
     
-    msg = "🏆 **TOP FARMEBNC** 🏆\n\n"
+    msg = "🏆 **TOP FARMERS** 🏆\n\n"
     
     medals = ["👑", "🥈", "🥉", "", ""]
     for i, farmer in enumerate(top_farmers):
@@ -4986,62 +4986,61 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         parse_mode="Markdown"
     )
 
-
 async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
+
     user_id = update.effective_user.id
     data = query.data
-    
+
     parts = data.split("_")
     if len(parts) < 4:
         await query.answer("Invalid!", show_alert=True)
         return
-    
+
     try:
         game_id = int(parts[2])
         shot = int(parts[3])
     except:
         await query.answer("Error!", show_alert=True)
         return
-    
+
     if game_id not in cricket_games:
         await query.edit_message_text("❌ Game not found!")
         return
-    
+
     game = cricket_games[game_id]
-    
+
     if user_id != game.current_batsman:
         await query.answer("Not your turn!", show_alert=True)
         return
-    
+
     if game.waiting_for != "bat":
         await query.answer("Wait for bowler!", show_alert=True)
         return
-    
+
     game.last_shot = shot
     game.waiting_for = "bowl"
-    
+
     delivery = DELIVERIES[game.last_delivery]
-    
+
     # Check if OUT
     if shot == delivery["out_on"]:
         game.wickets += 1
         game.balls += 1
-        
+
         # First innings (target not set yet)
         if game.target is None:
             # Set target
             game.target = game.score + 1
-            
+
             # Switch sides for second innings
             game.current_batsman = game.player2_id if game.current_batsman == game.player1_id else game.player1_id
             game.current_bowler = game.player2_id if game.current_bowler == game.player1_id else game.player1_id
             game.score = 0
             game.wickets = 0
             game.waiting_for = "bowl"
-            
+
             # Show bowling buttons for second innings
             keyboard = []
             row = []
@@ -5053,10 +5052,10 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             if row:
                 keyboard.append(row)
             reply_markup = InlineKeyboardMarkup(keyboard)
-            
+
             batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
             bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
-            
+
             await query.edit_message_text(
                 f"🏏 **CRICKET GAME**\n\n"
                 f"❌ **OUT!** {delivery['name']} vs {shot}\n\n"
@@ -5071,13 +5070,13 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 parse_mode="Markdown"
             )
             return
-        
+
         # Second innings - Check for DRAW
         else:
             # DRAW condition: target - score = 1 and wicket falls
             if game.score == game.target - 1:
                 game.game_active = False
-                
+
                 # Return money to both players
                 conn = get_db()
                 c = conn.cursor()
@@ -5085,7 +5084,7 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game.bet, game.player2_id))
                 conn.commit()
                 conn.close()
-                
+
                 await query.edit_message_text(
                     f"🏏 **CRICKET GAME**\n\n"
                     f"❌ **OUT!** {delivery['name']} vs {shot}\n\n"
@@ -5099,22 +5098,37 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 )
                 del cricket_games[game_id]
                 return
-            
+
             # Normal loss
             else:
                 game.game_active = False
                 game.winner = game.player2_id if game.current_batsman == game.player1_id else game.player1_id
+
+                # 🔥 STATS UPDATE - WINNER & LOSER 🔥
+                winner_id = game.winner
+                loser_id = game.player2_id if winner_id == game.player1_id else game.player1_id
+                winner_name = game.player1_name if winner_id == game.player1_id else game.player2_name
+                loser_name = game.player2_name if winner_id == game.player1_id else game.player1_name
                 
+                update_cricket_stats(winner_id, winner_name, game.score, 0, won=True)
+                update_cricket_stats(loser_id, loser_name, 0, 0, won=False)
+                
+                # Bowler wicket
+                bowler_id = game.current_bowler
+                bowler_name = game.player1_name if bowler_id == game.player1_id else game.player2_name
+                update_cricket_stats(bowler_id, bowler_name, 0, 1, won=False)
+                # 🔥 STATS UPDATE END 🔥
+
                 # Transfer prize to winner
                 conn = get_db()
                 c = conn.cursor()
                 c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game.bet*2, game.winner))
                 conn.commit()
                 conn.close()
-                
+
                 winner_name = game.player1_name if game.winner == game.player1_id else game.player2_name
                 loser_name = game.player2_name if game.winner == game.player1_id else game.player1_name
-                
+
                 await query.edit_message_text(
                     f"🏏 **CRICKET GAME**\n\n"
                     f"❌ **OUT!** {delivery['name']} vs {shot}\n\n"
@@ -5130,26 +5144,41 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 )
                 del cricket_games[game_id]
                 return
-    
+
     # SAFE - Add runs
     else:
         game.score += shot
         game.balls += 1
-        
+
         # Check if target reached (second innings win)
         if game.target and game.score >= game.target:
             game.game_active = False
             game.winner = game.current_batsman
+
+            # 🔥 STATS UPDATE - WINNER & LOSER 🔥
+            winner_id = game.winner
+            loser_id = game.player2_id if winner_id == game.player1_id else game.player1_id
+            winner_name = game.player1_name if winner_id == game.player1_id else game.player2_name
+            loser_name = game.player2_name if winner_id == game.player1_id else game.player1_name
             
+            update_cricket_stats(winner_id, winner_name, game.score, 0, won=True)
+            update_cricket_stats(loser_id, loser_name, 0, 0, won=False)
+            
+            # Bowler wicket (bowler ko loss stats update)
+            bowler_id = game.current_bowler
+            bowler_name = game.player1_name if bowler_id == game.player1_id else game.player2_name
+            update_cricket_stats(bowler_id, bowler_name, 0, 0, won=False)
+            # 🔥 STATS UPDATE END 🔥
+
             conn = get_db()
             c = conn.cursor()
             c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game.bet*2, game.winner))
             conn.commit()
             conn.close()
-            
+
             winner_name = game.player1_name if game.winner == game.player1_id else game.player2_name
             loser_name = game.player2_name if game.winner == game.player1_id else game.player1_name
-            
+
             await query.edit_message_text(
                 f"🏏 **CRICKET GAME**\n\n"
                 f"✅ **{shot} runs!** {delivery['name']} vs {shot}\n\n"
@@ -5165,10 +5194,10 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             del cricket_games[game_id]
             return
-        
+
         # Continue game
         game.waiting_for = "bowl"
-        
+
         # Show bowling buttons
         keyboard = []
         row = []
@@ -5180,19 +5209,19 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         if row:
             keyboard.append(row)
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
+
         batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
         bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
-        
+
         overs = game.balls // 6
         balls = game.balls % 6
-        
+
         if game.target:
             need = game.target - game.score
             status = f"📊 Score: {game.score}/{game.wickets} | Need: {need} | Overs: {overs}.{balls}"
         else:
             status = f"📊 Score: {game.score}/{game.wickets} | Overs: {overs}.{balls}"
-        
+
         await query.edit_message_text(
             f"🏏 **CRICKET GAME**\n\n"
             f"✅ **{shot} runs!** {delivery['name']} vs {shot}\n\n"
@@ -5204,6 +5233,7 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             reply_markup=reply_markup,
             parse_mode="Markdown"
         )
+
 # ============ MINES GAME (High Multiplier) ============
 
 import random
@@ -5672,6 +5702,401 @@ async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit()
         conn.close()
 
+# ============ HALL OF FAME SYSTEM ============
+# ============ HALL OF FAME SYSTEM (CLEAN) ============
+
+import json
+from telegram import Update
+from telegram.ext import CommandHandler
+
+def init_hof_db():
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS hall_of_fame
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  winner TEXT,
+                  added_by INTEGER,
+                  added_at TEXT)''')
+    conn.commit()
+    conn.close()
+
+init_hof_db()
+
+# ============ VIEW HALL OF FAME ============
+async def hof(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT id, winner FROM hall_of_fame ORDER BY id ASC")
+    winners = c.fetchall()
+    conn.close()
+    
+    if not winners:
+        await update.message.reply_text("🏆 HALL OF FAME 🏆\n\nNo winners yet!")
+        return
+    
+    msg = "🏆 HALL OF FAME 🏆\n\n"
+    
+    for i, (wid, winner) in enumerate(winners, 1):
+        msg += f"{i}. {winner}\n"
+        if i < len(winners):
+            msg += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    
+    msg += f"\n📊 Total Winners: {len(winners)}"
+    
+    # 🔥 NO PARSE_MODE 🔥
+    await update.message.reply_text(msg)
+
+
+# ============ ADMIN: ADD WINNER ============
+async def addhof(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text(
+            "📝 **ADD TO HALL OF FAME**\n\n"
+            "Usage: `/addhof <winner_name>`\n"
+            "Example: `/addhof 🔅 IPL S1: CSK 💛 (@user)`",
+            parse_mode="Markdown"
+        )
+        return
+    
+    winner = " ".join(args)
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("INSERT INTO hall_of_fame (winner, added_by, added_at) VALUES (?, ?, ?)",
+              (winner, update.effective_user.id, datetime.now().isoformat()))
+    conn.commit()
+    
+    c.execute("SELECT COUNT(*) FROM hall_of_fame")
+    count = c.fetchone()[0]
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✅ **Added to Hall of Fame!**\n\n"
+        f"🏆 {winner}\n\n"
+        f"📊 Total Winners: {count}",
+        parse_mode="Markdown"
+    )
+
+
+# ============ ADMIN: REMOVE WINNER ============
+async def rmhof(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text(
+            "🗑️ **REMOVE FROM HALL OF FAME**\n\n"
+            "Usage: `/rmhof <number>`\n"
+            "Example: `/rmhof 5`",
+            parse_mode="Markdown"
+        )
+        return
+    
+    try:
+        num = int(args[0])
+    except:
+        await update.message.reply_text("❌ Invalid number!")
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    c.execute("SELECT id, winner FROM hall_of_fame ORDER BY id ASC")
+    winners = c.fetchall()
+    
+    if num < 1 or num > len(winners):
+        await update.message.reply_text(f"❌ Invalid! Choose 1-{len(winners)}")
+        conn.close()
+        return
+    
+    winner_id = winners[num-1][0]
+    winner_text = winners[num-1][1]
+    
+    c.execute("DELETE FROM hall_of_fame WHERE id = ?", (winner_id,))
+    conn.commit()
+    
+    c.execute("SELECT COUNT(*) FROM hall_of_fame")
+    count = c.fetchone()[0]
+    conn.close()
+    
+    await update.message.reply_text(
+        f"🗑️ **Removed from Hall of Fame!**\n\n"
+        f"❌ Removed: {winner_text}\n\n"
+        f"📊 Total Winners: {count}",
+        parse_mode="Markdown"
+    )
+
+# ============ ADMIN: EDIT WINNER ============
+async def edithof(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "✏️ EDIT HALL OF FAME\n\n"
+            "Usage: /edithof <number> <new_text>\n"
+            "Example: /edithof 5 🔅 IPL S2: MI 💙 (@user)\n\n"
+            "Use /hof to see numbers"
+        )
+        return
+    
+    try:
+        num = int(args[0])
+        new_text = " ".join(args[1:])
+    except:
+        await update.message.reply_text("❌ Invalid number!")
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    c.execute("SELECT id, winner FROM hall_of_fame ORDER BY id ASC")
+    winners = c.fetchall()
+    
+    if num < 1 or num > len(winners):
+        await update.message.reply_text(f"❌ Invalid! Choose 1-{len(winners)}")
+        conn.close()
+        return
+    
+    winner_id = winners[num-1][0]
+    old_text = winners[num-1][1]
+    
+    c.execute("UPDATE hall_of_fame SET winner = ? WHERE id = ?", (new_text, winner_id))
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✏️ EDITED HALL OF FAME!\n\n"
+        f"❌ Old: {old_text}\n"
+        f"✅ New: {new_text}"
+    )
+
+# ============ CRICKET STATS SYSTEM ============
+
+def init_cricket_stats_db():
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS cricket_stats
+                 (user_id INTEGER PRIMARY KEY,
+                  name TEXT,
+                  runs INTEGER DEFAULT 0,
+                  wickets INTEGER DEFAULT 0,
+                  wins INTEGER DEFAULT 0,
+                  losses INTEGER DEFAULT 0,
+                  highest_score INTEGER DEFAULT 0)''')
+    conn.commit()
+    conn.close()
+
+init_cricket_stats_db()
+
+def update_cricket_stats(user_id, name, runs, wickets, won):
+    conn = get_db()
+    c = conn.cursor()
+    
+    c.execute("SELECT * FROM cricket_stats WHERE user_id = ?", (user_id,))
+    stats = c.fetchone()
+    
+    if stats:
+        new_runs = stats[2] + runs
+        new_wickets = stats[3] + wickets
+        new_wins = stats[4] + (1 if won else 0)
+        new_losses = stats[5] + (0 if won else 1)
+        new_highest = stats[6]
+        if runs > new_highest:
+            new_highest = runs
+        
+        c.execute("UPDATE cricket_stats SET runs = ?, wickets = ?, wins = ?, losses = ?, highest_score = ? WHERE user_id = ?",
+                  (new_runs, new_wickets, new_wins, new_losses, new_highest, user_id))
+    else:
+        c.execute("INSERT INTO cricket_stats (user_id, name, runs, wickets, wins, losses, highest_score) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                  (user_id, name, runs, wickets, (1 if won else 0), (0 if won else 1), runs))
+    
+    conn.commit()
+    conn.close()
+
+def get_user_rank(user_id, stat_type):
+    """Get user rank for a specific stat"""
+    conn = get_db()
+    c = conn.cursor()
+    
+    stat_column = {
+        "runs": "runs",
+        "wickets": "wickets", 
+        "highest_score": "highest_score",
+        "wins": "wins",
+        "losses": "losses"
+    }.get(stat_type, "runs")
+    
+    c.execute(f"SELECT COUNT(*) + 1 FROM cricket_stats WHERE {stat_column} > (SELECT {stat_column} FROM cricket_stats WHERE user_id = ?)", (user_id,))
+    rank = c.fetchone()[0]
+    conn.close()
+    return rank
+
+def get_top_5(stat_type):
+    """Get top 5 players for a stat"""
+    conn = get_db()
+    c = conn.cursor()
+    
+    stat_column = {
+        "runs": "runs",
+        "wickets": "wickets",
+        "highest_score": "highest_score", 
+        "wins": "wins",
+        "losses": "losses"
+    }.get(stat_type, "runs")
+    
+    c.execute(f"SELECT name, {stat_column} FROM cricket_stats ORDER BY {stat_column} DESC LIMIT 5")
+    top = c.fetchall()
+    conn.close()
+    return top
+
+
+# ============ MY STATS COMMAND ============
+async def mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT runs, wickets, wins, losses, highest_score FROM cricket_stats WHERE user_id = ?", (user_id,))
+    stats = c.fetchone()
+    conn.close()
+    
+    if not stats:
+        await update.message.reply_text(
+            f"🏏 MY CRICKET STATS\n\n"
+            f"👤 {user_name}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🏏 Runs: 0\n"
+            f"🎯 Wickets: 0\n"
+            f"⭐ Highest Score: 0\n"
+            f"✅ Wins: 0\n"
+            f"❌ Losses: 0\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"💡 Play /CLcricket to start!"
+        )
+        return
+    
+    runs, wickets, wins, losses, highest = stats
+    
+    runs_rank = get_user_rank(user_id, "runs")
+    wickets_rank = get_user_rank(user_id, "wickets")
+    highest_rank = get_user_rank(user_id, "highest_score")
+    wins_rank = get_user_rank(user_id, "wins")
+    losses_rank = get_user_rank(user_id, "losses")
+    
+    await update.message.reply_text(
+        f"🏏 MY CRICKET STATS\n\n"
+        f"👤 {user_name}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🏏 Runs: {runs:,} (📊 Rank: #{runs_rank})\n"
+        f"🎯 Wickets: {wickets} (📊 Rank: #{wickets_rank})\n"
+        f"⭐ Highest Score: {highest} (📊 Rank: #{highest_rank})\n"
+        f"✅ Wins: {wins} (📊 Rank: #{wins_rank})\n"
+        f"❌ Losses: {losses} (📊 Rank: #{losses_rank})\n"
+        f"━━━━━━━━━━━━━━━━━━━━"
+    )
+
+
+# ============ STATS LEADERBOARD ============
+async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    keyboard = [
+        [InlineKeyboardButton("🏏 RUNS", callback_data="stats_runs")],
+        [InlineKeyboardButton("🎯 WICKETS", callback_data="stats_wickets")],
+        [InlineKeyboardButton("⭐ HIGHEST SCORE", callback_data="stats_highest")],
+        [InlineKeyboardButton("✅ WINS", callback_data="stats_wins")],
+        [InlineKeyboardButton("❌ LOSSES", callback_data="stats_losses")],
+        [InlineKeyboardButton("🔙 BACK", callback_data="stats_back")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        "🏆 CRICKET LEADERBOARD\n\n"
+        "Select category:",
+        reply_markup=reply_markup
+    )
+
+
+async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    
+    if data == "stats_back":
+        # 🔥 WAPAS MENU 🔥
+        keyboard = [
+            [InlineKeyboardButton("🏏 RUNS", callback_data="stats_runs")],
+            [InlineKeyboardButton("🎯 WICKETS", callback_data="stats_wickets")],
+            [InlineKeyboardButton("⭐ HIGHEST SCORE", callback_data="stats_highest")],
+            [InlineKeyboardButton("✅ WINS", callback_data="stats_wins")],
+            [InlineKeyboardButton("❌ LOSSES", callback_data="stats_losses")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # 🔥 EDIT MESSAGE 🔥
+        await query.edit_message_text(
+            "🏆 CRICKET LEADERBOARD\n\nSelect category:",
+            reply_markup=reply_markup
+        )
+        return
+    
+    # Rest of the code...
+
+    stat_type = data.split("_")[1]
+    
+    stat_names = {
+        "runs": "MOST RUNS",
+        "wickets": "MOST WICKETS",
+        "highest": "HIGHEST SCORE",
+        "wins": "MOST WINS",
+        "losses": "MOST LOSSES"
+    }
+    
+    top_players = get_top_5(stat_type)
+    
+    if not top_players:
+        await query.edit_message_text(f"🏆 TOP 5 - {stat_names[stat_type]}\n\nNo data yet!\nPlay /CLcricket to start!")
+        return
+    
+    medals = ["👑", "🥈", "🥉", "4️⃣", "5️⃣"]
+    msg = f"🏆 TOP 5 - {stat_names[stat_type]}\n\n"
+    
+    for i, (name, value) in enumerate(top_players):
+        medal = medals[i] if i < 3 else f"{i+1}."
+        msg += f"{medal} {name} - {value:,}\n"
+    
+    keyboard = [[InlineKeyboardButton("🔙 BACK", callback_data="stats_back")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(msg, reply_markup=reply_markup)
+
+
 
 def main():
 #    threading.Thread(target=run_flask, daemon=True).start()
@@ -5710,6 +6135,16 @@ def main():
     app.add_handler(CommandHandler("myteam", myteam))
     app.add_handler(CommandHandler("top", top))
     app.add_handler(CallbackQueryHandler(shop_callback, pattern="^shop_"))
+
+    # Hall of Fame commands (sahi naam se)
+    app.add_handler(CommandHandler("hof", hof))
+    app.add_handler(CommandHandler("addhof", addhof))
+    app.add_handler(CommandHandler("rmhof", rmhof))
+    app.add_handler(CommandHandler("edithof", edithof))
+    # Cricket Stats commands
+    app.add_handler(CommandHandler("mystats", mystats))
+    app.add_handler(CommandHandler("stats", stats_cmd))
+    app.add_handler(CallbackQueryHandler(stats_callback, pattern="^stats_"))
 
     # Shop2 commands
     app.add_handler(CommandHandler("shop2", shop2))
