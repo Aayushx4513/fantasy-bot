@@ -6260,6 +6260,351 @@ async def rps_none_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer("Game Over!", show_alert=True)
 
+# ============ NUMPUZ GAME ============
+
+import random
+import json
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import CallbackQueryHandler, CommandHandler
+
+# Store user progress
+user_numpuz = {}
+
+# Level configurations
+LEVELS = {
+    1: {"size": 3, "max_num": 8, "name": "3x3"},
+    2: {"size": 4, "max_num": 15, "name": "4x4"},
+    3: {"size": 4, "max_num": 15, "name": "4x4 Hard"},
+    4: {"size": 5, "max_num": 24, "name": "5x5"},
+    5: {"size": 5, "max_num": 24, "name": "5x5 Hard"},
+}
+
+def init_numpuz_db():
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS numpuz_progress
+                 (user_id INTEGER PRIMARY KEY,
+                  level INTEGER DEFAULT 1,
+                  board TEXT,
+                  moves INTEGER DEFAULT 0)''')
+    conn.commit()
+    conn.close()
+
+init_numpuz_db()
+
+def get_shuffled_board(size):
+    """Create shuffled board for given size"""
+    max_num = size * size - 1
+    numbers = list(range(1, max_num + 1)) + [0]
+    random.shuffle(numbers)
+    
+    board = []
+    for i in range(size):
+        row = []
+        for j in range(size):
+            row.append(numbers[i * size + j])
+        board.append(row)
+    return board
+
+def is_solvable(board):
+    """Check if puzzle is solvable"""
+    size = len(board)
+    flat = []
+    for row in board:
+        for num in row:
+            if num != 0:
+                flat.append(num)
+    
+    inversions = 0
+    for i in range(len(flat)):
+        for j in range(i + 1, len(flat)):
+            if flat[i] > flat[j]:
+                inversions += 1
+    
+    if size % 2 == 1:
+        return inversions % 2 == 0
+    
+    blank_row = 0
+    for i in range(size):
+        if 0 in board[i]:
+            blank_row = size - i
+            break
+    return (blank_row % 2 == 0) == (inversions % 2 == 1)
+
+def get_board_display(board):
+    """Get display string - clean box style"""
+    size = len(board)
+    msg = ""
+    
+    # Top border
+    if size == 3:
+        msg += "┌───┬───┬───┐\n"
+    elif size == 4:
+        msg += "┌───┬───┬───┬───┐\n"
+    else:
+        msg += "┌───┬───┬───┬───┬───┐\n"
+    
+    for i, row in enumerate(board):
+        row_str = "│"
+        for num in row:
+            if num == 0:
+                row_str += "   │"
+            else:
+                row_str += f" {num} │"
+        msg += row_str + "\n"
+        
+        if i < size - 1:
+            if size == 3:
+                msg += "├───┼───┼───┤\n"
+            elif size == 4:
+                msg += "├───┼───┼───┼───┤\n"
+            else:
+                msg += "├───┼───┼───┼───┼───┤\n"
+    
+    # Bottom border
+    if size == 3:
+        msg += "└───┴───┴───┘"
+    elif size == 4:
+        msg += "└───┴───┴───┴───┘"
+    else:
+        msg += "└───┴───┴───┴───┴───┘"
+    
+    return msg
+
+def is_win(board):
+    """Check if board is solved"""
+    size = len(board)
+    max_num = size * size - 1
+    expected = 1
+    for i in range(size):
+        for j in range(size):
+            if i == size - 1 and j == size - 1:
+                if board[i][j] != 0:
+                    return False
+            else:
+                if board[i][j] != expected:
+                    return False
+                expected += 1
+    return True
+
+def get_blank_position(board):
+    """Find blank (0) position"""
+    size = len(board)
+    for i in range(size):
+        for j in range(size):
+            if board[i][j] == 0:
+                return i, j
+    return None, None
+
+def can_move(board, row, col):
+    """Check if tile at (row, col) can be moved"""
+    blank_row, blank_col = get_blank_position(board)
+    if blank_row is None:
+        return False
+    return (abs(row - blank_row) + abs(col - blank_col)) == 1
+
+def move_tile(board, row, col):
+    """Move tile to blank position if possible"""
+    blank_row, blank_col = get_blank_position(board)
+    if can_move(board, row, col):
+        board[blank_row][blank_col], board[row][col] = board[row][col], board[blank_row][blank_col]
+        return True
+    return False
+
+def get_board_keyboard(board, level):
+    """Create inline keyboard from board"""
+    size = len(board)
+    keyboard = []
+    
+    for i in range(size):
+        row = []
+        for j in range(size):
+            num = board[i][j]
+            if num == 0:
+                text = "⬜"
+            else:
+                text = str(num)
+            row.append(InlineKeyboardButton(text, callback_data=f"numpuz_{level}_{i}_{j}"))
+        keyboard.append(row)
+    
+    return InlineKeyboardMarkup(keyboard)
+
+
+async def numpuz(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    level = 1
+    
+    if args and args[0].isdigit():
+        level = int(args[0])
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT level, board, moves FROM numpuz_progress WHERE user_id = ?", (user_id,))
+    saved = c.fetchone()
+    conn.close()
+    
+    if saved and level == 1:
+        saved_level = saved[0]
+        board = json.loads(saved[1])
+        moves = saved[2]
+        
+        if board:
+            display = get_board_display(board)
+            keyboard = get_board_keyboard(board, saved_level)
+            
+            # 🔥 SIRF BOX - KOI EXTRA TXT NAHI 🔥
+            await update.message.reply_text(
+                display,
+                reply_markup=keyboard,
+                parse_mode="Markdown"
+            )
+            return
+    
+    size = LEVELS[level]["size"]
+    
+    while True:
+        board = get_shuffled_board(size)
+        if is_solvable(board):
+            break
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO numpuz_progress (user_id, level, board, moves) VALUES (?, ?, ?, ?)",
+              (user_id, level, json.dumps(board), 0))
+    conn.commit()
+    conn.close()
+    
+    display = get_board_display(board)
+    keyboard = get_board_keyboard(board, level)
+    
+    # 🔥 SIRF BOX - KOI EXTRA TXT NAHI 🔥
+    await update.message.reply_text(
+        display,
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
+
+
+async def numpuz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    data = query.data
+    
+    if data.startswith("numpuz_"):
+        parts = data.split("_")
+        level = int(parts[1])
+        row = int(parts[2])
+        col = int(parts[3])
+        
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT level, board, moves FROM numpuz_progress WHERE user_id = ?", (user_id,))
+        saved = c.fetchone()
+        
+        if not saved:
+            await query.edit_message_text("❌ No game found! Use /numpuz")
+            conn.close()
+            return
+        
+        current_level = saved[0]
+        board = json.loads(saved[1])
+        moves = saved[2]
+        
+        if current_level != level:
+            await query.answer("Wrong level!", show_alert=True)
+            conn.close()
+            return
+        
+        if move_tile(board, row, col):
+            moves += 1
+            
+            if is_win(board):
+                if current_level < len(LEVELS):
+                    next_level = current_level + 1
+                    c.execute("UPDATE numpuz_progress SET level = ?, board = ?, moves = ? WHERE user_id = ?",
+                              (next_level, json.dumps(board), moves, user_id))
+                    conn.commit()
+                    conn.close()
+                    
+                    keyboard = [[InlineKeyboardButton("▶ LEVEL " + str(next_level), callback_data=f"numpuz_next_{next_level}")]]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    await query.edit_message_text(
+                        f"🎉 LEVEL {current_level} COMPLETE! 🎉\n\n{get_board_display(board)}\n\n➡️ Moves: {moves}",
+                        reply_markup=reply_markup,
+                        parse_mode="Markdown"
+                    )
+                    return
+                else:
+                    c.execute("DELETE FROM numpuz_progress WHERE user_id = ?", (user_id,))
+                    conn.commit()
+                    conn.close()
+                    
+                    await query.edit_message_text(
+                        f"🏆 **CONGRATULATIONS!** 🏆\n\nYou completed all {len(LEVELS)} levels!\n📊 Total moves: {moves}\n\n💡 /numpuz to play again!",
+                        parse_mode="Markdown"
+                    )
+                    return
+            
+            c.execute("UPDATE numpuz_progress SET board = ?, moves = ? WHERE user_id = ?",
+                      (json.dumps(board), moves, user_id))
+            conn.commit()
+            conn.close()
+            
+            display = get_board_display(board)
+            keyboard = get_board_keyboard(board, current_level)
+            
+            await query.edit_message_text(
+                f"🔢 NUMPUZ - LEVEL {current_level}/{len(LEVELS)}\n\n{display}",
+                reply_markup=keyboard,
+                parse_mode="Markdown"
+            )
+        else:
+            conn.close()
+
+
+async def numpuz_next_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    data = query.data
+    
+    if data.startswith("numpuz_next_"):
+        level = int(data.split("_")[2])
+        
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT board, moves FROM numpuz_progress WHERE user_id = ?", (user_id,))
+        saved = c.fetchone()
+        
+        if not saved:
+            await query.edit_message_text("❌ No game found!")
+            conn.close()
+            return
+        
+        board = json.loads(saved[0])
+        moves = saved[1]
+        conn.close()
+        
+        display = get_board_display(board)
+        keyboard = get_board_keyboard(board, level)
+        
+        await query.edit_message_text(
+            f"🔢 NUMPUZ - LEVEL {level}/{len(LEVELS)}\n\n{display}",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+
+
 
 
 def main():
@@ -6303,6 +6648,9 @@ def main():
     app.add_handler(CallbackQueryHandler(rps_join_callback, pattern="^rps_join_"))  
     app.add_handler(CallbackQueryHandler(rps_move_callback, pattern="^rps_move_"))
     app.add_handler(CallbackQueryHandler(rps_none_callback, pattern="^rps_none"))
+    app.add_handler(CommandHandler("numpuz", numpuz))
+    app.add_handler(CallbackQueryHandler(numpuz_callback, pattern="^numpuz_"))
+    app.add_handler(CallbackQueryHandler(numpuz_next_callback, pattern="^numpuz_next_"))
 
     # Hall of Fame commands (sahi naam se)
     app.add_handler(CommandHandler("hof", hof))
