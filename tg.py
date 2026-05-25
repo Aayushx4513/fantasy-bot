@@ -6569,6 +6569,39 @@ async def numpuz_next_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             parse_mode="Markdown"
         )
 
+async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Check bot's response time"""
+    msg = update.effective_message
+    if not msg:
+        return
+
+    try:
+        import time
+        start_time = time.time()
+
+        # Send initial message
+        temp_msg = await msg.reply_text("🏓 Pinging...")
+
+        end_time = time.time()
+        latency = (end_time - start_time) * 1000
+
+        await temp_msg.edit_text(
+            f"🏓 **Pong!**\n"
+            f"⏱️ Latency: `{latency:.2f}ms`\n"
+            f"🤖 Bot is alive!",
+            parse_mode='Markdown'
+        )
+
+    except Exception as e:
+        if "503" in str(e):
+            print("⚠️ Proxy 503: Ping failed.")
+            try:
+                await msg.reply_text("🏓 Pong! (Lag detected)")
+            except:
+                pass
+        else:
+            print(f"❌ Ping Error: {e}")
+
 
 
 
@@ -6622,7 +6655,7 @@ def main():
     app.add_handler(CommandHandler("addhof", addhof))
     app.add_handler(CommandHandler("rmhof", rmhof))
     app.add_handler(CommandHandler("edithof", edithof))
-
+    app.add_handler(CommandHandler("ping", ping))
     # Shop2 commands
     app.add_handler(CommandHandler("shop2", shop2))
     app.add_handler(CommandHandler("buy2", buy2))
