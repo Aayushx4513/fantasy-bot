@@ -72,6 +72,16 @@ def init_db():
               total_earned INTEGER DEFAULT 0,
               total_profit INTEGER DEFAULT 0,
               chat_id INTEGER)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS users
+             (user_id INTEGER PRIMARY KEY,
+              name TEXT,
+              balance INTEGER,
+              points INTEGER,
+              won INTEGER,
+              total INTEGER,
+              photo TEXT,
+              bio TEXT DEFAULT '')''')
+
 
     conn.commit()
     conn.close()
