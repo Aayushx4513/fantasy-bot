@@ -1515,7 +1515,7 @@ async def shop2(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('🛒 AFFORDABLE SHOP\n\nNo players yet.\n👑 Admin: /addplayer2 <name> <price>')
         return
     
-    msg = "🛒 CHEAP PLAYERS SHOP\n\n"
+    msg = "🛒 AFFORDABLE PLAYERS SHOP\n\n"
     for p in players:
         msg += f"{p[0]}. {p[1]} - {p[2]:,} 💰\n"
     msg += "\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /buy2 <id> to purchase"
@@ -1584,15 +1584,92 @@ async def myteam2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     
     if not players:
-        await update.message.reply_text('📭 No shop2 players owned.\nUse /shop2 to buy!')
+        await update.message.reply_text('📭 No affordable players owned.\nUse /shop2 to buy!')
         return
     
     total = sum(p[1] for p in players)
-    msg = "🤑 MY CHEAP PLAYERS\n\n"
+    msg = "🛍️ **MY AFFORDABLE PLAYERS**\n\n"
     for i, p in enumerate(players, 1):
         msg += f"{i}. {p[0]} - {p[1]:,} 💰\n"
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💰 Total spent: {total:,} 💰"
-    await update.message.reply_text(msg)
+    
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+
+async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Mens players (shop)
+    c.execute("SELECT p.name, p.price FROM user_players u JOIN shop p ON u.player_id=p.id WHERE u.user_id=? AND u.type='mens'", (user_id,))
+    mens = c.fetchall()
+    
+    # Women players
+    c.execute("SELECT w.name, w.price FROM user_players u JOIN shop_women w ON u.player_id=w.id WHERE u.user_id=? AND u.type='women'", (user_id,))
+    women = c.fetchall()
+    
+    # Shop2 (affordable)
+    c.execute("SELECT s.name, s.price FROM user_players2 u JOIN shop2 s ON u.player_id=s.id WHERE u.user_id=?", (user_id,))
+    cheap = c.fetchall()
+    
+    # 🔥 SHOP3 ADD KARO 🔥
+    c.execute("SELECT s.name, s.price FROM user_players3 u JOIN shop3 s ON u.player_id=s.id WHERE u.user_id=?", (user_id,))
+    shop3 = c.fetchall()
+    
+    conn.close()
+    
+    mens_total = sum(p[1] for p in mens)
+    women_total = sum(w[1] for w in women)
+    cheap_total = sum(c[1] for c in cheap)
+    shop3_total = sum(s[1] for s in shop3)
+    
+    msg = "🏏 MY CRICKET TEAM\n\n━━━━━━━━━━━━━━━━━━━━━━\n👨 MENS"
+    if mens:
+        msg += f" ({len(mens)})\n\n"
+        for i, p in enumerate(mens, 1):
+            msg += f"{i}. {p[0]} - {p[1]:,} 💰\n"
+        msg += f"\nTotal: {mens_total:,} 💰"
+    else:
+        msg += "\n\nNo mens players. /shop to buy!"
+    
+    msg += "\n\n━━━━━━━━━━━━━━━━━━━━━━\n🛍️ AFFORDABLE"
+    if cheap:
+        msg += f" ({len(cheap)})\n\n"
+        for i, c in enumerate(cheap, 1):
+            msg += f"{i}. {c[0]} - {c[1]:,} 💰\n"
+        msg += f"\nTotal: {cheap_total:,} 💰"
+    else:
+        msg += "\n\nNo affordable players. /shop2 to buy!"
+    
+    # 🔥 SHOP3 SECTION 🔥
+    msg += "\n\n━━━━━━━━━━━━━━━━━━━━━━\n💎 SHOP3"
+    if shop3:
+        msg += f" ({len(shop3)})\n\n"
+        for i, s in enumerate(shop3, 1):
+            msg += f"{i}. {s[0]} - {s[1]:,} 💰\n"
+        msg += f"\nTotal: {shop3_total:,} 💰"
+    else:
+        msg += "\n\nNo shop3 players. /shop3 to buy!"
+    
+    msg += "\n\n━━━━━━━━━━━━━━━━━━━━━━\n👩 WOMEN"
+    if women:
+        msg += f" ({len(women)})\n\n"
+        for i, w in enumerate(women, 1):
+            msg += f"{i}. {w[0]} - {w[1]:,} 💰\n"
+        msg += f"\nTotal: {women_total:,} 💰"
+    else:
+        msg += "\n\nNo women players. /shop women section"
+    
+    grand_total = mens_total + cheap_total + shop3_total + women_total
+    total_players = len(mens) + len(cheap) + len(shop3) + len(women)
+    msg += f"\n\n━━━━━━━━━━━━━━━━━━━━━━\n💰 GRAND TOTAL: {grand_total:,} 💰\n🏆 TOTAL PLAYERS: {total_players}"
+    
+    await update.message.reply_text(msg, parse_mode="Markdown")
 
 async def top2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -1606,11 +1683,11 @@ async def top2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tops = c.fetchall()
     
     if not tops:
-        await update.message.reply_text('🏆 CHEAP PLAYERS TOP\n\nNo one owns any yet!')
+        await update.message.reply_text('🏆 AFFORDABLE PLAYERS TOP\n\nNo one owns any yet!')
         conn.close()
         return
     
-    msg = "🏆 CHEAP PLAYERS TOP\n\n"
+    msg = "🏆 AFFORDABLE PLAYERS TOP\n\n"
     for i, t in enumerate(tops, 1):
         medal = "👑" if i==1 else "🥈" if i==2 else "🥉" if i==3 else f"{i}."
         msg += f"{medal} {t[0]} - {t[1]} players ({t[2]:,} 💰)\n"
@@ -1652,7 +1729,7 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         msg += "\n\nNo mens players. /shop to buy!"
     
-    msg += "\n\n━━━━━━━━━━━━━━━━━━━━━━\n🤑 CHEAP"
+    msg += "\n\n━━━━━━━━━━━━━━━━━━━━━━\n🤑 AFFORDABLE"
     if shop2:
         msg += f" ({len(shop2)})\n\n"
         for i, c in enumerate(shop2, 1):
@@ -2407,7 +2484,7 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⏰ Next interest: 24h"
     )
 
-# ============ SHOP3 (CHEAPEST PLAYERS) ==========
+# ============ SHOP3 (AFFORDABLEEST PLAYERS) ==========
 
 async def shop3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -4601,7 +4678,7 @@ def auto_grow_worker():
 # Start background thread
 threading.Thread(target=auto_grow_worker, daemon=True).start()
 
-# ============ CLCRICKET WITH MODES - PART 1 ============
+# ============ CLCRICKET WITH MODES ============
 
 import random
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -4622,8 +4699,6 @@ DELIVERIES = {
     "LC": {"name": "LC", "out_on": 5},
     "KNC": {"name": "KNC", "out_on": 6},
 }
-
-# ============ CLCRICKET WITH MODES - PART 2 ============
 
 class CricketGame:
     def __init__(self, game_id, player1_id, player1_name, bet, chat_id, mode):
@@ -4676,7 +4751,7 @@ class CricketGame:
                 "IS": {"name": "IS", "out_on": 8},
                 "OC": {"name": "OC", "out_on": 9},
             }
-        else:  # default
+        else:
             return DELIVERIES
     
     def get_bat_numbers(self):
@@ -4691,12 +4766,13 @@ class CricketGame:
     
     def check_out(self, delivery_key, shot):
         deliveries = self.get_deliveries()
-        if self.mode == "1-9":
-            return deliveries[delivery_key]["out_on"] == shot
-        else:
-            return deliveries[delivery_key]["out_on"] == shot
+        return deliveries[delivery_key]["out_on"] == shot
+    
+    def get_overs_display(self):
+        overs = self.balls // 6
+        balls = self.balls % 6
+        return f"{overs}.{balls}"
 
-# ============ CLCRICKET WITH MODES - PART 3 ============
 
 async def clcricket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -4810,7 +4886,6 @@ async def cricket_mode_callback(update: Update, context: ContextTypes.DEFAULT_TY
         parse_mode="Markdown"
     )
 
-# ============ CLCRICKET WITH MODES - PART 4 ============
 
 async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -4950,7 +5025,6 @@ async def cricket_toss_callback(update: Update, context: ContextTypes.DEFAULT_TY
         parse_mode="Markdown"
     )
 
-# ============ CLCRICKET WITH MODES - PART 5 ============
 
 async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -5017,7 +5091,6 @@ async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_
         parse_mode="Markdown"
     )
 
-
 async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -5046,6 +5119,14 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     game.last_delivery = delivery_key
     game.waiting_for = "bat"
     
+    bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
+    delivery_name = game.get_deliveries()[delivery_key]["name"]
+    
+    await context.bot.send_message(
+        game.chat_id,
+        f"🎯 {bowler_name} bowls {delivery_name}!"
+    )
+    
     bat_numbers = game.get_bat_numbers()
     
     keyboard = []
@@ -5066,14 +5147,14 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         f"{batsman_name} Batting\n"
         f"🎮 {game.mode.upper()} MODE\n"
         f"💰 Bet: {game.bet} | Prize: {game.bet*2}\n"
-        f"📊 Score: {game.score}/{game.wickets}\n\n"
+        f"📊 Score: {game.score}/{game.wickets}\n"
+        f"📈 Overs: {game.get_overs_display()}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"🏏 {batsman_name}'s turn to bat:\n"
         f"━━━━━━━━━━━━━━━━━━━━",
         reply_markup=reply_markup,
         parse_mode="Markdown"
     )
-
 
 async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -5104,11 +5185,19 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     game.waiting_for = "bowl"
     
     delivery_key = game.last_delivery
+    bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
+    batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
+    delivery_name = game.get_deliveries()[delivery_key]["name"]
     
     # Check if OUT
     if game.check_out(delivery_key, shot):
         game.wickets += 1
         game.balls += 1
+        
+        await context.bot.send_message(
+            game.chat_id,
+            f"❌ {batsman_name} is OUT! {delivery_name} vs {shot} → OUT!"
+        )
         
         if game.target is None:
             game.target = game.score + 1
@@ -5118,6 +5207,11 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             game.score = 0
             game.wickets = 0
             game.waiting_for = "bowl"
+            
+            await context.bot.send_message(
+                game.chat_id,
+                f"📊 First Innings Score: {game.target - 1}\n🎯 Target: {game.target} runs"
+            )
             
             deliveries = game.get_deliveries()
             keyboard = []
@@ -5136,12 +5230,12 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             
             await query.edit_message_text(
                 f"🏏 **CRICKET GAME**\n\n"
-                f"❌ **OUT!**\n\n"
-                f"📊 First Innings Score: {game.target - 1}\n"
-                f"🎯 Target: {game.target} runs\n\n"
+                f"{batsman_name} Batting | {bowler_name} Bowling\n"
+                f"🎮 {game.mode.upper()} MODE\n"
+                f"💰 Bet: {game.bet} | Prize: {game.bet*2}\n"
+                f"📊 Score: {game.score}/{game.wickets}\n"
+                f"📈 Overs: {game.get_overs_display()}\n\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"🏏 {batsman_name} Batting | {bowler_name} Bowling\n"
-                f"📊 Score: {game.score}/{game.wickets}\n\n"
                 f"🎯 {bowler_name}'s turn to bowl:\n"
                 f"━━━━━━━━━━━━━━━━━━━━",
                 reply_markup=reply_markup,
@@ -5149,7 +5243,7 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return
         else:
-            # 🔥 DRAW CONDITION 🔥
+            # DRAW condition
             if game.score == game.target - 1:
                 game.game_active = False
                 
@@ -5165,6 +5259,7 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                     f"🏏 **CRICKET GAME**\n\n"
                     f"❌ **OUT!**\n\n"
                     f"📊 Final Score: {game.score}/{game.wickets}\n"
+                    f"📈 Overs: {game.get_overs_display()}\n"
                     f"🎯 Target: {game.target}\n\n"
                     f"━━━━━━━━━━━━━━━━━━━━\n"
                     f"🤝 **DRAW!** 🤝\n"
@@ -5191,6 +5286,7 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 f"🏏 **CRICKET GAME**\n\n"
                 f"❌ **OUT!**\n\n"
                 f"📊 Final Score: {game.score}/{game.wickets}\n"
+                f"📈 Overs: {game.get_overs_display()}\n"
                 f"🎯 Target: {game.target}\n\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"🏆 **WINNER: {winner_name}** 🏆\n"
@@ -5204,6 +5300,11 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     else:
         game.score += shot
         game.balls += 1
+        
+        await context.bot.send_message(
+            game.chat_id,
+            f"🏏 {batsman_name} hits {shot} runs! {delivery_name} vs {shot} → SAFE"
+        )
         
         if game.target and game.score >= game.target:
             game.game_active = False
@@ -5223,6 +5324,7 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
                 f"🏏 **CRICKET GAME**\n\n"
                 f"✅ **{shot} runs!**\n\n"
                 f"📊 Final Score: {game.score}/{game.wickets}\n"
+                f"📈 Overs: {game.get_overs_display()}\n"
                 f"🎯 Target: {game.target}\n\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"🏆 **WINNER: {winner_name}** 🏆\n"
@@ -5249,21 +5351,14 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
         bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
         
-        overs = game.balls // 6
-        balls = game.balls % 6
-        
-        if game.target:
-            need = game.target - game.score
-            status = f"📊 Score: {game.score}/{game.wickets} | Need: {need} | Overs: {overs}.{balls}"
-        else:
-            status = f"📊 Score: {game.score}/{game.wickets} | Overs: {overs}.{balls}"
-        
         await query.edit_message_text(
             f"🏏 **CRICKET GAME**\n\n"
-            f"✅ **{shot} runs!**\n\n"
-            f"{status}\n\n"
+            f"{batsman_name} Batting | {bowler_name} Bowling\n"
+            f"🎮 {game.mode.upper()} MODE\n"
+            f"💰 Bet: {game.bet} | Prize: {game.bet*2}\n"
+            f"📊 Score: {game.score}/{game.wickets}\n"
+            f"📈 Overs: {game.get_overs_display()}\n\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🏏 {batsman_name} Batting | {bowler_name} Bowling\n\n"
             f"🎯 {bowler_name}'s turn to bowl:\n"
             f"━━━━━━━━━━━━━━━━━━━━",
             reply_markup=reply_markup,
