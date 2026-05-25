@@ -10,7 +10,7 @@ import os
 import threading
 from flask import Flask
 
-TOKEN = "8265192837:AAGinub6NVzGsQOkzQop6HRaekBlt1qaN-A"
+TOKEN = "8265192837:AAGpaKy5O4g-mBRxq1i5Bjm9vqs_cQ5tg84"
 ADMIN_IDS = [7687078555, 1315564307]
 
 flask_app = Flask(__name__)
