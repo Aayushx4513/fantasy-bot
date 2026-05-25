@@ -10,7 +10,7 @@ import os
 import threading
 from flask import Flask
 
-TOKEN = "8533156744:AAE2Fesm35bggPg47V2UBjJolJnRsJ-pjVA"
+TOKEN = "8265192837:AAGinub6NVzGsQOkzQop6HRaekBlt1qaN-A"
 ADMIN_IDS = [7687078555, 1315564307]
 
 flask_app = Flask(__name__)
@@ -24,7 +24,7 @@ def health():
     return "OK", 200
 
 def run_flask():
-    port = int(os.environ.get("PORT", 9090))  # 10000 → 9090
+    port = int(os.environ.get("PORT", 9090))
     flask_app.run(host="0.0.0.0", port=port)
 
 def get_db():
