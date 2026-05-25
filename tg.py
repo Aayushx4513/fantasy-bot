@@ -284,8 +284,8 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /CLcricket [amount] - Cricket game\n"
         "• /rps [amount] - Rock Paper Scissors\n"
         "• /claimcode <code> - Claim rewards\n"
-        "• /activecodes - Active codes\n\n"
-        
+        "• /activecodes - Active codes\n"
+        "• /numpuz - Number puzzle\n\n"
         "🎁 REFERRAL\n"
         "• /refer - Get your link (1k per refer)\n\n"
         
