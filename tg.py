@@ -6414,36 +6414,29 @@ async def numpuz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('❌ Send /start first!')
         return
     
-    args = context.args
-    level = 1
-    
-    if args and args[0].isdigit():
-        level = int(args[0])
-    
     conn = get_db()
     c = conn.cursor()
     c.execute("SELECT level, board, moves FROM numpuz_progress WHERE user_id = ?", (user_id,))
     saved = c.fetchone()
     conn.close()
     
-    if saved and level == 1:
-        saved_level = saved[0]
+    if saved:
+        level = saved[0]
         board = json.loads(saved[1])
-        moves = saved[2]
         
         if board:
-            display = get_board_display(board)
-            keyboard = get_board_keyboard(board, saved_level)
+            keyboard = get_board_keyboard(board, level)
             
-            # 🔥 SIRF BOX - KOI EXTRA TXT NAHI 🔥
+            # 🔥 SIRF LEVEL TEXT 🔥
             await update.message.reply_text(
-                display,
+                f"**NUMPUZ - LEVEL {level}**",
                 reply_markup=keyboard,
                 parse_mode="Markdown"
             )
             return
     
-    size = LEVELS[level]["size"]
+    level = 1
+    size = get_size_for_level(level)
     
     while True:
         board = get_shuffled_board(size)
@@ -6457,12 +6450,10 @@ async def numpuz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.commit()
     conn.close()
     
-    display = get_board_display(board)
     keyboard = get_board_keyboard(board, level)
     
-    # 🔥 SIRF BOX - KOI EXTRA TXT NAHI 🔥
     await update.message.reply_text(
-        display,
+        f"**NUMPUZ - LEVEL {level}**",
         reply_markup=keyboard,
         parse_mode="Markdown"
     )
@@ -6487,7 +6478,7 @@ async def numpuz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         saved = c.fetchone()
         
         if not saved:
-            await query.edit_message_text("❌ No game found! Use /numpuz")
+            await query.edit_message_text("❌ No game! Use /numpuz")
             conn.close()
             return
         
@@ -6504,43 +6495,40 @@ async def numpuz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             moves += 1
             
             if is_win(board):
-                if current_level < len(LEVELS):
-                    next_level = current_level + 1
-                    c.execute("UPDATE numpuz_progress SET level = ?, board = ?, moves = ? WHERE user_id = ?",
-                              (next_level, json.dumps(board), moves, user_id))
-                    conn.commit()
-                    conn.close()
-                    
-                    keyboard = [[InlineKeyboardButton("▶ LEVEL " + str(next_level), callback_data=f"numpuz_next_{next_level}")]]
-                    reply_markup = InlineKeyboardMarkup(keyboard)
-                    
-                    await query.edit_message_text(
-                        f"🎉 LEVEL {current_level} COMPLETE! 🎉\n\n{get_board_display(board)}\n\n➡️ Moves: {moves}",
-                        reply_markup=reply_markup,
-                        parse_mode="Markdown"
-                    )
-                    return
-                else:
-                    c.execute("DELETE FROM numpuz_progress WHERE user_id = ?", (user_id,))
-                    conn.commit()
-                    conn.close()
-                    
-                    await query.edit_message_text(
-                        f"🏆 **CONGRATULATIONS!** 🏆\n\nYou completed all {len(LEVELS)} levels!\n📊 Total moves: {moves}\n\n💡 /numpuz to play again!",
-                        parse_mode="Markdown"
-                    )
-                    return
+                next_level = current_level + 1
+                next_size = get_size_for_level(next_level)
+                
+                # Create new board for next level
+                while True:
+                    new_board = get_shuffled_board(next_size)
+                    if is_solvable(new_board):
+                        break
+                
+                c.execute("UPDATE numpuz_progress SET level = ?, board = ?, moves = ? WHERE user_id = ?",
+                          (next_level, json.dumps(new_board), 0, user_id))
+                conn.commit()
+                conn.close()
+                
+                keyboard = get_board_keyboard(new_board, next_level)
+                
+                # 🔥 AUTO LEVEL UP - SIRF LEVEL TEXT 🔥
+                await query.edit_message_text(
+                    f"**NUMPUZ - LEVEL {next_level}**",
+                    reply_markup=keyboard,
+                    parse_mode="Markdown"
+                )
+                return
             
             c.execute("UPDATE numpuz_progress SET board = ?, moves = ? WHERE user_id = ?",
                       (json.dumps(board), moves, user_id))
             conn.commit()
             conn.close()
             
-            display = get_board_display(board)
             keyboard = get_board_keyboard(board, current_level)
             
+            # 🔥 SIRF LEVEL TEXT 🔥
             await query.edit_message_text(
-                f"🔢 NUMPUZ - LEVEL {current_level}/{len(LEVELS)}\n\n{display}",
+                f"**NUMPUZ - LEVEL {current_level}**",
                 reply_markup=keyboard,
                 parse_mode="Markdown"
             )
