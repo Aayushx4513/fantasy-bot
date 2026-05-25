@@ -434,35 +434,36 @@ async def rmpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text('❌ Profile photo removed!')
 
 # ============ CLAIM ============
+# ============ CLAIM ============
 async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_id = update.message.chat.id
     chat_type = update.message.chat.type
-    
+
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    
+
     # 🔥 CL ZONE GROUP ID 🔥
     CL_GROUP_ID = -1001661258033
     CL_GROUP_LINK = "https://t.me/+eTD1m8Cjc_wyOTNl"
-    
+
     conn = get_db()
     c = conn.cursor()
     c.execute("CREATE TABLE IF NOT EXISTS claim (user_id INTEGER PRIMARY KEY, last_claim DATE)")
     c.execute("SELECT last_claim FROM claim WHERE user_id=?", (user_id,))
     row = c.fetchone()
-    
+
     today = datetime.now().date()
     today_str = today.strftime("%m/%d/%y")
-    
+
     if row and row[0]:
         last = datetime.fromisoformat(row[0]).date()
         if last == today:
             await update.message.reply_text("⚠️ Already claimed today!\nCome back tomorrow.")
             conn.close()
             return
-    
+
     # 🔥 GROUP CHECK 🔥
     if chat_type in ['group', 'supergroup'] and chat_id == CL_GROUP_ID:
         reward = 1000
@@ -470,18 +471,18 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         reward = 500
         if chat_type in ['group', 'supergroup']:
-            extra_note = f"\n\n💡 **Tip:** Join [CL Zone Group]({CL_GROUP_LINK}) to get 1000 credits daily!"
+            extra_note = f"\n\n💡 **Tip:** Use /claim in [CL Zone Group]({CL_GROUP_LINK}) to get 1000 credits!"
         else:
             extra_note = f"\n\n💡 **Tip:** Use /claim in [CL Zone Group]({CL_GROUP_LINK}) to get 1000 credits!"
-    
+
     c.execute("INSERT OR REPLACE INTO claim (user_id, last_claim) VALUES (?, ?)", (user_id, today.isoformat()))
     c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (reward, user_id))
     conn.commit()
-    
+
     c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
     new_bal = c.fetchone()[0]
     conn.close()
-    
+
     await update.message.reply_text(
         f"✅ **Claimed Daily Rewards!**\n\n"
         f"💰 +{reward} credits\n"
