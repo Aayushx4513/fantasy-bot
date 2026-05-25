@@ -365,50 +365,76 @@ async def rmbio(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+
     if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
+        await update.message.reply_text("❌ Send /start first!")
         return
-    
+
     user = update.effective_user
-    name = user.first_name if user.first_name else user.username or "User"
-    
+    name = user.first_name if user.first_name else (user.username or "User")
+
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT balance, points, won, total, photo, bio FROM users WHERE user_id=?", (user_id,))
+
+    c.execute(
+        "SELECT balance, points, won, total, photo, bio FROM users WHERE user_id=?",
+        (user_id,)
+    )
+
     data = c.fetchone()
-    
+
+    if not data:
+        conn.close()
+        await update.message.reply_text("❌ Profile not found!")
+        return
+
     # Get bank balance
-    c.execute("SELECT balance FROM bank WHERE user_id=?", (user_id,))
+    c.execute(
+        "SELECT balance FROM bank WHERE user_id=?",
+        (user_id,)
+    )
+
     bank_row = c.fetchone()
     bank_bal = bank_row[0] if bank_row else 0
-    
+
     conn.close()
-    
+
     wallet_bal, points, won, total, photo, bio = data
+
     total_wealth = wallet_bal + bank_bal
-    win_rate = int(won/total*100) if total > 0 else 0
-    
-    # Profile text with bio
-    profile_text = f"👤 **PROFILE**\n\n**Name:** {name}\n"
-    
+    win_rate = int((won / total) * 100) if total > 0 else 0
+
+    # Profile text
+    profile_text = f"👤 **PROFILE**\n\n"
+    profile_text += f"**Name:** {name}\n"
+
     if bio:
         profile_text += f"**Bio:** {bio}\n\n"
-    else:
-        profile_text += f"\n"
-    
-    profile_text += (
-        f"💰 Wallet: {wallet_bal:,} | 🏦 Bank: {bank_bal:,}\n"
-        f"💰 Total: {total_wealth:,}\n"
-        f"🏆 Points: {points}\n"
-        f"📊 Bets: {won}/{total} ({win_rate}%)\n\n"
-        f"🔄 /setpfp | ❌ /rmpfp | 📝 /setbio | ❌ /rmbio"
-    )
-    
-    if photo:
-        await update.message.reply_photo(photo=photo, caption=profile_text, parse_mode="Markdown")
-    else:
-        await update.message.reply_text(profile_text, parse_mode="Markdown")
 
+    profile_text += (
+        f"💰 Wallet: {wallet_bal:,}\n"
+        f"🏦 Bank: {bank_bal:,}\n"
+        f"💎 Total Wealth: {total_wealth:,}\n\n"
+        f"🏆 Points: {points}\n"
+        f"📊 Bets Won: {won}/{total}\n"
+        f"📈 Win Rate: {win_rate}%\n\n"
+        f"🔄 /setpfp\n"
+        f"❌ /rmpfp\n"
+        f"📝 /setbio\n"
+        f"🗑 /rmbio"
+    )
+
+    if photo:
+        await update.message.reply_photo(
+            photo=photo,
+            caption=profile_text,
+            parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text(
+            profile_text,
+            parse_mode="Markdown"
+        )
 
 # ============ SETPFP ============
 async def setpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
