@@ -1,31 +1,22 @@
+from telegram.ext import MessageHandler
 import asyncio
 from telegram.ext import filters
-from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
 import sqlite3
 import random
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
 import os
 import threading
-from flask import Flask
 
 TOKEN = "8265192837:AAGpaKy5O4g-mBRxq1i5Bjm9vqs_cQ5tg84"
 ADMIN_IDS = [7687078555, 1315564307]
 
-flask_app = Flask(__name__)
-
-@flask_app.route('/')
-def home():
-    return "Bot is running!"
-
-@flask_app.route('/health')
-def health():
-    return "OK", 200
-
-def run_flask():
-    port = int(os.environ.get("PORT", 9090))
-    flask_app.run(host="0.0.0.0", port=port)
+# 🔥 FLASK COMPLETE HATA DO 🔥
+# flask_app = Flask(__name__)
+# @flask_app.route('/')
+# def home(): return "Bot is running!"
+# def run_flask(): pass
 
 def get_db():
     conn = sqlite3.connect('fantasy.db', timeout=30)
@@ -6517,7 +6508,7 @@ async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    threading.Thread(target=run_flask, daemon=True).start()
+#    threading.Thread(target=run_flask, daemon=True).start()
 
     app = Application.builder().token(TOKEN).build()
     threading.Thread(target=auto_grow_worker, daemon=True).start()
