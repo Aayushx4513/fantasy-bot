@@ -36,34 +36,49 @@ def get_db():
 def init_db():
     conn = get_db()
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS users 
-                 (user_id INTEGER PRIMARY KEY, name TEXT, balance INTEGER, points INTEGER, won INTEGER, total INTEGER, photo TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS matches 
+    c.execute('''CREATE TABLE IF NOT EXISTS users
+                 (user_id INTEGER PRIMARY KEY, name TEXT, balance INTEGER, points INTEGER, won INTEGER, total INTEGER)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS matches
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, team1 TEXT, team2 TEXT, date TEXT, status TEXT, locked INTEGER DEFAULT 0)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS bets 
+    c.execute('''CREATE TABLE IF NOT EXISTS bets
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, match_id INTEGER, team TEXT, amount INTEGER)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS claim 
+    c.execute('''CREATE TABLE IF NOT EXISTS claim
                  (user_id INTEGER PRIMARY KEY, last_claim DATE)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS spin 
+    c.execute('''CREATE TABLE IF NOT EXISTS spin
                  (user_id INTEGER PRIMARY KEY, last_claim TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS shop 
+    c.execute('''CREATE TABLE IF NOT EXISTS shop
                  (id INTEGER PRIMARY KEY, name TEXT, price INTEGER, country TEXT, type TEXT, category TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS shop_women 
+    c.execute('''CREATE TABLE IF NOT EXISTS shop_women
                  (id INTEGER PRIMARY KEY, name TEXT, price INTEGER, country TEXT, type TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS user_players 
+    c.execute('''CREATE TABLE IF NOT EXISTS user_players
                  (user_id INTEGER, player_id INTEGER, type TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS shop2 
+    c.execute('''CREATE TABLE IF NOT EXISTS shop2
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, price INTEGER)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS user_players2 
+    c.execute('''CREATE TABLE IF NOT EXISTS user_players2
                  (user_id INTEGER, player_id INTEGER)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS achievements 
+    c.execute('''CREATE TABLE IF NOT EXISTS achievements
                  (user_id INTEGER, achievement TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS bank 
+    c.execute('''CREATE TABLE IF NOT EXISTS bank
                  (user_id INTEGER PRIMARY KEY, balance INTEGER DEFAULT 0, last_interest TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS shop3
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, price INTEGER)''')
     c.execute('''CREATE TABLE IF NOT EXISTS user_players3
                  (user_id INTEGER, player_id INTEGER)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS shop4
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, price INTEGER)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS user_players4
+                 (user_id INTEGER, player_id INTEGER)''')
+    
+    # Add missing columns to users table
+    try:
+        c.execute("ALTER TABLE users ADD COLUMN photo TEXT")
+    except:
+        pass
+    try:
+        c.execute("ALTER TABLE users ADD COLUMN bio TEXT")
+    except:
+        pass
+    
     c.execute('''CREATE TABLE IF NOT EXISTS profiles
                  (user_id INTEGER PRIMARY KEY,
                   photo TEXT DEFAULT NULL,
@@ -72,27 +87,29 @@ def init_db():
                   won INTEGER DEFAULT 0,
                   total INTEGER DEFAULT 0,
                   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+    
     c.execute('''CREATE TABLE IF NOT EXISTS farms
-             (user_id INTEGER PRIMARY KEY,
-              crops TEXT DEFAULT '[]',
-              harvested TEXT DEFAULT '[]',
-              total_grown INTEGER DEFAULT 0,
-              total_earned INTEGER DEFAULT 0,
-              total_profit INTEGER DEFAULT 0,
-              chat_id INTEGER)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS users
-             (user_id INTEGER PRIMARY KEY,
-              name TEXT,
-              balance INTEGER,
-              points INTEGER,
-              won INTEGER,
-              total INTEGER,
-              photo TEXT,
-              bio TEXT DEFAULT '')''')
-
+                 (user_id INTEGER PRIMARY KEY,
+                  crops TEXT DEFAULT '[]',
+                  harvested TEXT DEFAULT '[]',
+                  total_grown INTEGER DEFAULT 0,
+                  total_earned INTEGER DEFAULT 0,
+                  total_profit INTEGER DEFAULT 0,
+                  chat_id INTEGER)''')
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS referral
+                 (user_id INTEGER PRIMARY KEY,
+                  referred_by INTEGER,
+                  referred_at TEXT)''')
+    
+    c.execute('''CREATE TABLE IF NOT EXISTS groups
+                 (group_id INTEGER PRIMARY KEY,
+                  group_name TEXT,
+                  added_at TEXT)''')
 
     conn.commit()
     conn.close()
+
 
 init_db()
 
