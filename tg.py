@@ -6466,7 +6466,7 @@ async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-#    threading.Thread(target=run_flask, daemon=True).start()
+    threading.Thread(target=run_flask, daemon=True).start()
 
     app = Application.builder().token(TOKEN).build()
     threading.Thread(target=auto_grow_worker, daemon=True).start()
