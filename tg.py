@@ -6426,7 +6426,12 @@ async def numpuz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.close()
 
 async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Check bot's response time"""
+    """Check bot's response time - Admin only"""
+    
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
     msg = update.effective_message
     if not msg:
         return
@@ -6435,28 +6440,18 @@ async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
         import time
         start_time = time.time()
 
-        # Send initial message
         temp_msg = await msg.reply_text("🏓 Pinging...")
 
         end_time = time.time()
         latency = (end_time - start_time) * 1000
 
         await temp_msg.edit_text(
-            f"🏓 **Pong!**\n"
-            f"⏱️ Latency: `{latency:.2f}ms`\n"
-            f"🤖 Bot is alive!",
+            f"🏓 **Pong!**\n⏱️ Latency: `{latency:.2f}ms`\n🤖 Bot is alive!",
             parse_mode='Markdown'
         )
 
     except Exception as e:
-        if "503" in str(e):
-            print("⚠️ Proxy 503: Ping failed.")
-            try:
-                await msg.reply_text("🏓 Pong! (Lag detected)")
-            except:
-                pass
-        else:
-            print(f"❌ Ping Error: {e}")
+        await msg.reply_text("🏓 Pong!")
 
 
 
