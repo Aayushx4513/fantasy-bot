@@ -6332,44 +6332,21 @@ def is_solvable(board):
     return (blank_row % 2 == 0) == (inversions % 2 == 1)
 
 def get_board_display(board):
-    """Get display string - clean box style"""
+    """Get display string - numbers only, no box"""
     size = len(board)
     msg = ""
     
-    # Top border
-    if size == 3:
-        msg += "┌───┬───┬───┐\n"
-    elif size == 4:
-        msg += "┌───┬───┬───┬───┐\n"
-    else:
-        msg += "┌───┬───┬───┬───┬───┐\n"
-    
-    for i, row in enumerate(board):
-        row_str = "│"
+    for row in board:
+        row_parts = []
         for num in row:
             if num == 0:
-                row_str += "   │"
+                row_parts.append("⬜")
             else:
-                row_str += f" {num} │"
-        msg += row_str + "\n"
-        
-        if i < size - 1:
-            if size == 3:
-                msg += "├───┼───┼───┤\n"
-            elif size == 4:
-                msg += "├───┼───┼───┼───┤\n"
-            else:
-                msg += "├───┼───┼───┼───┼───┤\n"
-    
-    # Bottom border
-    if size == 3:
-        msg += "└───┴───┴───┘"
-    elif size == 4:
-        msg += "└───┴───┴───┴───┘"
-    else:
-        msg += "└───┴───┴───┴───┴───┘"
+                row_parts.append(str(num))
+        msg += " ".join(row_parts) + "\n"
     
     return msg
+
 
 def is_win(board):
     """Check if board is solved"""
