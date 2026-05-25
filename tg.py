@@ -12,11 +12,9 @@ import threading
 TOKEN = "8265192837:AAGpaKy5O4g-mBRxq1i5Bjm9vqs_cQ5tg84"
 ADMIN_IDS = [7687078555, 1315564307]
 
-# 🔥 FLASK COMPLETE HATA DO 🔥
-# flask_app = Flask(__name__)
-# @flask_app.route('/')
-# def home(): return "Bot is running!"
-# def run_flask(): pass
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    flask_app.run(host="0.0.0.0", port=port)
 
 def get_db():
     conn = sqlite3.connect('fantasy.db', timeout=30)
