@@ -5149,6 +5149,31 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return
         else:
+            # 🔥 DRAW CONDITION 🔥
+            if game.score == game.target - 1:
+                game.game_active = False
+                
+                if game.bet > 0:
+                    conn = get_db()
+                    c = conn.cursor()
+                    c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game.bet, game.player1_id))
+                    c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (game.bet, game.player2_id))
+                    conn.commit()
+                    conn.close()
+                
+                await query.edit_message_text(
+                    f"🏏 **CRICKET GAME**\n\n"
+                    f"❌ **OUT!**\n\n"
+                    f"📊 Final Score: {game.score}/{game.wickets}\n"
+                    f"🎯 Target: {game.target}\n\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🤝 **DRAW!** 🤝\n"
+                    + (f"💰 Money returned: {game.bet} credits each" if game.bet > 0 else ""),
+                    parse_mode="Markdown"
+                )
+                del cricket_games[game_id]
+                return
+            
             game.game_active = False
             game.winner = game.player2_id if game.current_batsman == game.player1_id else game.player1_id
             
@@ -5175,7 +5200,7 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             del cricket_games[game_id]
             return
     
-    # SAFE
+    # SAFE - Add runs
     else:
         game.score += shot
         game.balls += 1
@@ -5244,8 +5269,6 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             reply_markup=reply_markup,
             parse_mode="Markdown"
         )
-
-
 
 # ============ MINES GAME (High Multiplier) ============
 
