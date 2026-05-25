@@ -64,6 +64,14 @@ def init_db():
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, price INTEGER)''')
     c.execute('''CREATE TABLE IF NOT EXISTS user_players3
                  (user_id INTEGER, player_id INTEGER)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS profiles
+                 (user_id INTEGER PRIMARY KEY,
+                  photo TEXT DEFAULT NULL,
+                  bio TEXT DEFAULT NULL,
+                  points INTEGER DEFAULT 0,
+                  won INTEGER DEFAULT 0,
+                  total INTEGER DEFAULT 0,
+                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     c.execute('''CREATE TABLE IF NOT EXISTS farms
              (user_id INTEGER PRIMARY KEY,
               crops TEXT DEFAULT '[]',
