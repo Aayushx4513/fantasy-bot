@@ -14,6 +14,10 @@ TOKEN = "8265192837:AAHsPddjDoRWuf-6Ht8iELdHDopkTBoOPhs"
 ADMIN_IDS = [7687078555, 1315564307]
 
 
+flask_app = Flask(__name__)
+@flask_app.route('/')
+def home():
+    return "Bot is running!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
