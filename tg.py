@@ -435,10 +435,6 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🏆 Points: {points}\n"
         f"📊 Bets Won: {won}/{total}\n"
         f"📈 Win Rate: {win_rate}%\n\n"
-        f"🔄 /setpfp\n"
-        f"❌ /rmpfp\n"
-        f"📝 /setbio\n"
-        f"🗑 /rmbio"
     )
 
     if photo:
@@ -459,11 +455,11 @@ async def setpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    
+
     if not update.message.reply_to_message or not update.message.reply_to_message.photo:
         await update.message.reply_text('❌ Reply to a photo with /setpfp')
         return
-    
+
     photo = update.message.reply_to_message.photo[-1].file_id
     conn = get_db()
     c = conn.cursor()
