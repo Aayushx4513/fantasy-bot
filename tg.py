@@ -1,6 +1,6 @@
 from flask import Flask
 from telegram.ext import MessageHandler
-import ayncio
+import asyncio
 from telegram.ext import filters
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
 import sqlite3
