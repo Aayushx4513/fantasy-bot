@@ -157,10 +157,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     c.execute("UPDATE users SET balance = balance + 500 WHERE user_id=?", (user_id,))
                     conn.commit()
                     try:
-                        await context.bot.send_message(referred_by, f"🎉 REFERRAL REWARD!\n\n@{name} joined using your link!\n💰 +1,000 credits!", parse_mode="Markdown")
+                        await context.bot.send_message(referred_by, f"🎉 REFERRAL REWARD!\n\n@{name} joined using your link!\n💰 +1,000 credits!")
                     except:
                         pass
-                    await update.message.reply_text("🎉 WELCOME!\n\nYou joined with a referral!\n💰 +500 bonus credits!", parse_mode="Markdown")
+                    await update.message.reply_text("🎉 WELCOME!\n\nYou joined with a referral!\n💰 +500 bonus credits!")
         
         conn.commit()
         keyboard = [[InlineKeyboardButton("📢 UPDATES", url="https://t.me/clbotofficial")],
@@ -184,7 +184,7 @@ async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     bot_username = context.bot.username
     ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
-    await update.message.reply_text(f"👥 REFERRAL SYSTEM\n\nInvite friends and earn 1,000 credits each!\n\nYour Link: {ref_link}\n\nNew users get +500 bonus!", parse_mode="Markdown")
+    await update.message.reply_text(f"👥 REFERRAL SYSTEM\n\nInvite friends and earn 1,000 credits each!\n\nYour Link: {ref_link}\n\nNew users get +500 bonus!")
 
 
 # ============ HELP ============
@@ -225,9 +225,9 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         profile_text += f"Bio: {bio}\n\n"
     profile_text += f"💰 Wallet: {wallet_bal:,}\n🏦 Bank: {bank_bal:,}\n💎 Total: {total_wealth:,}\n\n🏆 Points: {points}\n📊 Bets: {won}/{total}\n📈 Win Rate: {win_rate}%"
     if photo:
-        await update.message.reply_photo(photo=photo, caption=profile_text, parse_mode="Markdown")
+        await update.message.reply_photo(photo=photo, caption=profile_text)
     else:
-        await update.message.reply_text(profile_text, parse_mode="Markdown")
+        await update.message.reply_text(profile_text)
 
 
 # ============ BIO & PFP ============
@@ -345,7 +345,6 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"✅ Claimed Daily Rewards!\n\n💰 +{reward} credits\n📅 {today_str}\n💳 New balance: {new_bal:,}{extra_note}\n\n🔄 Next claim: tomorrow",
-        parse_mode="Markdown",
         disable_web_page_preview=True
     )
 
@@ -1076,7 +1075,7 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_players = len(mens) + len(affordable) + len(shop3) + len(women)
     msg += f"\n\n━━━━━━━━━━━━━━━━━━━━━━\n💰 GRAND TOTAL: {grand_total:,} 💰\n🏆 TOTAL PLAYERS: {total_players}"
     
-    await update.message.reply_text(msg, parse_mode="Markdown")
+    await update.message.reply_text(msg)
 
 
 # ============ TOP COLLECTORS ============
@@ -1189,7 +1188,7 @@ async def rps(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rps_lobby[game_id] = {"creator_id": user_id, "creator_name": user_name, "bet": bet, "chat_id": chat_id}
     keyboard = [[InlineKeyboardButton("🔵 JOIN GAME", callback_data=f"rps_join_{game_id}")]]
     bet_text = f"💰 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Free Play"
-    await update.message.reply_text(f"✊ ROCK PAPER SCISSORS\n\n👑 Host: {user_name}\n{bet_text}\n\n━━━━━━━━━━━━━━━━━━━━\n⚡ Waiting for opponent...", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    await update.message.reply_text(f"✊ ROCK PAPER SCISSORS\n\n👑 Host: {user_name}\n{bet_text}\n\n━━━━━━━━━━━━━━━━━━━━\n⚡ Waiting for opponent...", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def rps_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1242,7 +1241,7 @@ async def rps_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("✂️ SCISSORS", callback_data=f"rps_move_{game_id}_scissors")]
         ]
         bet_text = f"💰 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Free Play"
-        await query.edit_message_text(f"✊ ROCK PAPER SCISSORS\n\n{creator_name} vs {user_name}\n{bet_text}\n\n━━━━━━━━━━━━━━━━━━━━\n🎯 {creator_name}'s turn!", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await query.edit_message_text(f"✊ ROCK PAPER SCISSORS\n\n{creator_name} vs {user_name}\n{bet_text}\n\n━━━━━━━━━━━━━━━━━━━━\n🎯 {creator_name}'s turn!", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def rps_move_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1268,7 +1267,7 @@ async def rps_move_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("✂️ SCISSORS", callback_data=f"rps_move_{game_id}_scissors")]
         ]
         bet_text = f"💰 Bet: {game.bet:,} | Prize: {game.bet*2:,}" if game.bet > 0 else "🎮 Free Play"
-        await query.edit_message_text(f"✊ ROCK PAPER SCISSORS\n\n{game.player1_name} vs {game.player2_name}\n{bet_text}\n\n━━━━━━━━━━━━━━━━━━━━\n✅ {game.player1_name} made their choice!\n\n🎯 {game.player2_name}'s turn!", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await query.edit_message_text(f"✊ ROCK PAPER SCISSORS\n\n{game.player1_name} vs {game.player2_name}\n{bet_text}\n\n━━━━━━━━━━━━━━━━━━━━\n✅ {game.player1_name} made their choice!\n\n🎯 {game.player2_name}'s turn!", reply_markup=InlineKeyboardMarkup(keyboard))
     else:
         game.player2_choice = choice
         game.waiting_for = None
@@ -1292,7 +1291,7 @@ async def rps_move_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.commit()
             conn.close()
             result_text += f"\n\n💰 Money returned: {game.bet:,} each"
-        await query.edit_message_text(f"✊ ROCK PAPER SCISSORS\n\n{result_text}", parse_mode="Markdown")
+        await query.edit_message_text(f"✊ ROCK PAPER SCISSORS\n\n{result_text}")
         del rps_games[game_id]
 
 async def rps_none_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1666,7 +1665,7 @@ async def myteam2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i, p in enumerate(players, 1):
         msg += f"{i}. {p[0]} - {p[1]:,} 💰\n"
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💰 Total spent: {total:,} 💰"
-    await update.message.reply_text(msg, parse_mode="Markdown")
+    await update.message.reply_text(msg)
 
 async def top2(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -2808,7 +2807,7 @@ async def mines(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "⚡ Min:100 | Max:10,000\n"
             "💣 Bombs:1-24\n"
             "🎯 More bombs = bigger reward!",
-            parse_mode="Markdown"
+            
         )
         return
     
@@ -2870,7 +2869,7 @@ async def mines(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📈 1.00x | 💎 {bet:,}\n\n"
         f"⬇️ Click tiles ⬇️",
         reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown"
+        
     )
 
 async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2904,7 +2903,7 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✅ +{win:,}\n"
             f"📈 {mult}x\n"
             f"💳 {bal + win:,}",
-            parse_mode="Markdown"
+            
         )
         del active_mines[user_id]
         return
@@ -2923,7 +2922,7 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💣 **BOMB!**\n"
                 f"💰 Lost: {game['bet']:,}\n"
                 f"😵 Game over!",
-                parse_mode="Markdown"
+                
             )
             del active_mines[user_id]
             return
@@ -2948,7 +2947,7 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"💰 +{win:,}\n"
                 f"📈 {mult}x\n"
                 f"💳 {bal + win:,}",
-                parse_mode="Markdown"
+                
             )
             del active_mines[user_id]
             return
@@ -2977,7 +2976,7 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💚 {left} left\n\n"
             f"⬇️ Click or CASHOUT",
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="Markdown"
+            
         )
 
 # ============ SHOP3 ============
@@ -3074,7 +3073,7 @@ async def myteam3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i, p in enumerate(players, 1):
         msg += f"{i}. {p[0]} - {p[1]:,} 💰\n"
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💰 Total spent: {total:,} 💰"
-    await update.message.reply_text(msg, parse_mode="Markdown")
+    await update.message.reply_text(msg)
 
 async def top3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -3508,7 +3507,7 @@ async def ttt(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"⚡ Waiting for opponent...",
         reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown"
+        
     )
 
 async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3567,7 +3566,7 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{bet_text}\n\n"
             f"🎯 {creator_name}'s Turn",
             reply_markup=game.get_keyboard(),
-            parse_mode="Markdown"
+            
         )
         return
     
@@ -3614,7 +3613,7 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"❌ {game.player1_name} vs ⭕ {game.player2_name}\n\n"
                 f"{result_text}",
                 reply_markup=game.get_keyboard(),
-                parse_mode="Markdown"
+                
             )
             del ttt_games[game_id]
             return
@@ -3633,7 +3632,7 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"❌ {game.player1_name} vs ⭕ {game.player2_name}\n\n"
                 f"🤝 **DRAW** 🤝",
                 reply_markup=game.get_keyboard(),
-                parse_mode="Markdown"
+                
             )
             del ttt_games[game_id]
             return
@@ -3649,7 +3648,7 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"{bet_text}\n\n"
                 f"🎯 {turn_name}'s Turn ({turn_symbol})",
                 reply_markup=game.get_keyboard(),
-                parse_mode="Markdown"
+                
             )
             return
 
@@ -3769,7 +3768,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("✅ MOST WINS", callback_data="stats_wins")],
         [InlineKeyboardButton("❌ MOST LOSSES", callback_data="stats_losses")],
     ]
-    await update.message.reply_text("🏏 **CRICKET STATS LEADERBOARD**\n\nSelect stat to view:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    await update.message.reply_text("🏏 **CRICKET STATS LEADERBOARD**\n\nSelect stat to view:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -3800,7 +3799,7 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_rank:
             msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 Your rank: #{user_rank}\n🏏 Your runs: {user_runs}"
         keyboard = [[InlineKeyboardButton("◀️ BACK TO MENU", callback_data="stats_back")]]
-        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
     
     elif data == "stats_wickets":
         c.execute("SELECT name, wickets FROM cricket_stats ORDER BY wickets DESC LIMIT 5")
@@ -3823,7 +3822,7 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_rank:
             msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 Your rank: #{user_rank}\n🎯 Your wickets: {user_wickets}"
         keyboard = [[InlineKeyboardButton("◀️ BACK TO MENU", callback_data="stats_back")]]
-        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
     
     elif data == "stats_highest":
         c.execute("SELECT name, highest_score FROM cricket_stats ORDER BY highest_score DESC LIMIT 5")
@@ -3846,7 +3845,7 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_rank:
             msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 Your rank: #{user_rank}\n⭐ Your highest: {user_highest}"
         keyboard = [[InlineKeyboardButton("◀️ BACK TO MENU", callback_data="stats_back")]]
-        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
     
     elif data == "stats_wins":
         c.execute("SELECT name, wins FROM cricket_stats ORDER BY wins DESC LIMIT 5")
@@ -3869,7 +3868,7 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_rank:
             msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 Your rank: #{user_rank}\n✅ Your wins: {user_wins}"
         keyboard = [[InlineKeyboardButton("◀️ BACK TO MENU", callback_data="stats_back")]]
-        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
     
     elif data == "stats_losses":
         c.execute("SELECT name, losses FROM cricket_stats ORDER BY losses DESC LIMIT 5")
@@ -3892,7 +3891,7 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_rank:
             msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 Your rank: #{user_rank}\n❌ Your losses: {user_losses}"
         keyboard = [[InlineKeyboardButton("◀️ BACK TO MENU", callback_data="stats_back")]]
-        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
     
     elif data == "stats_back":
         keyboard = [
@@ -3902,7 +3901,7 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("✅ MOST WINS", callback_data="stats_wins")],
             [InlineKeyboardButton("❌ MOST LOSSES", callback_data="stats_losses")],
         ]
-        await query.edit_message_text("🏏 **CRICKET STATS LEADERBOARD**\n\nSelect stat to view:", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await query.edit_message_text("🏏 **CRICKET STATS LEADERBOARD**\n\nSelect stat to view:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -3931,7 +3930,7 @@ async def mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❌ Losses: 0 (Rank: N/A)\n"
             f"━━━━━━━━━━━━━━━━━━━━\n\n"
             f"💡 Play /CLcricket to start!",
-            parse_mode="Markdown"
+            
         )
         return
     
@@ -3959,7 +3958,7 @@ async def mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += f"❌ Losses: {losses} (Rank: #{losses_rank if losses_rank else 'N/A'})\n"
     msg += f"━━━━━━━━━━━━━━━━━━━━"
     
-    await update.message.reply_text(msg, parse_mode="Markdown")
+    await update.message.reply_text(msg)
 
 
 # ============ SHOP4 ============
@@ -3977,14 +3976,14 @@ async def shop4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     
     if not players:
-        await update.message.reply_text('🛒 **SHOP4**\n\nNo players yet.\n👑 Admin: /addplayer4 <name> <price>', parse_mode="Markdown")
+        await update.message.reply_text('🛒 **SHOP4**\n\nNo players yet.\n👑 Admin: /addplayer4 <name> <price>')
         return
     
     msg = "🛒 **SHOP4**\n\n"
     for p in players:
         msg += f"{p[0]}. {p[1]} - {p[2]:,} 💰\n"
     msg += "\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /buy4 <id> to purchase"
-    await update.message.reply_text(msg, parse_mode="Markdown")
+    await update.message.reply_text(msg)
 
 async def buy4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -4057,7 +4056,7 @@ async def myteam4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i, p in enumerate(players, 1):
         msg += f"{i}. {p[0]} - {p[1]:,} 💰\n"
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💰 Total spent: {total:,} 💰"
-    await update.message.reply_text(msg, parse_mode="Markdown")
+    await update.message.reply_text(msg)
 
 async def top4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -4192,6 +4191,1821 @@ async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit()
         conn.close()
 
+# ============ AUCTION SYSTEM - PART 1 (DATABASE & IMPORTS) ==========
+
+import sqlite3
+import random
+import asyncio
+import threading
+from datetime import datetime, timedelta
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import CommandHandler, CallbackQueryHandler, ContextTypes
+
+# ============ DATABASE INITIALIZATION ==========
+
+def init_auction_db():
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Players table
+    c.execute('''CREATE TABLE IF NOT EXISTS auction_players
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  name TEXT,
+                  base_price INTEGER,
+                  status TEXT DEFAULT 'pending',
+                  sold_to TEXT,
+                  sold_price INTEGER,
+                  team TEXT)''')
+    
+    # Teams/Captains table
+    c.execute('''CREATE TABLE IF NOT EXISTS auction_teams
+                 (team_name TEXT PRIMARY KEY,
+                  budget INTEGER,
+                  captain_id INTEGER,
+                  captain_name TEXT,
+                  purse_used INTEGER DEFAULT 0)''')
+    
+    # Purchases table
+    c.execute('''CREATE TABLE IF NOT EXISTS auction_purchases
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  team_name TEXT,
+                  player_id INTEGER,
+                  player_name TEXT,
+                  price INTEGER,
+                  purchased_at TEXT)''')
+    
+    # Auction session table
+    c.execute('''CREATE TABLE IF NOT EXISTS auction_session
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  tournament_name TEXT,
+                  total_teams INTEGER,
+                  base_budget INTEGER,
+                  current_player_id INTEGER,
+                  current_bid INTEGER,
+                  current_bidder TEXT,
+                  current_bidder_team TEXT,
+                  is_active INTEGER DEFAULT 0,
+                  is_paused INTEGER DEFAULT 0,
+                  created_at TEXT)''')
+    
+    # Captain requests table
+    c.execute('''CREATE TABLE IF NOT EXISTS captain_requests
+                 (user_id INTEGER PRIMARY KEY,
+                  user_name TEXT,
+                  requested_at TEXT,
+                  status TEXT DEFAULT 'pending')''')
+    
+    # Player registration (simple)
+    c.execute('''CREATE TABLE IF NOT EXISTS auction_players_registered
+                 (user_id INTEGER PRIMARY KEY,
+                  user_name TEXT,
+                  registered_at TEXT)''')
+    
+    conn.commit()
+    conn.close()
+
+init_auction_db()
+
+# ============ GLOBAL VARIABLES ==========
+
+auction_active = False
+auction_paused = False
+current_player = None
+current_bid = 0
+current_bidder = None
+current_bidder_team = None
+
+# Available teams
+AVAILABLE_TEAMS = ["CSK", "MI", "RCB", "KKR", "SRH", "DC", "PBKS", "LSG", "GT", "RR"]
+
+# ============ HELPER FUNCTIONS ==========
+
+def cr_to_number(cr_str):
+    """Convert 1cr to 10000000"""
+    try:
+        if 'cr' in cr_str.lower():
+            num = float(cr_str.lower().replace('cr', ''))
+            return int(num * 10000000)
+    except:
+        pass
+    return None
+
+def number_to_cr(amount):
+    """Convert 10000000 to 1cr"""
+    cr = amount / 10000000
+    if cr == int(cr):
+        return f"{int(cr)}cr"
+    return f"{cr}cr"
+
+def get_auction_session():
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT tournament_name, total_teams, base_budget, current_player_id, current_bid, current_bidder, current_bidder_team, is_active, is_paused FROM auction_session ORDER BY id DESC LIMIT 1")
+    result = c.fetchone()
+    conn.close()
+    return result
+
+# ============ AUCTION SYSTEM - PART 2 (USER COMMANDS) ==========
+
+# ============ REGISTER PLAYER ==========
+
+# ============ REGISTER WITH BUTTONS ==========
+
+# ============ REGISTER WITH TOURNAMENT SELECTION ==========
+
+# ============ REGISTER WITH WORKING BUTTONS ==========
+
+# ============ REGISTER WITH CONFIRM BUTTON ==========
+
+async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Add column if missing
+    try:
+        c.execute("ALTER TABLE auction_players_registered ADD COLUMN tournament_id INTEGER DEFAULT 1")
+    except:
+        pass
+    
+    # Check if already registered
+    c.execute("SELECT * FROM auction_players_registered WHERE user_id=?", (user_id,))
+    if c.fetchone():
+        await update.message.reply_text("✅ You are already registered!")
+        conn.close()
+        return
+    
+    # Get tournament
+    c.execute("SELECT id, tournament_name FROM auction_session ORDER BY id DESC LIMIT 1")
+    tour = c.fetchone()
+    conn.close()
+    
+    if not tour:
+        await update.message.reply_text("❌ No tournament! Admin: /create_auc")
+        return
+    
+    tour_id, tour_name = tour
+    
+    # Simple button - direct confirmation
+    keyboard = [[InlineKeyboardButton("✅ CONFIRM REGISTRATION", callback_data=f"confirm_reg_{tour_id}_{user_id}")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        f"🏏 **PLAYER REGISTRATION**\n\n"
+        f"📛 Tournament: {tour_name}\n"
+        f"👤 User: {user_name}\n\n"
+        f"Click CONFIRM to register:",
+        reply_markup=reply_markup
+    )
+
+
+async def confirm_reg_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    if data.startswith("confirm_reg_"):
+        parts = data.split("_")
+        tour_id = int(parts[2])
+        target_id = int(parts[3])
+        
+        if user_id != target_id:
+            await query.answer("Not for you!", show_alert=True)
+            return
+        
+        conn = get_db()
+        c = conn.cursor()
+        
+        c.execute("SELECT * FROM auction_players_registered WHERE user_id=? AND tournament_id=?", (user_id, tour_id))
+        if c.fetchone():
+            await query.edit_message_text("✅ You are already registered!")
+            conn.close()
+            return
+        
+        c.execute("INSERT INTO auction_players_registered (user_id, user_name, tournament_id, registered_at) VALUES (?, ?, ?, ?)",
+                  (user_id, user_name, tour_id, datetime.now().isoformat()))
+        
+        c.execute("SELECT tournament_name FROM auction_session WHERE id=?", (tour_id,))
+        tour = c.fetchone()
+        tour_name = tour[0] if tour else "Unknown"
+        
+        conn.commit()
+        conn.close()
+        
+        await query.edit_message_text(
+            f"✅ **REGISTERED!**\n\n"
+            f"🏏 {user_name} in {tour_name}\n\n"
+            f"💡 /req_captain - Request captaincy"
+        )
+
+
+
+async def register_tour_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    if data.startswith("reg_tour_"):
+        tour_id = int(data.split("_")[2])
+        
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT tournament_name, base_budget FROM auction_session WHERE id=?", (tour_id,))
+        tour = c.fetchone()
+        
+        if not tour:
+            await query.edit_message_text("❌ Tournament not found!")
+            conn.close()
+            return
+        
+        tour_name, base_budget = tour
+        budget_cr = int(base_budget / 10000000)
+        
+        keyboard = [
+            [InlineKeyboardButton("✅ CONFIRM", callback_data=f"reg_confirm_{tour_id}_{user_id}")],
+            [InlineKeyboardButton("❌ CANCEL", callback_data="reg_cancel")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            f"🏏 **CONFIRM REGISTRATION**\n\n"
+            f"📛 Tournament: {tour_name}\n"
+            f"💰 Budget: {budget_cr}CR per team\n"
+            f"👤 User: {user_name}\n\n"
+            f"Click CONFIRM to register.",
+            reply_markup=reply_markup
+        )
+        conn.close()
+
+
+async def register_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    if data == "reg_cancel":
+        await query.edit_message_text("❌ Registration cancelled!")
+        return
+    
+    if data.startswith("reg_confirm_"):
+        parts = data.split("_")
+        tour_id = int(parts[2])
+        target_id = int(parts[3])
+        
+        if user_id != target_id:
+            await query.answer("This is not for you!", show_alert=True)
+            return
+        
+        conn = get_db()
+        c = conn.cursor()
+        
+        # Add tournament_id column if not exists
+        try:
+            c.execute("ALTER TABLE auction_players_registered ADD COLUMN tournament_id INTEGER DEFAULT 1")
+        except:
+            pass
+        
+        c.execute("SELECT * FROM auction_players_registered WHERE user_id=? AND tournament_id=?", (user_id, tour_id))
+        if c.fetchone():
+            await query.edit_message_text("✅ You are already registered!")
+            conn.close()
+            return
+        
+        c.execute("INSERT INTO auction_players_registered (user_id, user_name, tournament_id, registered_at) VALUES (?, ?, ?, ?)",
+                  (user_id, user_name, tour_id, datetime.now().isoformat()))
+        
+        c.execute("SELECT tournament_name FROM auction_session WHERE id=?", (tour_id,))
+        tour = c.fetchone()
+        tour_name = tour[0] if tour else "Unknown"
+        
+        conn.commit()
+        conn.close()
+        
+        await query.edit_message_text(
+            f"✅ **REGISTERED!**\n\n"
+            f"🏏 {user_name}, you are now a PLAYER in {tour_name}!\n\n"
+            f"💡 /req_captain - Request captaincy"
+        )
+
+
+async def my_tournament(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("""SELECT r.tournament_id, s.tournament_name, r.registered_at 
+                 FROM auction_players_registered r 
+                 JOIN auction_session s ON r.tournament_id = s.id 
+                 WHERE r.user_id=?""", (user_id,))
+    reg = c.fetchone()
+    conn.close()
+    
+    if not reg:
+        await update.message.reply_text("❌ You are not registered!\n💡 /register to join")
+        return
+    
+    tour_id, tour_name, registered_at = reg
+    
+    await update.message.reply_text(
+        f"🏏 **MY TOURNAMENT**\n\n"
+        f"📛 {tour_name}\n"
+        f"📅 Registered: {registered_at[:19]}\n\n"
+        f"💡 /req_captain - Request captaincy"
+    )
+
+async def register_tour_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    if data.startswith("reg_tour_"):
+        tour_id = int(data.split("_")[2])
+        
+        # Get tournament details
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT tournament_name, base_budget FROM auction_session WHERE id=?", (tour_id,))
+        tour = c.fetchone()
+        
+        if not tour:
+            await query.edit_message_text("❌ Tournament not found!")
+            conn.close()
+            return
+        
+        tour_name, base_budget = tour
+        
+        # Confirmation keyboard
+        keyboard = [
+            [InlineKeyboardButton("✅ CONFIRM REGISTRATION", callback_data=f"reg_confirm_{tour_id}_{user_id}")],
+            [InlineKeyboardButton("❌ CANCEL", callback_data="reg_cancel")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            f"🏏 **CONFIRM REGISTRATION**\n\n"
+            f"📛 Tournament: {tour_name}\n"
+            f"💰 Budget per team: {int(base_budget/10000000)}CR\n"
+            f"👤 User: {user_name}\n\n"
+            f"⚠️ Click CONFIRM to register as a player.\n"
+            f"Registration is FREE!\n\n"
+            f"💡 Want to be CAPTAIN? Register first, then use /req_captain",
+            reply_markup=reply_markup,
+            parse_mode=None
+        )
+        conn.close()
+
+
+async def register_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    if data == "reg_cancel":
+        await query.edit_message_text("❌ Registration cancelled!")
+        return
+    
+    if data.startswith("reg_confirm_"):
+        parts = data.split("_")
+        tour_id = int(parts[2])
+        target_id = int(parts[3])
+        
+        if user_id != target_id:
+            await query.answer("This is not for you!", show_alert=True)
+            return
+        
+        conn = get_db()
+        c = conn.cursor()
+        
+        # Check if already registered
+        c.execute("SELECT * FROM auction_players_registered WHERE user_id=? AND tournament_id=?", (user_id, tour_id))
+        if c.fetchone():
+            await query.edit_message_text("✅ You are already registered in this tournament!")
+            conn.close()
+            return
+        
+        # Register user
+        c.execute("INSERT INTO auction_players_registered (user_id, user_name, tournament_id, registered_at) VALUES (?, ?, ?, ?)",
+                  (user_id, user_name, tour_id, datetime.now().isoformat()))
+        
+        # Get tournament name
+        c.execute("SELECT tournament_name FROM auction_session WHERE id=?", (tour_id,))
+        tour = c.fetchone()
+        tour_name = tour[0] if tour else "Unknown"
+        
+        conn.commit()
+        conn.close()
+        
+        await query.edit_message_text(
+            f"✅ **REGISTERED SUCCESSFULLY!**\n\n"
+            f"🏏 {user_name}, you are now a PLAYER in {tour_name}!\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"💡 Want to be a CAPTAIN?\n"
+            f"Use /req_captain to request captaincy\n\n"
+            f"💡 Admin will approve captain requests",
+            parse_mode=None
+        )
+
+
+async def my_tournament(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Check which tournament user is registered in"""
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("""SELECT r.tournament_id, s.tournament_name, r.registered_at 
+                 FROM auction_players_registered r 
+                 JOIN auction_session s ON r.tournament_id = s.id 
+                 WHERE r.user_id=?""", (user_id,))
+    reg = c.fetchone()
+    conn.close()
+    
+    if not reg:
+        await update.message.reply_text("❌ You are not registered in any tournament!\n💡 /register to join")
+        return
+    
+    tour_id, tour_name, registered_at = reg
+    
+    await update.message.reply_text(
+        f"🏏 **MY TOURNAMENT**\n\n"
+        f"📛 Tournament: {tour_name}\n"
+        f"📅 Registered: {registered_at}\n\n"
+        f"💡 /req_captain - Request to become captain",
+        parse_mode=None
+    )
+
+async def register_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    if data == "reg_cancel":
+        await query.edit_message_text("❌ Registration cancelled!")
+        return
+    
+    if data.startswith("reg_confirm_"):
+        target_id = int(data.split("_")[2])
+        
+        if user_id != target_id:
+            await query.answer("This is not for you!", show_alert=True)
+            return
+        
+        conn = get_db()
+        c = conn.cursor()
+        
+        c.execute("SELECT * FROM auction_players_registered WHERE user_id=?", (user_id,))
+        if c.fetchone():
+            await query.edit_message_text("✅ You are already registered!")
+            conn.close()
+            return
+        
+        c.execute("INSERT INTO auction_players_registered (user_id, user_name, registered_at) VALUES (?, ?, ?)",
+                  (user_id, user_name, datetime.now().isoformat()))
+        conn.commit()
+        conn.close()
+        
+        await query.edit_message_text(
+            f"✅ **REGISTERED SUCCESSFULLY!**\n\n"
+            f"🏏 {user_name}, you are now a PLAYER!\n\n"
+            f"💡 Want to be a CAPTAIN?\n"
+            f"Use /req_captain to request captaincy",
+            
+        )
+
+
+# ============ REQUEST CAPTAIN ==========
+
+async def req_captain(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Check if already a captain
+    c.execute("SELECT * FROM auction_teams WHERE captain_id=?", (user_id,))
+    if c.fetchone():
+        await update.message.reply_text("👑 You are already a CAPTAIN!")
+        conn.close()
+        return
+    
+    # Check if request already sent
+    c.execute("SELECT status FROM captain_requests WHERE user_id=?", (user_id,))
+    req = c.fetchone()
+    
+    if req:
+        if req[0] == 'pending':
+            await update.message.reply_text("⏳ Your captain request is already PENDING!\n💡 Wait for admin approval")
+        elif req[0] == 'approved':
+            await update.message.reply_text("✅ Your captain request was APPROVED! Check /myrequest")
+        elif req[0] == 'rejected':
+            await update.message.reply_text("❌ Your captain request was REJECTED.\n💡 Try next tournament")
+        conn.close()
+        return
+    
+    c.execute("INSERT INTO captain_requests (user_id, user_name, requested_at, status) VALUES (?, ?, ?, 'pending')",
+              (user_id, user_name, datetime.now().isoformat()))
+    conn.commit()
+    conn.close()
+    
+    # Notify admin
+    for admin_id in ADMIN_IDS:
+        try:
+            await context.bot.send_message(
+                admin_id,
+                f"👑 **NEW CAPTAIN REQUEST!**\n\n"
+                f"User: @{user_name} ({user_name})\n"
+                f"ID: `{user_id}`\n\n"
+                f"💡 /captain_requests to view and approve",
+                
+            )
+        except:
+            pass
+    
+    await update.message.reply_text(
+        f"👑 **CAPTAIN REQUEST SENT!**\n\n"
+        f"User: {user_name}\n"
+        f"Status: ⏳ PENDING APPROVAL\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📢 Admin has been notified.\n"
+        f"You will be notified when approved.\n\n"
+        f"💡 /myrequest - Check status",
+        
+    )
+
+
+# ============ MY REQUEST STATUS ==========
+
+async def myrequest(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Check if already captain
+    c.execute("SELECT team_name, budget FROM auction_teams WHERE captain_id=?", (user_id,))
+    captain = c.fetchone()
+    
+    if captain:
+        await update.message.reply_text(
+            f"👑 **CAPTAIN REQUEST STATUS**\n\n"
+            f"Status: ✅ **APPROVED!**\n"
+            f"Team: {captain[0]}\n"
+            f"💰 Budget: {captain[1]:,}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"💡 /mybudget - Check budget\n"
+            f"💡 /myplayers - Your squad\n"
+            f"💡 /bid <amount>cr - Place bids",
+            
+        )
+        conn.close()
+        return
+    
+    c.execute("SELECT status, requested_at FROM captain_requests WHERE user_id=?", (user_id,))
+    req = c.fetchone()
+    conn.close()
+    
+    if not req:
+        await update.message.reply_text(
+            f"👑 **CAPTAIN REQUEST STATUS**\n\n"
+            f"Status: ❌ **NOT REQUESTED**\n\n"
+            f"💡 Use /req_captain to request captaincy",
+            
+        )
+        return
+    
+    status = req[0]
+    requested_at = req[1]
+    
+    if status == 'pending':
+        await update.message.reply_text(
+            f"👑 **CAPTAIN REQUEST STATUS**\n\n"
+            f"Status: ⏳ **PENDING**\n"
+            f"Requested: {requested_at}\n\n"
+            f"💡 Waiting for admin approval",
+            
+        )
+    elif status == 'approved':
+        await update.message.reply_text(
+            f"👑 **CAPTAIN REQUEST STATUS**\n\n"
+            f"Status: ✅ **APPROVED!**\n\n"
+            f"💡 Contact admin for team assignment",
+            
+        )
+    elif status == 'rejected':
+        await update.message.reply_text(
+            f"👑 **CAPTAIN REQUEST STATUS**\n\n"
+            f"Status: ❌ **REJECTED**\n\n"
+            f"Reason: All captain slots filled\n"
+            f"💡 Try next tournament!",
+            
+        )
+
+# ============ AUCTION SYSTEM - PART 3 (ADMIN CAPTAIN REQUESTS) ==========
+
+# ============ VIEW CAPTAIN REQUESTS ==========
+
+async def captain_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    c.execute("SELECT user_id, user_name, requested_at FROM captain_requests WHERE status='pending' ORDER BY requested_at")
+    requests = c.fetchall()
+    
+    # Get already approved count
+    c.execute("SELECT COUNT(*) FROM auction_teams")
+    approved_count = c.fetchone()[0]
+    
+    conn.close()
+    
+    if not requests:
+        await update.message.reply_text(
+            f"👑 **CAPTAIN REQUESTS**\n\n"
+            f"✅ Approved: {approved_count}/10\n"
+            f"⏳ Pending: 0\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"No pending requests!",
+            
+        )
+        return
+    
+    # Create keyboard with requests
+    keyboard = []
+    for req in requests:
+        user_id, user_name, requested_at = req
+        keyboard.append([InlineKeyboardButton(
+            f"👑 {user_name} (ID: {user_id})",
+            callback_data=f"approve_cap_{user_id}"
+        )])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        f"👑 **CAPTAIN REQUESTS**\n\n"
+        f"✅ Approved: {approved_count}/10\n"
+        f"⏳ Pending: {len(requests)}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"Click on a user to approve:",
+        reply_markup=reply_markup,
+        
+    )
+
+
+# ============ APPROVE CAPTAIN CALLBACK ==========
+
+async def approve_captain_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if update.effective_user.id not in ADMIN_IDS:
+        await query.edit_message_text("❌ Admin only!")
+        return
+    
+    data = query.data
+    user_id = int(data.split("_")[2])
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Get user details
+    c.execute("SELECT user_name FROM captain_requests WHERE user_id=?", (user_id,))
+    req = c.fetchone()
+    
+    if not req:
+        await query.edit_message_text("❌ Request not found!")
+        conn.close()
+        return
+    
+    user_name = req[0]
+    
+    # Get available teams
+    c.execute("SELECT team_name FROM auction_teams")
+    taken_teams = [row[0] for row in c.fetchall()]
+    available_teams = [t for t in AVAILABLE_TEAMS if t not in taken_teams]
+    
+    if not available_teams:
+        # Reject if no teams left
+        c.execute("UPDATE captain_requests SET status='rejected' WHERE user_id=?", (user_id,))
+        conn.commit()
+        conn.close()
+        
+        await query.edit_message_text(
+            f"❌ **CANNOT APPROVE!**\n\n"
+            f"User: {user_name}\n"
+            f"Reason: All 10 captain slots are filled!\n\n"
+            f"Request marked as REJECTED.",
+            
+        )
+        
+        # Notify user
+        try:
+            await context.bot.send_message(
+                user_id,
+                f"❌ **CAPTAIN REQUEST REJECTED**\n\n"
+                f"All captain slots for this tournament are filled.\n"
+                f"💡 Try next tournament!",
+                
+            )
+        except:
+            pass
+        return
+    
+    # Create team selection keyboard
+    keyboard = []
+    for team in available_teams:
+        keyboard.append([InlineKeyboardButton(
+            f"🏏 {team}",
+            callback_data=f"assign_team_{user_id}_{team}"
+        )])
+    
+    await query.edit_message_text(
+        f"✅ **APPROVE CAPTAIN REQUEST**\n\n"
+        f"User: {user_name} (ID: {user_id})\n\n"
+        f"Select team for this captain:\n\n"
+        f"Available Teams: {len(available_teams)}/10",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        
+    )
+    conn.close()
+
+
+# ============ ASSIGN TEAM CALLBACK ==========
+
+async def assign_team_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    if update.effective_user.id not in ADMIN_IDS:
+        await query.edit_message_text("❌ Admin only!")
+        return
+    
+    data = query.data
+    parts = data.split("_")
+    user_id = int(parts[2])
+    team = parts[3]
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Get user name
+    c.execute("SELECT user_name FROM captain_requests WHERE user_id=?", (user_id,))
+    req = c.fetchone()
+    
+    if not req:
+        await query.edit_message_text("❌ User not found!")
+        conn.close()
+        return
+    
+    user_name = req[0]
+    
+    # Get session budget
+    session = get_auction_session()
+    base_budget = session[2] if session else 10000000
+    
+    # Add to teams
+    c.execute("INSERT INTO auction_teams (team_name, budget, captain_id, captain_name, purse_used) VALUES (?, ?, ?, ?, 0)",
+              (team, base_budget, user_id, user_name))
+    
+    # Update request status
+    c.execute("UPDATE captain_requests SET status='approved' WHERE user_id=?", (user_id,))
+    
+    conn.commit()
+    conn.close()
+    
+    # Notify user
+    try:
+        await context.bot.send_message(
+            user_id,
+            f"🎉 **CONGRATULATIONS!**\n\n"
+            f"Your captain request has been **APPROVED**!\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🏏 Team: {team}\n"
+            f"💰 Budget: {base_budget:,} ({number_to_cr(base_budget)})\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"💡 /mybudget - Check budget\n"
+            f"💡 /myplayers - Your squad\n"
+            f"💡 /bid <amount>cr - Place bids (when auction starts)\n\n"
+            f"🏆 Good luck!",
+            
+        )
+    except:
+        pass
+    
+    await query.edit_message_text(
+        f"✅ **CAPTAIN APPROVED!**\n\n"
+        f"User: {user_name}\n"
+        f"Team: {team}\n"
+        f"💰 Budget: {base_budget:,} ({number_to_cr(base_budget)})\n\n"
+        f"📢 User notified!\n"
+        f"✅ Approved: {len(AVAILABLE_TEAMS) - len([t for t in AVAILABLE_TEAMS if t != team])}/10",
+        
+    )
+
+# ============ AUCTION SYSTEM - PART 4 (ADMIN AUCTION SETUP) ==========
+
+# ============ CREATE AUCTION ==========
+
+async def create_auc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    args = context.args
+    if len(args) < 3:
+        await update.message.reply_text(
+            "📝 **CREATE AUCTION**\n\n"
+            "Usage: `/create_auc <name> <teams> <budget>`\n"
+            "Example: `/create_auc \"IPL 2024\" 10 10000000`\n\n"
+            "💰 Budget in credits (e.g., 10000000 = 1cr)\n"
+            "👥 Teams: Number of teams (max 10)\n"
+            "🏏 Name: Tournament name in quotes",
+            
+        )
+        return
+    
+    # Parse name with quotes
+    if args[0].startswith('"'):
+        name_parts = []
+        for i, arg in enumerate(args):
+            name_parts.append(arg)
+            if arg.endswith('"'):
+                name = " ".join(name_parts).strip('"')
+                remaining = args[i+1:]
+                break
+        else:
+            await update.message.reply_text("❌ Invalid name format! Use quotes for names with spaces.")
+            return
+    else:
+        name = args[0]
+        remaining = args[1:]
+    
+    if len(remaining) < 2:
+        await update.message.reply_text("❌ Usage: /create_auc <name> <teams> <budget>")
+        return
+    
+    try:
+        total_teams = int(remaining[0])
+        base_budget = int(remaining[1])
+    except:
+        await update.message.reply_text("❌ Invalid teams or budget!")
+        return
+    
+    if total_teams > 10:
+        await update.message.reply_text("❌ Maximum 10 teams allowed!")
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Clear previous session
+    c.execute("DELETE FROM auction_session")
+    c.execute("DELETE FROM auction_players")
+    c.execute("DELETE FROM auction_purchases")
+    
+    # Create new session
+    c.execute("""INSERT INTO auction_session 
+                 (tournament_name, total_teams, base_budget, is_active, is_paused, created_at) 
+                 VALUES (?, ?, ?, 0, 0, ?)""",
+              (name, total_teams, base_budget, datetime.now().isoformat()))
+    
+    conn.commit()
+    conn.close()
+    
+    # Add default players
+    default_players = [
+        "Virat Kohli", "Rohit Sharma", "MS Dhoni", "Jasprit Bumrah", "Hardik Pandya",
+        "Ravindra Jadeja", "KL Rahul", "Shubman Gill", "Suryakumar Yadav", "Rishabh Pant",
+        "Mohammed Shami", "Ravichandran Ashwin", "Shreyas Iyer", "Ishan Kishan", "Yuzvendra Chahal",
+        "Axar Patel", "Sanju Samson", "Deepak Chahar", "Mohammed Siraj", "Kuldeep Yadav"
+    ]
+    
+    conn = get_db()
+    c = conn.cursor()
+    for player in default_players:
+        c.execute("INSERT INTO auction_players (name, base_price, status) VALUES (?, 10000000, 'pending')", (player,))
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✅ **AUCTION CREATED!**\n\n"
+        f"🏆 Tournament: {name}\n"
+        f"👥 Total Teams: {total_teams}\n"
+        f"💰 Base Budget: {base_budget:,} ({number_to_cr(base_budget)})\n"
+        f"🏏 Players added: {len(default_players)}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💡 /players - View all players\n"
+        f"💡 /add_player - Add more players\n"
+        f"💡 /start_auc - Start auction when ready",
+        
+    )
+
+
+# ============ ADD PLAYER ==========
+
+async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "📝 **ADD PLAYER**\n\n"
+            "Usage: `/add_player <name> <base_price>`\n"
+            "Example: `/add_player \"Virat Kohli\" 10000000`\n\n"
+            "💰 Base price in credits (10000000 = 1cr)\n"
+            "🏏 Use quotes for names with spaces",
+            
+        )
+        return
+    
+    # Parse name with quotes
+    if args[0].startswith('"'):
+        name_parts = []
+        for i, arg in enumerate(args):
+            name_parts.append(arg)
+            if arg.endswith('"'):
+                name = " ".join(name_parts).strip('"')
+                remaining = args[i+1:]
+                break
+        else:
+            await update.message.reply_text("❌ Invalid name format! Use quotes for names with spaces.")
+            return
+    else:
+        name = args[0]
+        remaining = args[1:]
+    
+    if len(remaining) < 1:
+        await update.message.reply_text("❌ Please provide base price!")
+        return
+    
+    try:
+        base_price = int(remaining[0])
+    except:
+        await update.message.reply_text("❌ Invalid base price!")
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("INSERT INTO auction_players (name, base_price, status) VALUES (?, ?, 'pending')", (name, base_price))
+    conn.commit()
+    player_id = c.lastrowid
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✅ **PLAYER ADDED!**\n\n"
+        f"🏏 {name}\n"
+        f"💰 Base Price: {base_price:,} ({number_to_cr(base_price)})\n"
+        f"🆔 ID: {player_id}\n\n"
+        f"💡 /players - View all players",
+        
+    )
+
+
+# ============ VIEW PLAYERS LIST ==========
+
+async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT id, name, base_price, status, team FROM auction_players ORDER BY id")
+    players = c.fetchall()
+    conn.close()
+    
+    if not players:
+        await update.message.reply_text("📭 No players found! Use /add_player to add players.")
+        return
+    
+    pending = [p for p in players if p[3] == 'pending']
+    sold = [p for p in players if p[3] == 'sold']
+    unsold = [p for p in players if p[3] == 'unsold']
+    
+    msg = f"🏏 **AUCTION PLAYERS LIST**\n\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"📊 Total: {len(players)} | ✅ Sold: {len(sold)} | ❌ Unsold: {len(unsold)} | ⏳ Pending: {len(pending)}\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    
+    msg += f"**⏳ PENDING PLAYERS:**\n"
+    for i, p in enumerate(pending[:10], 1):
+        msg += f"{i}. {p[1]} - {number_to_cr(p[2])} 💰\n"
+    if len(pending) > 10:
+        msg += f"... and {len(pending)-10} more\n"
+    
+    if sold:
+        msg += f"\n**✅ SOLD PLAYERS:**\n"
+        for i, p in enumerate(sold[:5], 1):
+            msg += f"{i}. {p[1]} → {p[4]} - {number_to_cr(p[3])} 💰\n"
+        if len(sold) > 5:
+            msg += f"... and {len(sold)-5} more\n"
+    
+    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"💡 /rmplayer <number> - Remove player by number\n"
+    msg += f"💡 /add_player - Add more players"
+    
+    await update.message.reply_text(msg)
+
+
+# ============ REMOVE PLAYER ==========
+
+async def rmplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text("❌ /rmplayer <player_number>\nExample: /rmplayer 5\n\nUse /players to see numbers")
+        return
+    
+    try:
+        player_num = int(args[0])
+    except:
+        await update.message.reply_text("❌ Invalid player number!")
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Get all pending players with numbers
+    c.execute("SELECT id, name, base_price, status FROM auction_players WHERE status='pending' ORDER BY id")
+    players = c.fetchall()
+    
+    if player_num < 1 or player_num > len(players):
+        await update.message.reply_text(f"❌ Invalid! Choose 1-{len(players)}")
+        conn.close()
+        return
+    
+    player_id = players[player_num-1][0]
+    player_name = players[player_num-1][1]
+    player_price = players[player_num-1][2]
+    
+    c.execute("DELETE FROM auction_players WHERE id=?", (player_id,))
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(
+        f"🗑️ **PLAYER REMOVED!**\n\n"
+        f"❌ Removed: {player_name}\n"
+        f"💰 Base Price: {player_price:,} ({number_to_cr(player_price)})\n\n"
+        f"💡 /players - View updated list",
+        
+    )
+
+# ============ AUCTION SYSTEM - PART 5 (AUCTION ENGINE) ==========
+
+# ============ START AUCTION ==========
+
+async def start_auc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global auction_active, current_player, current_bid, current_bidder, current_bidder_team
+    
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    session = get_auction_session()
+    if not session:
+        await update.message.reply_text("❌ No auction found! Use /create_auc first")
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Get first pending player
+    c.execute("SELECT id, name, base_price FROM auction_players WHERE status='pending' ORDER BY id LIMIT 1")
+    player = c.fetchone()
+    
+    if not player:
+        await update.message.reply_text("❌ No players in auction pool! Use /add_player first")
+        conn.close()
+        return
+    
+    player_id, player_name, base_price = player
+    
+    # Update session
+    current_player = {"id": player_id, "name": player_name, "base_price": base_price}
+    current_bid = base_price
+    current_bidder = None
+    current_bidder_team = None
+    auction_active = True
+    
+    c.execute("UPDATE auction_session SET is_active=1, current_player_id=?, current_bid=?, current_bidder=NULL, current_bidder_team=NULL",
+              (player_id, base_price))
+    conn.commit()
+    conn.close()
+    
+    # Get all captains
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT team_name, captain_id, captain_name, budget FROM auction_teams ORDER BY team_name")
+    teams = c.fetchall()
+    conn.close()
+    
+    team_list = "\n".join([f"🏏 {t[0]} - {t[3]:,} ({number_to_cr(t[3])})" for t in teams])
+    
+    await update.message.reply_text(
+        f"🏏 **AUCTION STARTED!** 🏏\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🎯 **PLAYER #1**\n\n"
+        f"🏏 {player_name}\n"
+        f"💰 Base Price: {number_to_cr(base_price)}\n"
+        f"📈 Current Bid: {number_to_cr(current_bid)}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"**TEAMS & BUDGETS:**\n{team_list}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📢 Captains, place your bids!\n"
+        f"💡 /bid 1cr, /bid 2cr, /bid 3cr...\n"
+        f"⏰ Admin: /next to close bidding",
+        
+    )
+
+
+async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global current_bid, current_bidder, current_bidder_team
+    
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    if not auction_active:
+        await update.message.reply_text("❌ Auction is not active right now!")
+        return
+    
+    # Check if user is a captain
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT team_name, budget, purse_used FROM auction_teams WHERE captain_id=?", (user_id,))
+    team = c.fetchone()
+    conn.close()
+    
+    if not team:
+        await update.message.reply_text("❌ You are not a team captain!\n💡 /req_captain to request captaincy")
+        return
+    
+    team_name, budget, purse_used = team
+    remaining_budget = budget - purse_used
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text(
+            f"❌ /bid <amount>cr\n"
+            f"Examples: /bid 1cr, /bid 2cr, /bid 3cr\n\n"
+            f"💰 Your remaining budget: {number_to_cr(remaining_budget)}",
+            
+        )
+        return
+    
+    # Parse bid amount (e.g., "1cr" -> 10000000)
+    bid_str = args[0].lower()
+    if not bid_str.endswith('cr'):
+        await update.message.reply_text("❌ Use format: /bid 1cr, /bid 2cr, etc.")
+        return
+    
+    try:
+        bid_cr = float(bid_str.replace('cr', ''))
+        bid_amount = int(bid_cr * 10000000)
+    except:
+        await update.message.reply_text("❌ Invalid bid amount! Example: /bid 2cr")
+        return
+    
+    # Check if bid is valid (multiple of 1cr)
+    if bid_cr != int(bid_cr):
+        await update.message.reply_text("❌ Minimum bid increment is 1cr!\nValid bids: 1cr, 2cr, 3cr, 4cr...")
+        return
+    
+    # Check if bid is higher than current
+    if bid_amount <= current_bid:
+        await update.message.reply_text(
+            f"❌ **BID TOO LOW!**\n\n"
+            f"Current bid is {number_to_cr(current_bid)}\n"
+            f"Minimum next bid: {number_to_cr(current_bid + 10000000)}\n\n"
+            f"💡 Use: /bid {number_to_cr(current_bid + 10000000)}",
+            
+        )
+        return
+    
+    # Check budget
+    if bid_amount > remaining_budget:
+        await update.message.reply_text(
+            f"❌ **BUDGET INSUFFICIENT!**\n\n"
+            f"Your Bid: {number_to_cr(bid_amount)}\n"
+            f"Remaining: {number_to_cr(remaining_budget)}\n\n"
+            f"💡 You need {number_to_cr(bid_amount - remaining_budget)} more!",
+            
+        )
+        return
+    
+    # Place bid
+    current_bid = bid_amount
+    current_bidder = user_name
+    current_bidder_team = team_name
+    
+    # Update session in database
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("UPDATE auction_session SET current_bid=?, current_bidder=?, current_bidder_team=?",
+              (bid_amount, user_name, team_name))
+    conn.commit()
+    conn.close()
+    
+    # Get current player name
+    session = get_auction_session()
+    player_id = session[3] if session else None
+    
+    player_name = "Unknown"
+    if player_id:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT name FROM auction_players WHERE id=?", (player_id,))
+        p = c.fetchone()
+        if p:
+            player_name = p[0]
+        conn.close()
+    
+    await update.message.reply_text(
+        f"💰 **NEW BID!**\n\n"
+        f"🏏 {player_name}\n"
+        f"🎯 {team_name} bids {number_to_cr(bid_amount)}\n"
+        f"📈 Current Bid: {number_to_cr(bid_amount)}\n\n"
+        f"💡 Next bid: {number_to_cr(bid_amount + 10000000)}\n"
+        f"⏰ Admin: /next to close bidding",
+        
+    )
+
+
+# ============ NEXT PLAYER ==========
+
+async def next_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global auction_active, current_player, current_bid, current_bidder, current_bidder_team
+    
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    if not auction_active:
+        await update.message.reply_text("❌ Auction is not active! Use /start_auc first")
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Get current player info
+    session = get_auction_session()
+    if not session:
+        await update.message.reply_text("❌ No auction session found!")
+        conn.close()
+        return
+    
+    current_player_id = session[3]
+    
+    # Mark current player as sold if there's a bidder
+    if current_bidder and current_bidder_team and current_player_id:
+        # Player sold
+        c.execute("SELECT name FROM auction_players WHERE id=?", (current_player_id,))
+        player = c.fetchone()
+        player_name = player[0] if player else "Unknown"
+        
+        c.execute("UPDATE auction_players SET status='sold', sold_to=?, sold_price=?, team=? WHERE id=?",
+                  (current_bidder, current_bid, current_bidder_team, current_player_id))
+        
+        # Add to purchases
+        c.execute("INSERT INTO auction_purchases (team_name, player_id, player_name, price, purchased_at) VALUES (?, ?, ?, ?, ?)",
+                  (current_bidder_team, current_player_id, player_name, current_bid, datetime.now().isoformat()))
+        
+        # Update team purse used
+        c.execute("UPDATE auction_teams SET purse_used = purse_used + ? WHERE team_name=?",
+                  (current_bid, current_bidder_team))
+        
+        conn.commit()
+        
+        # Get updated budget
+        c.execute("SELECT budget, purse_used FROM auction_teams WHERE team_name=?", (current_bidder_team,))
+        team_data = c.fetchone()
+        remaining = team_data[0] - team_data[1] if team_data else 0
+        
+        await update.message.reply_text(
+            f"✅ **PLAYER SOLD!**\n\n"
+            f"🏏 {player_name}\n"
+            f"🎯 Sold to: {current_bidder_team} ({current_bidder})\n"
+            f"💰 Price: {number_to_cr(current_bid)}\n"
+            f"💳 Remaining Budget: {number_to_cr(remaining)}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            
+        )
+        
+        # Notify the captain who bought
+        try:
+            c.execute("SELECT captain_id FROM auction_teams WHERE team_name=?", (current_bidder_team,))
+            captain = c.fetchone()
+            if captain:
+                await context.bot.send_message(
+                    captain[0],
+                    f"✅ **YOU BOUGHT A PLAYER!**\n\n"
+                    f"🏏 {player_name}\n"
+                    f"💰 Price: {number_to_cr(current_bid)}\n"
+                    f"💳 Remaining Budget: {number_to_cr(remaining)}\n\n"
+                    f"💡 /myplayers - See your squad",
+                    
+                )
+        except:
+            pass
+        
+    elif current_player_id:
+        # Player unsold (no bidder)
+        c.execute("SELECT name FROM auction_players WHERE id=?", (current_player_id,))
+        player = c.fetchone()
+        player_name = player[0] if player else "Unknown"
+        
+        c.execute("UPDATE auction_players SET status='unsold' WHERE id=?", (current_player_id,))
+        conn.commit()
+        
+        await update.message.reply_text(
+            f"❌ **PLAYER UNSOLD!**\n\n"
+            f"🏏 {player_name}\n"
+            f"No bids received.\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            
+        )
+    
+    # Get next pending player
+    c.execute("SELECT id, name, base_price FROM auction_players WHERE status='pending' ORDER BY id LIMIT 1")
+    next_player_data = c.fetchone()
+    
+    if not next_player_data:
+        # End auction
+        auction_active = False
+        c.execute("UPDATE auction_session SET is_active=0")
+        conn.commit()
+        conn.close()
+        
+        await update.message.reply_text(
+            f"🏆 **AUCTION COMPLETED!** 🏆\n\n"
+            f"All players have been processed!\n"
+            f"💡 /end_auc - View final summary",
+            
+        )
+        return
+    
+    # Reset for next player
+    next_id, next_name, next_base = next_player_data
+    current_player = {"id": next_id, "name": next_name, "base_price": next_base}
+    current_bid = next_base
+    current_bidder = None
+    current_bidder_team = None
+    
+    c.execute("UPDATE auction_session SET current_player_id=?, current_bid=?, current_bidder=NULL, current_bidder_team=NULL",
+              (next_id, next_base))
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(
+        f"🎯 **NEXT PLAYER!**\n\n"
+        f"🏏 {next_name}\n"
+        f"💰 Base Price: {number_to_cr(next_base)}\n"
+        f"📈 Current Bid: {number_to_cr(next_base)}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📢 Captains, place your bids!\n"
+        f"💡 /bid 1cr, /bid 2cr, /bid 3cr...\n"
+        f"⏰ Admin: /next to close bidding",
+        
+    )
+
+
+# ============ SOLD PLAYER (MANUAL) ==========
+
+async def sold(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text("❌ /sold <team_name>\nExample: /sold CSK")
+        return
+    
+    team_name = args[0].upper()
+    
+    if not auction_active:
+        await update.message.reply_text("❌ Auction is not active!")
+        return
+    
+    if not current_bidder:
+        await update.message.reply_text("❌ No bidder for current player!")
+        return
+    
+    if current_bidder_team != team_name:
+        await update.message.reply_text(f"❌ Current highest bidder is {current_bidder_team}, not {team_name}!")
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    session = get_auction_session()
+    current_player_id = session[3] if session else None
+    
+    if not current_player_id:
+        await update.message.reply_text("❌ No current player found!")
+        conn.close()
+        return
+    
+    c.execute("SELECT name FROM auction_players WHERE id=?", (current_player_id,))
+    player = c.fetchone()
+    player_name = player[0] if player else "Unknown"
+    
+    # Mark as sold
+    c.execute("UPDATE auction_players SET status='sold', sold_to=?, sold_price=?, team=? WHERE id=?",
+              (current_bidder, current_bid, current_bidder_team, current_player_id))
+    
+    # Add to purchases
+    c.execute("INSERT INTO auction_purchases (team_name, player_id, player_name, price, purchased_at) VALUES (?, ?, ?, ?, ?)",
+              (current_bidder_team, current_player_id, player_name, current_bid, datetime.now().isoformat()))
+    
+    # Update team purse used
+    c.execute("UPDATE auction_teams SET purse_used = purse_used + ? WHERE team_name=?",
+              (current_bid, current_bidder_team))
+    
+    conn.commit()
+    
+    # Get updated budget
+    c.execute("SELECT budget, purse_used FROM auction_teams WHERE team_name=?", (current_bidder_team,))
+    team_data = c.fetchone()
+    remaining = team_data[0] - team_data[1] if team_data else 0
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✅ **PLAYER SOLD!**\n\n"
+        f"🏏 {player_name}\n"
+        f"🎯 Sold to: {current_bidder_team} ({current_bidder})\n"
+        f"💰 Price: {number_to_cr(current_bid)}\n"
+        f"💳 Remaining Budget: {number_to_cr(remaining)}\n\n"
+        f"💡 /next to continue auction",
+        
+    )
+
+
+# ============ UNSOLD PLAYER ==========
+
+async def unsold(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    if not auction_active:
+        await update.message.reply_text("❌ Auction is not active!")
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    session = get_auction_session()
+    current_player_id = session[3] if session else None
+    
+    if not current_player_id:
+        await update.message.reply_text("❌ No current player found!")
+        conn.close()
+        return
+    
+    c.execute("SELECT name FROM auction_players WHERE id=?", (current_player_id,))
+    player = c.fetchone()
+    player_name = player[0] if player else "Unknown"
+    
+    c.execute("UPDATE auction_players SET status='unsold' WHERE id=?", (current_player_id,))
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(
+        f"❌ **PLAYER UNSOLD!**\n\n"
+        f"🏏 {player_name}\n"
+        f"No bids received.\n\n"
+        f"💡 /next to continue auction",
+        
+    )
+
+# ============ AUCTION SYSTEM - PART 6 (UTILITIES & USER STATS) ==========
+
+# ============ UNSOLD LIST ==========
+
+async def unsoldlist(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT id, name, base_price FROM auction_players WHERE status='unsold' ORDER BY id")
+    players = c.fetchall()
+    conn.close()
+    
+    if not players:
+        await update.message.reply_text("📭 No unsold players!")
+        return
+    
+    msg = f"📋 **UNSOLD PLAYERS LIST**\n\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"📊 Total Unsold: {len(players)}\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    
+    for i, p in enumerate(players, 1):
+        msg += f"{i}. {p[1]} - {number_to_cr(p[2])} 💰\n"
+    
+    await update.message.reply_text(msg)
+
+
+# ============ PAUSE AUCTION ==========
+
+async def pause_auc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global auction_paused
+    
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    if not auction_active:
+        await update.message.reply_text("❌ Auction is not active!")
+        return
+    
+    if auction_paused:
+        await update.message.reply_text("⏸️ Auction is already paused!")
+        return
+    
+    auction_paused = True
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("UPDATE auction_session SET is_paused=1")
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(
+        f"⏸️ **AUCTION PAUSED!**\n\n"
+        f"Current Player: {current_player['name'] if current_player else 'Unknown'}\n"
+        f"Current Bid: {number_to_cr(current_bid)}\n"
+        f"Highest Bidder: {current_bidder_team if current_bidder_team else 'None'}\n\n"
+        f"💡 /resume_auc to continue",
+        
+    )
+
+
+# ============ RESUME AUCTION ==========
+
+async def resume_auc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global auction_paused
+    
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    if not auction_active:
+        await update.message.reply_text("❌ Auction is not active!")
+        return
+    
+    if not auction_paused:
+        await update.message.reply_text("▶️ Auction is already running!")
+        return
+    
+    auction_paused = False
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("UPDATE auction_session SET is_paused=0")
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(
+        f"▶️ **AUCTION RESUMED!**\n\n"
+        f"🏏 {current_player['name'] if current_player else 'Unknown'}\n"
+        f"💰 Current Bid: {number_to_cr(current_bid)}\n"
+        f"🎯 Highest Bidder: {current_bidder_team if current_bidder_team else 'None'}\n\n"
+        f"💡 Captains: /bid <amount>cr",
+        
+    )
+
+
+# ============ END AUCTION SUMMARY ==========
+
+async def end_auc(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global auction_active, auction_paused
+    
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    auction_active = False
+    auction_paused = False
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Get tournament info
+    session = get_auction_session()
+    tournament_name = session[0] if session else "IPL 2024"
+    
+    # Get all teams with their purchases
+    c.execute("""SELECT t.team_name, t.captain_name, t.budget, t.purse_used, 
+                        COUNT(p.id) as players_count
+                 FROM auction_teams t
+                 LEFT JOIN auction_purchases p ON t.team_name = p.team_name
+                 GROUP BY t.team_name
+                 ORDER BY t.team_name""")
+    teams = c.fetchall()
+    
+    # Get all sold players
+    c.execute("SELECT name, team, sold_price FROM auction_players WHERE status='sold' ORDER BY sold_price DESC")
+    sold_players = c.fetchall()
+    
+    # Get unsold players count
+    c.execute("SELECT COUNT(*) FROM auction_players WHERE status='unsold'")
+    unsold_count = c.fetchone()[0]
+    
+    # Get most expensive player
+    most_expensive = sold_players[0] if sold_players else None
+    
+    # Update session
+    c.execute("UPDATE auction_session SET is_active=0, is_paused=0")
+    conn.commit()
+    conn.close()
+    
+    # Build summary message
+    msg = f"🏆 **AUCTION COMPLETED!** 🏆\n\n"
+    msg += f"📛 Tournament: {tournament_name}\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    
+    msg += f"**📊 FINAL TEAMS SUMMARY**\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    
+    for team in teams:
+        team_name, captain, budget, spent, players_count = team
+        remaining = budget - spent
+        msg += f"\n🏏 **{team_name}** - Captain: {captain}\n"
+        msg += f"   💰 Spent: {number_to_cr(spent)} | Left: {number_to_cr(remaining)}\n"
+        msg += f"   👥 Players: {players_count}\n"
+    
+    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"**🏏 MOST EXPENSIVE PLAYER**\n"
+    if most_expensive:
+        msg += f"🥇 {most_expensive[0]} - {most_expensive[1]} for {number_to_cr(most_expensive[2])}\n"
+    else:
+        msg += f"No players sold!\n"
+    
+    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"📊 Total Players Sold: {len(sold_players)}\n"
+    msg += f"❌ Unsold Players: {unsold_count}\n"
+    
+    await update.message.reply_text(msg)
+
+
+# ============ MY PLAYERS (CAPTAIN) ==========
+
+async def myplayers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Check if user is a captain
+    c.execute("SELECT team_name, budget, purse_used FROM auction_teams WHERE captain_id=?", (user_id,))
+    team = c.fetchone()
+    
+    if not team:
+        await update.message.reply_text("❌ You are not a team captain!\n💡 /req_captain to request captaincy")
+        conn.close()
+        return
+    
+    team_name, budget, spent = team
+    remaining = budget - spent
+    
+    # Get purchased players
+    c.execute("SELECT player_name, price, purchased_at FROM auction_purchases WHERE team_name=? ORDER BY purchased_at", (team_name,))
+    players = c.fetchall()
+    conn.close()
+    
+    if not players:
+        await update.message.reply_text(
+            f"🏏 **{team_name} - MY PLAYERS**\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"💰 Budget: {number_to_cr(budget)} | Used: {number_to_cr(spent)}\n"
+            f"💳 Remaining: {number_to_cr(remaining)}\n"
+            f"👥 Players: 0/15\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"📭 No players purchased yet!\n\n"
+            f"💡 /bid <amount>cr - Place bids",
+            
+        )
+        return
+    
+    msg = f"🏏 **{team_name} - MY PLAYERS**\n\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"💰 Budget: {number_to_cr(budget)} | Used: {number_to_cr(spent)}\n"
+    msg += f"💳 Remaining: {number_to_cr(remaining)}\n"
+    msg += f"👥 Players: {len(players)}/15\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    msg += f"**🛒 PURCHASED PLAYERS:**\n"
+    
+    for i, p in enumerate(players, 1):
+        player_name, price, purchased_at = p
+        msg += f"{i}. {player_name} - {number_to_cr(price)} 💰\n"
+    
+    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"💡 /mybudget - Check remaining budget"
+    
+    await update.message.reply_text(msg)
+
+
+# ============ MY BUDGET (CAPTAIN) ==========
+
+async def mybudget(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Check if user is a captain
+    c.execute("SELECT team_name, budget, purse_used FROM auction_teams WHERE captain_id=?", (user_id,))
+    team = c.fetchone()
+    
+    if not team:
+        await update.message.reply_text("❌ You are not a team captain!\n💡 /req_captain to request captaincy")
+        conn.close()
+        return
+    
+    team_name, budget, spent = team
+    remaining = budget - spent
+    
+    # Get players count
+    c.execute("SELECT COUNT(*) FROM auction_purchases WHERE team_name=?", (team_name,))
+    players_count = c.fetchone()[0]
+    conn.close()
+    
+    await update.message.reply_text(
+        f"💰 **{team_name} - BUDGET STATUS**\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"Total Budget: {number_to_cr(budget)}\n"
+        f"Spent: {number_to_cr(spent)}\n"
+        f"Remaining: {number_to_cr(remaining)}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🏏 Players Bought: {players_count}\n"
+        f"🎯 Slots Left: {15 - players_count}\n\n"
+        f"💡 /myplayers - See your squad",
+        
+    )
+
 
 # ============ MAIN ============
 
@@ -4262,6 +6076,33 @@ def main():
     app.add_handler(CommandHandler("deposit", deposit))
     app.add_handler(CommandHandler("withdraw", withdraw))
     app.add_handler(CommandHandler("claim_interest", claim_interest))
+    # Auction handlers
+    app.add_handler(CommandHandler("register", register))
+    app.add_handler(CommandHandler("req_captain", req_captain))
+    app.add_handler(CommandHandler("myrequest", myrequest))
+    app.add_handler(CommandHandler("captain_requests", captain_requests))
+    app.add_handler(CallbackQueryHandler(approve_captain_callback, pattern="^approve_cap_"))
+    app.add_handler(CallbackQueryHandler(assign_team_callback, pattern="^assign_team_"))
+    app.add_handler(CommandHandler("create_auc", create_auc))
+    app.add_handler(CommandHandler("add_player", add_player))
+    app.add_handler(CommandHandler("players", players))
+    app.add_handler(CommandHandler("rmplayer", rmplayer))
+    app.add_handler(CommandHandler("start_auc", start_auc))
+    app.add_handler(CommandHandler("bid", bid))
+    app.add_handler(CommandHandler("next", next_player))
+    app.add_handler(CommandHandler("sold", sold))
+    app.add_handler(CommandHandler("unsold", unsold))
+    app.add_handler(CallbackQueryHandler(register_callback, pattern="^reg_"))
+    app.add_handler(CommandHandler("unsoldlist", unsoldlist))
+    app.add_handler(CommandHandler("pause_auc", pause_auc))
+    app.add_handler(CommandHandler("resume_auc", resume_auc))
+    app.add_handler(CommandHandler("end_auc", end_auc))
+    app.add_handler(CommandHandler("myplayers", myplayers))
+    app.add_handler(CommandHandler("mybudget", mybudget))
+    app.add_handler(CallbackQueryHandler(register_tour_callback, pattern="^reg_tour_"))
+    app.add_handler(CallbackQueryHandler(register_confirm_callback, pattern="^reg_confirm_"))
+    app.add_handler(CallbackQueryHandler(register_confirm_callback, pattern="^reg_cancel"))
+
 
     # Admin
     app.add_handler(CommandHandler("addmatch", addmatch))
