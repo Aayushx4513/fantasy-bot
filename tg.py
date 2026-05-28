@@ -5616,7 +5616,7 @@ from collections import Counter
 
 # ============ CROP DATA ============
 CROPS = {
-    "potato": {"name": "🥔 Potato", "price": 2000, "sell": 3000, "time": 180, "emoji": "🥔"},
+    "potato": {"name": "🥔 Potato", "price": 2000, "sell": 3000, "time": 300, "emoji": "🥔"},
     "carrot": {"name": "🥕 Carrot", "price": 4000, "sell": 6000, "time": 360, "emoji": "🥕"},
     "tomato": {"name": "🍅 Tomato", "price": 6000, "sell": 9000, "time": 720, "emoji": "🍅"},
     "corn": {"name": "🌽 Corn", "price": 10000, "sell": 15000, "time": 1440, "emoji": "🌽"},
@@ -5714,21 +5714,20 @@ async def crops(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     msg = "🌾 CROP MARKET\n\n"
-    msg += "┌────────────┬──────────┬──────────┬──────────┐\n"
-    msg += "│ CROP       │ COST     │ SELL     │ TIME     │\n"
-    msg += "├────────────┼──────────┼──────────┼──────────┤\n"
-    
-    for key, crop in CROPS.items():
-        time_str = format_time(crop['time'])
-        msg += f"│ {crop['emoji']} {crop['name']:<7} │ 💰{crop['price']:,} │ 💰{crop['sell']:,} │ ⏰ {time_str:<7} │\n"
-    
-    msg += "└────────────┴──────────┴──────────┴──────────┘\n"
+    msg += "🥔 Potato      💰2,000 → 💰3,000   (5h)\n"
+    msg += "🥕 Carrot      💰4,000 → 💰6,000   (6h)\n"
+    msg += "🍅 Tomato      💰6,000 → 💰9,000   (12h)\n"
+    msg += "🌽 Corn        💰10,000 → 💰15,000 (24h)\n"
+    msg += "🌾 Wheat       💰14,000 → 💰21,000 (36h)\n"
+    msg += "🍓 Strawberry  💰16,000 → 💰24,000 (48h)\n"
+    msg += "🍉 Watermelon  💰20,000 → 💰30,000 (48h)\n"
+    msg += "🌿 Ganja       💰12,000 → 💰18,000 (24h)\n"
     
     global rain_percentage
     if rain_percentage > 0:
-        msg += f"\n🌧️ Rain Active: {rain_percentage}% faster for NEW crops!\n"
+        msg += f"\n🌧️ Rain Active: {rain_percentage}% faster for NEW crops!"
     
-    msg += "\n💡 /grow <crop> <quantity>"
+    msg += "\n\n💡 /grow <crop> <quantity>"
     
     await update.message.reply_text(msg)
 
