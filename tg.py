@@ -5300,7 +5300,182 @@ async def rmplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💡 /players - View updated list",
         
     )
+# ============ NUMBER GUESSING GAME (GROUP ONLY) ==========
 
+active_game = None  # Only one game per group
+game_data = {}  # {group_id: {"number": x, "attempts": y, "player_id": z, "player_name": w}}
+
+async def numguess(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Start a new number guessing game (only in groups)"""
+    chat_id = update.effective_chat.id
+    chat_type = update.effective_chat.type
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    # Only allow in groups
+    if chat_type not in ['group', 'supergroup']:
+        await update.message.reply_text("❌ This command only works in groups!")
+        return
+    
+    # Check if game already active in this group
+    if chat_id in game_data:
+        await update.message.reply_text(
+            f"❌ A game is already active in this group!\n"
+            f"Started by: {game_data[chat_id]['player_name']}\n"
+            f"Use /ngstop to stop it."
+        )
+        return
+    
+    # Create new game
+    number = random.randint(1, 100)
+    game_data[chat_id] = {
+        "number": number,
+        "attempts": 0,
+        "player_id": user_id,
+        "player_name": user_name,
+        "chat_id": chat_id
+    }
+    
+    await update.message.reply_text(
+        f"🎲 **Number Guessing Game Started!**\n\n"
+        f"👤 Host: {user_name}\n"
+        f"📊 I'm thinking of a number between 1-100\n"
+        f"💡 Use `/ng <number>` to guess!\n"
+        f"🛑 Admin: `/ngstop` to end game",
+        parse_mode="Markdown"
+    )
+
+
+async def ng(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Make a guess"""
+    chat_id = update.effective_chat.id
+    chat_type = update.effective_chat.type
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    # Only allow in groups
+    if chat_type not in ['group', 'supergroup']:
+        await update.message.reply_text("❌ This command only works in groups!")
+        return
+    
+    # Check if game exists
+    if chat_id not in game_data:
+        await update.message.reply_text("❌ No active game! Use /numguess to start.")
+        return
+    
+    game = game_data[chat_id]
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text("❌ Usage: /ng <number>\nExample: /ng 50")
+        return
+    
+    try:
+        guess = int(args[0])
+    except:
+        await update.message.reply_text("❌ Please enter a valid number!")
+        return
+    
+    if guess < 1 or guess > 100:
+        await update.message.reply_text("❌ Number must be between 1 and 100!")
+        return
+    
+    game["attempts"] += 1
+    target = game["number"]
+    
+    if guess == target:
+        # Game won
+        attempts = game["attempts"]
+        winner_id = user_id
+        winner_name = user_name
+        
+        # Reward based on attempts
+        if attempts <= 5:
+            reward = 500
+            msg = f"🎉 CORRECT! {winner_name} guessed {target} in {attempts} attempts! 🌟 Excellent! +{reward} coins!"
+        elif attempts <= 10:
+            reward = 200
+            msg = f"🎉 CORRECT! {winner_name} guessed {target} in {attempts} attempts! 👍 Good job! +{reward} coins!"
+        else:
+            reward = 50
+            msg = f"🎉 CORRECT! {winner_name} guessed {target} in {attempts} attempts! 💪 Well played! +{reward} coins!"
+        
+        # Add reward
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (reward, winner_id))
+        conn.commit()
+        conn.close()
+        
+        # Delete game
+        del game_data[chat_id]
+        
+        await update.message.reply_text(msg)
+        
+    elif guess < target:
+        await update.message.reply_text(f"📈 Too low! Attempts: {game['attempts']}")
+    else:
+        await update.message.reply_text(f"📉 Too high! Attempts: {game['attempts']}")
+
+
+async def ngstop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Stop current game - Only group admins or bot admins"""
+    chat_id = update.effective_chat.id
+    chat_type = update.effective_chat.type
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    # Only allow in groups
+    if chat_type not in ['group', 'supergroup']:
+        await update.message.reply_text("❌ This command only works in groups!")
+        return
+    
+    # Check if game exists
+    if chat_id not in game_data:
+        await update.message.reply_text("❌ No active game to stop!")
+        return
+    
+    # Check permissions - group admin OR bot admin
+    is_group_admin = False
+    is_bot_admin = user_id in ADMIN_IDS
+    
+    if not is_bot_admin:
+        try:
+            chat_member = await context.bot.get_chat_member(chat_id, user_id)
+            if chat_member.status in ['administrator', 'creator']:
+                is_group_admin = True
+        except:
+            pass
+    
+    if not is_group_admin and not is_bot_admin:
+        await update.message.reply_text("❌ Only group admins or bot admins can stop the game!")
+        return
+    
+    target = game_data[chat_id]["number"]
+    attempts = game_data[chat_id]["attempts"]
+    host_name = game_data[chat_id]["player_name"]
+    
+    del game_data[chat_id]
+    
+    await update.message.reply_text(
+        f"🛑 **Game Stopped!**\n\n"
+        f"👤 Host: {host_name}\n"
+        f"🔢 The number was: {target}\n"
+        f"📊 Total attempts: {attempts}\n\n"
+        f"💡 Use /numguess to start a new game!",
+        parse_mode="Markdown"
+    )
 
 
 # ============ MAIN ============
@@ -5332,6 +5507,9 @@ def main():
     app.add_handler(CommandHandler("history", history))
     app.add_handler(CommandHandler("tip", tip))
     app.add_handler(CommandHandler("achievements", achievements))
+    app.add_handler(CommandHandler("numguess", numguess))
+    app.add_handler(CommandHandler("ng", ng))
+    app.add_handler(CommandHandler("ngstop", ngstop))
 
     # Shop commands
     app.add_handler(CommandHandler("shop", shop))
