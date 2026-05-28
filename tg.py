@@ -12,7 +12,7 @@ import threading
 import json
 import time
 
-TOKEN = "8817319745:AAF8ugFftViQgEoHb9n_GHfx58nUyNs52ks"
+TOKEN = "8265192837:AAHsPddjDoRWuf-6Ht8iELdHDopkTBoOPhs"
 ADMIN_IDS = [7687078555, 1315564307]
 
 flask_app = Flask(__name__)
@@ -126,6 +126,8 @@ def get_user(user_id, name=""):
     return user
 
 # ============ START ============
+# ============ START COMMAND ==========
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.first_name if user.first_name else user.username or "User"
@@ -163,18 +165,145 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update.message.reply_text("🎉 WELCOME!\n\nYou joined with a referral!\n💰 +500 bonus credits!")
         
         conn.commit()
-        keyboard = [[InlineKeyboardButton("📢 UPDATES", url="https://t.me/clbotofficial")],
-                    [InlineKeyboardButton("👥 MAIN GROUP", url="https://t.me/+eTD1m8Cjc_wyOTNl")]]
+        
+        keyboard = [
+            [InlineKeyboardButton("📢 UPDATES", url="https://t.me/clbotofficial")],
+            [InlineKeyboardButton("👥 MAIN GROUP", url="https://t.me/+eTD1m8Cjc_wyOTNl")]
+        ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(f"✨ WELCOME TO CL ZONE ✨\n\n👑 {name}\n💰 1000 credits\n🎯 /claim\n🎡 /spin\n👤 /profile\n🏆 /leaderboard\n🏏 /CLcricket\n📊 /stats", reply_markup=reply_markup)
+        
+        await update.message.reply_text(
+            f"✨ WELCOME TO CL ZONE ✨\n\n"
+            f"👑 {name}, you've joined the elite club!\n"
+            f"💰 1000 credits | 🏆 0 pts\n\n"
+            f"🎯 /claim - Daily rewards\n"
+            f"🎡 /spin - Daily spin\n"
+            f"👤 /profile - Your stats\n"
+            f"🏆 /leaderboard - Top players\n"
+            f"🌾 /farm - Start farming\n\n"
+            f"📌 Join our channels for exclusive updates!",
+            reply_markup=reply_markup
+        )
     else:
         conn.close()
-        keyboard = [[InlineKeyboardButton("📢 UPDATES", url="https://t.me/clbotofficial")],
-                    [InlineKeyboardButton("👥 MAIN GROUP", url="https://t.me/+eTD1m8Cjc_wyOTNl")]]
+        
+        keyboard = [
+            [InlineKeyboardButton("📢 UPDATES", url="https://t.me/clbotofficial")],
+            [InlineKeyboardButton("👥 MAIN GROUP", url="https://t.me/+eTD1m8Cjc_wyOTNl")]
+        ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(f"✨ WELCOME BACK\n\n👑 {name}\n💰 {existing[2]:,} credits", reply_markup=reply_markup)
+        
+        await update.message.reply_text(
+            f"✨ WELCOME BACK TO CL ZONE ✨\n\n"
+            f"👑 {name}\n"
+            f"💰 {existing[2]:,} credits | 🏆 {existing[3]} pts\n\n"
+            f"🎯 /claim - Daily rewards\n"
+            f"🎡 /spin - Daily spin\n"
+            f"👤 /profile - Your stats\n"
+            f"🏆 /leaderboard - Top players\n"
+            f"🌾 /farm - Your farm\n\n"
+            f"📌 Stay connected with our community!",
+            reply_markup=reply_markup
+        )
     conn.close()
 
+
+# ============ HELP COMMAND ==========
+
+async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    msg = (
+        "📋 CL ZONE - COMMAND LIST\n\n"
+        
+        "👤 PROFILE\n"
+        "• /start - Start bot\n"
+        "• /profile - Your stats & collection\n"
+        "• /leaderboard - Top 10 Richest users\n"
+        "• /setbio <text> - Set bio\n"
+        "• /rmbio - Remove bio\n"
+        "• /setpfp - Set photo (reply to pic)\n"
+        "• /rmpfp - Remove photo\n\n"
+        
+        "💰 EARN CREDITS\n"
+        "• /claim - 500 daily\n"
+        "• /spin - 1,000-10,000 daily\n"
+        "• /dice <amount> - 0x to 2.5x\n"
+        "• /flip heads/tails <amount> - 2x\n"
+        "• /tip <amount> (reply) - Send credits\n\n"
+        
+        "🏏 CRICKET BETTING\n"
+        "• /matches - Live matches\n"
+        "• /bet <team> <amount> - Place bet\n"
+        "• /mybets - Your bets\n"
+        "• /cancel <number> - Cancel bet\n"
+        "• /allbets - All bets\n"
+        "• /history - Win/loss record\n"
+        "• /top_fantasy - Fantasy points ranking\n\n"
+        
+        "🌾 FARM SYSTEM\n"
+        "• /farm - Your farm status\n"
+        "• /crops - Crop prices & time\n"
+        "• /grow <crop> <qty> - Grow crops\n"
+        "• /harvest - Collect ready crops\n"
+        "• /sell <crop> <qty> - Sell crops\n"
+        "• /storage - Check storage space\n"
+        "• /upgrade_storage - Increase storage\n"
+        "• /hire - Hire workers (auto-grow)\n"
+        "• /workers - Your workers status\n"
+        "• /farm_leaderboard - Top farmers\n"
+        "• /rain - Admin only (time discount)\n\n"
+        
+        "🏆 ACHIEVEMENTS\n"
+        "• /achievements - Your badges\n\n"
+        
+        "🛒 SHOP\n"
+        "• /shop - Buy players\n"
+        "• /buy <id> - Purchase mens player\n"
+        "• /buyw <id> - Purchase women player\n"
+        "• /myteam - Your collection\n"
+        "• /top - Top collectors\n\n"
+        
+        "🛍️ AFFORDABLE STORE\n"
+        "• /shop2 - Budget players\n"
+        "• /buy2 <id> - Purchase\n"
+        "• /myteam2 - Your collection\n"
+        "• /top2 - Top collectors\n\n"
+        
+        "🛒 TG PLAYERS\n"
+        "• /shop3 - Telegram players\n"
+        "• /buy3 <id> - Purchase\n"
+        "• /myteam3 - Your collection\n"
+        "• /top3 - Top collectors\n\n"
+        
+        "🏦 BANK\n"
+        "• /bank - Check balance\n"
+        "• /deposit <amount> - Add to bank\n"
+        "• /withdraw <amount> - Take from bank\n"
+        "• /claim_interest - 5% daily\n\n"
+        
+        "🎮 GAMES\n"
+        "• /ttt [amount] - Tic Tac Toe\n"
+        "• /mines <amount> <bombs> - Mines game\n"
+        "• /CLcricket [amount] - Cricket game\n"
+        "• /rps [amount] - Rock Paper Scissors\n"
+        "• /numguess - Number guessing game\n"
+        "• /ng <number> - Make a guess\n"
+        "• /claimcode <code> - Claim rewards\n"
+        "• /activecodes - Active codes\n"
+        "• /numpuz - Number puzzle\n\n"
+        
+        "🎁 REFERRAL\n"
+        "• /refer - Get your link (1k per refer)\n\n"
+        
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "💡 Need help? @clbothelp"
+    )
+    
+    await update.message.reply_text(msg)
 
 # ============ REFER ============
 async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -185,16 +314,6 @@ async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bot_username = context.bot.username
     ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
     await update.message.reply_text(f"👥 REFERRAL SYSTEM\n\nInvite friends and earn 1,000 credits each!\n\nYour Link: {ref_link}\n\nNew users get +500 bonus!")
-
-
-# ============ HELP ============
-async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    msg = "📋 CL ZONE - COMMAND LIST\n\n👤 PROFILE\n/start - Start bot\n/profile - Your stats\n/setbio <text> - Set bio\n/rmbio - Remove bio\n/setpfp - Set photo\n/rmpfp - Remove photo\n\n💰 EARN\n/claim - 500 daily\n/spin - 1,000-10,000 daily\n/dice <amount>\n/flip heads/tails <amount>\n/tip <amount>\n\n🏏 CRICKET BETTING\n/matches - Live matches\n/bet <team> <amount>\n/mybets - Your bets\n/cancel <number>\n/allbets - All bets\n/history - Win/loss\n/top_fantasy - Fantasy ranking\n\n🛒 SHOP\n/shop - Buy players\n/buy <id> - Mens\n/buyw <id> - Women\n/myteam - Your collection\n/top - Top collectors\n/shop2 - Budget\n/shop3 - TG players\n/shop4 - More\n\n🏦 BANK\n/bank - Check balance\n/deposit <amount>\n/withdraw <amount>\n/claim_interest - 5% daily\n\n🎮 GAMES\n/ttt [amount] - Tic Tac Toe\n/mines <amount> <bombs>\n/CLcricket [amount]\n/rps [amount]\n/numpuz - Number puzzle\n\n🏆 OTHER\n/leaderboard - Rich list\n/achievements - Your badges\n/refer - Get link\n/claimcode <code>\n/activecodes\n/hof - Hall of fame\n/stats - Cricket leaderboard\n/mystats - Your cricket stats\n\n━━━━━━━━━━━━━━━━━━━━\n💡 Need help? @clbothelp"
-    await update.message.reply_text(msg)
 
 
 # ============ PROFILE ============
@@ -2801,7 +2920,7 @@ async def mines(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if len(args) < 2:
         await update.message.reply_text(
-            "💣 **MINES**\n"
+            "💣 MINES\n"
             "`/mines <amount> <bombs>`\n"
             "Example: `/mines 1000 3`\n\n"
             "⚡ Min:100 | Max:10,000\n"
@@ -2863,7 +2982,7 @@ async def mines(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard.append([InlineKeyboardButton("💰 CASHOUT", callback_data=f"mine_cashout_{user_id}")])
     
     await update.message.reply_text(
-        f"💣 **MINES**\n"
+        f"💣 MINES\n"
         f"💰 {bet:,} | 💣 {bombs}\n"
         f"🎯 Max: {max_mult}x\n"
         f"📈 1.00x | 💎 {bet:,}\n\n"
@@ -2899,7 +3018,7 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
         
         await query.edit_message_text(
-            f"💰 **CASHOUT**\n"
+            f"💰 CASHOUT\n"
             f"✅ +{win:,}\n"
             f"📈 {mult}x\n"
             f"💳 {bal + win:,}",
@@ -2919,7 +3038,7 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if idx in game['bombs']:
             await query.edit_message_text(
-                f"💣 **BOMB!**\n"
+                f"💣 BOMB!\n"
                 f"💰 Lost: {game['bet']:,}\n"
                 f"😵 Game over!",
                 
@@ -2942,7 +3061,7 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.close()
             
             await query.edit_message_text(
-                f"🎉 **WIN!**\n"
+                f"🎉 WIN!\n"
                 f"✅ All safe tiles!\n"
                 f"💰 +{win:,}\n"
                 f"📈 {mult}x\n"
@@ -2968,7 +3087,7 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         max_mult = game['max_mult']
         
         await query.edit_message_text(
-            f"💎 **SAFE**\n"
+            f"💎 SAFE\n"
             f"💰 {game['bet']:,}\n"
             f"✅ {safe}/{total_safe}\n"
             f"📈 {mult}x (Max: {max_mult}x)\n"
@@ -3069,7 +3188,7 @@ async def myteam3(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     total = sum(p[1] for p in players)
-    msg = "💎 **MY SHOP3 PLAYERS**\n\n"
+    msg = "💎 MY SHOP3 PLAYERS\n\n"
     for i, p in enumerate(players, 1):
         msg += f"{i}. {p[0]} - {p[1]:,} 💰\n"
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💰 Total spent: {total:,} 💰"
@@ -3501,7 +3620,7 @@ async def ttt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bet_text = f"💰 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Normal Game"
     
     await update.message.reply_text(
-        f"🎯 **TIC TAC TOE**\n\n"
+        f"🎯 TIC TAC TOE\n\n"
         f"👑 {user_name} (❌)\n"
         f"{bet_text}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -3561,7 +3680,7 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bet_text = f"💰 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Normal Game"
         
         await query.edit_message_text(
-            f"🎯 **TIC TAC TOE**\n\n"
+            f"🎯 TIC TAC TOE\n\n"
             f"❌ {creator_name} vs ⭕ {user_name}\n"
             f"{bet_text}\n\n"
             f"🎯 {creator_name}'s Turn",
@@ -3604,12 +3723,12 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 c.execute("UPDATE users SET balance = ? WHERE user_id=?", (new_bal, winner_id))
                 conn.commit()
                 conn.close()
-                result_text = f"🏆 **WINNER: {winner_name.upper()}** 🏆\n💰 +{game.bet*2:,} credits\n💳 New Balance: {new_bal:,}"
+                result_text = f"🏆 WINNER: {winner_name.upper()} 🏆\n💰 +{game.bet*2:,} credits\n💳 New Balance: {new_bal:,}"
             else:
-                result_text = f"🏆 **WINNER: {winner_name.upper()}** 🏆"
+                result_text = f"🏆 WINNER: {winner_name.upper()} 🏆"
             
             await query.edit_message_text(
-                f"🎯 **TIC TAC TOE**\n\n"
+                f"🎯 TIC TAC TOE\n\n"
                 f"❌ {game.player1_name} vs ⭕ {game.player2_name}\n\n"
                 f"{result_text}",
                 reply_markup=game.get_keyboard(),
@@ -3628,9 +3747,9 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 conn.close()
             
             await query.edit_message_text(
-                f"🎯 **TIC TAC TOE**\n\n"
+                f"🎯 TIC TAC TOE\n\n"
                 f"❌ {game.player1_name} vs ⭕ {game.player2_name}\n\n"
-                f"🤝 **DRAW** 🤝",
+                f"🤝 DRAW 🤝",
                 reply_markup=game.get_keyboard(),
                 
             )
@@ -3643,7 +3762,7 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             bet_text = f"💰 Bet: {game.bet:,} | Prize: {game.bet*2:,}" if game.bet > 0 else "🎮 Normal Game"
             
             await query.edit_message_text(
-                f"🎯 **TIC TAC TOE**\n\n"
+                f"🎯 TIC TAC TOE\n\n"
                 f"❌ {game.player1_name} vs ⭕ {game.player2_name}\n"
                 f"{bet_text}\n\n"
                 f"🎯 {turn_name}'s Turn ({turn_symbol})",
@@ -3768,7 +3887,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("✅ MOST WINS", callback_data="stats_wins")],
         [InlineKeyboardButton("❌ MOST LOSSES", callback_data="stats_losses")],
     ]
-    await update.message.reply_text("🏏 **CRICKET STATS LEADERBOARD**\n\nSelect stat to view:", reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.message.reply_text("🏏 CRICKET STATS LEADERBOARD\n\nSelect stat to view:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -3791,7 +3910,7 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             c.execute("SELECT runs FROM cricket_stats WHERE user_id=?", (user_id,))
             user_runs = c.fetchone()[0]
         conn.close()
-        msg = "🏏 **MOST RUNS LEADERBOARD**\n\n"
+        msg = "🏏 MOST RUNS LEADERBOARD\n\n"
         medals = ["👑", "🥈", "🥉", "", ""]
         for i, (name, runs) in enumerate(top):
             medal = medals[i] if i < 3 else f"{i+1}."
@@ -3814,7 +3933,7 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             c.execute("SELECT wickets FROM cricket_stats WHERE user_id=?", (user_id,))
             user_wickets = c.fetchone()[0]
         conn.close()
-        msg = "🎯 **MOST WICKETS LEADERBOARD**\n\n"
+        msg = "🎯 MOST WICKETS LEADERBOARD\n\n"
         medals = ["👑", "🥈", "🥉", "", ""]
         for i, (name, wickets) in enumerate(top):
             medal = medals[i] if i < 3 else f"{i+1}."
@@ -3837,7 +3956,7 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             c.execute("SELECT highest_score FROM cricket_stats WHERE user_id=?", (user_id,))
             user_highest = c.fetchone()[0]
         conn.close()
-        msg = "⭐ **HIGHEST SCORE LEADERBOARD**\n\n"
+        msg = "⭐ HIGHEST SCORE LEADERBOARD\n\n"
         medals = ["👑", "🥈", "🥉", "", ""]
         for i, (name, score) in enumerate(top):
             medal = medals[i] if i < 3 else f"{i+1}."
@@ -3860,7 +3979,7 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             c.execute("SELECT wins FROM cricket_stats WHERE user_id=?", (user_id,))
             user_wins = c.fetchone()[0]
         conn.close()
-        msg = "✅ **MOST WINS LEADERBOARD**\n\n"
+        msg = "✅ MOST WINS LEADERBOARD\n\n"
         medals = ["👑", "🥈", "🥉", "", ""]
         for i, (name, wins) in enumerate(top):
             medal = medals[i] if i < 3 else f"{i+1}."
@@ -3883,7 +4002,7 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             c.execute("SELECT losses FROM cricket_stats WHERE user_id=?", (user_id,))
             user_losses = c.fetchone()[0]
         conn.close()
-        msg = "❌ **MOST LOSSES LEADERBOARD**\n\n"
+        msg = "❌ MOST LOSSES LEADERBOARD\n\n"
         medals = ["👑", "🥈", "🥉", "", ""]
         for i, (name, losses) in enumerate(top):
             medal = medals[i] if i < 3 else f"{i+1}."
@@ -3901,7 +4020,7 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("✅ MOST WINS", callback_data="stats_wins")],
             [InlineKeyboardButton("❌ MOST LOSSES", callback_data="stats_losses")],
         ]
-        await query.edit_message_text("🏏 **CRICKET STATS LEADERBOARD**\n\nSelect stat to view:", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.edit_message_text("🏏 CRICKET STATS LEADERBOARD\n\nSelect stat to view:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -3920,7 +4039,7 @@ async def mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not stats:
         conn.close()
         await update.message.reply_text(
-            f"🏏 **YOUR CRICKET STATS**\n\n"
+            f"🏏 YOUR CRICKET STATS\n\n"
             f"👤 {name}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"🏏 Runs: 0 (Rank: N/A)\n"
@@ -3948,7 +4067,7 @@ async def mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     losses_rank = c.fetchone()[0] if losses > 0 else None
     conn.close()
     
-    msg = f"🏏 **YOUR CRICKET STATS**\n\n"
+    msg = f"🏏 YOUR CRICKET STATS\n\n"
     msg += f"👤 {name}\n"
     msg += f"━━━━━━━━━━━━━━━━━━━━\n"
     msg += f"🏏 Runs: {runs} (Rank: #{runs_rank if runs_rank else 'N/A'})\n"
@@ -3976,10 +4095,10 @@ async def shop4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     
     if not players:
-        await update.message.reply_text('🛒 **SHOP4**\n\nNo players yet.\n👑 Admin: /addplayer4 <name> <price>')
+        await update.message.reply_text('🛒 SHOP4\n\nNo players yet.\n👑 Admin: /addplayer4 <name> <price>')
         return
     
-    msg = "🛒 **SHOP4**\n\n"
+    msg = "🛒 SHOP4\n\n"
     for p in players:
         msg += f"{p[0]}. {p[1]} - {p[2]:,} 💰\n"
     msg += "\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /buy4 <id> to purchase"
@@ -4052,7 +4171,7 @@ async def myteam4(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     total = sum(p[1] for p in players)
-    msg = "🤑 **MY SHOP4 PLAYERS**\n\n"
+    msg = "🤑 MY SHOP4 PLAYERS\n\n"
     for i, p in enumerate(players, 1):
         msg += f"{i}. {p[0]} - {p[1]:,} 💰\n"
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💰 Total spent: {total:,} 💰"
@@ -4074,7 +4193,7 @@ async def top4(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
         return
     
-    msg = "🏆 **SHOP4 TOP COLLECTORS**\n\n"
+    msg = "🏆 SHOP4 TOP COLLECTORS\n\n"
     for i, t in enumerate(tops, 1):
         medal = "👑" if i==1 else "🥈" if i==2 else "🥉" if i==3 else f"{i}."
         msg += f"{medal} {t[0]} - {t[1]} players ({t[2]:,} 💰)\n"
@@ -4357,7 +4476,7 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
-        f"🏏 **PLAYER REGISTRATION**\n\n"
+        f"🏏 PLAYER REGISTRATION\n\n"
         f"📛 Tournament: {tour_name}\n"
         f"👤 User: {user_name}\n\n"
         f"Click CONFIRM to register:",
@@ -4402,7 +4521,7 @@ async def confirm_reg_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         conn.close()
         
         await query.edit_message_text(
-            f"✅ **REGISTERED!**\n\n"
+            f"✅ REGISTERED!\n\n"
             f"🏏 {user_name} in {tour_name}\n\n"
             f"💡 /req_captain - Request captaincy"
         )
@@ -4440,7 +4559,7 @@ async def register_tour_callback(update: Update, context: ContextTypes.DEFAULT_T
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(
-            f"🏏 **CONFIRM REGISTRATION**\n\n"
+            f"🏏 CONFIRM REGISTRATION\n\n"
             f"📛 Tournament: {tour_name}\n"
             f"💰 Budget: {budget_cr}CR per team\n"
             f"👤 User: {user_name}\n\n"
@@ -4497,7 +4616,7 @@ async def register_confirm_callback(update: Update, context: ContextTypes.DEFAUL
         conn.close()
         
         await query.edit_message_text(
-            f"✅ **REGISTERED!**\n\n"
+            f"✅ REGISTERED!\n\n"
             f"🏏 {user_name}, you are now a PLAYER in {tour_name}!\n\n"
             f"💡 /req_captain - Request captaincy"
         )
@@ -4526,7 +4645,7 @@ async def my_tournament(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tour_id, tour_name, registered_at = reg
     
     await update.message.reply_text(
-        f"🏏 **MY TOURNAMENT**\n\n"
+        f"🏏 MY TOURNAMENT\n\n"
         f"📛 {tour_name}\n"
         f"📅 Registered: {registered_at[:19]}\n\n"
         f"💡 /req_captain - Request captaincy"
@@ -4564,7 +4683,7 @@ async def register_tour_callback(update: Update, context: ContextTypes.DEFAULT_T
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.edit_message_text(
-            f"🏏 **CONFIRM REGISTRATION**\n\n"
+            f"🏏 CONFIRM REGISTRATION\n\n"
             f"📛 Tournament: {tour_name}\n"
             f"💰 Budget per team: {int(base_budget/10000000)}CR\n"
             f"👤 User: {user_name}\n\n"
@@ -4621,7 +4740,7 @@ async def register_confirm_callback(update: Update, context: ContextTypes.DEFAUL
         conn.close()
         
         await query.edit_message_text(
-            f"✅ **REGISTERED SUCCESSFULLY!**\n\n"
+            f"✅ REGISTERED SUCCESSFULLY!\n\n"
             f"🏏 {user_name}, you are now a PLAYER in {tour_name}!\n\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"💡 Want to be a CAPTAIN?\n"
@@ -4655,7 +4774,7 @@ async def my_tournament(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tour_id, tour_name, registered_at = reg
     
     await update.message.reply_text(
-        f"🏏 **MY TOURNAMENT**\n\n"
+        f"🏏 MY TOURNAMENT\n\n"
         f"📛 Tournament: {tour_name}\n"
         f"📅 Registered: {registered_at}\n\n"
         f"💡 /req_captain - Request to become captain",
@@ -4696,7 +4815,7 @@ async def register_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
         
         await query.edit_message_text(
-            f"✅ **REGISTERED SUCCESSFULLY!**\n\n"
+            f"✅ REGISTERED SUCCESSFULLY!\n\n"
             f"🏏 {user_name}, you are now a PLAYER!\n\n"
             f"💡 Want to be a CAPTAIN?\n"
             f"Use /req_captain to request captaincy",
@@ -4748,7 +4867,7 @@ async def req_captain(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 admin_id,
-                f"👑 **NEW CAPTAIN REQUEST!**\n\n"
+                f"👑 NEW CAPTAIN REQUEST!\n\n"
                 f"User: @{user_name} ({user_name})\n"
                 f"ID: `{user_id}`\n\n"
                 f"💡 /captain_requests to view and approve",
@@ -4758,7 +4877,7 @@ async def req_captain(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
     
     await update.message.reply_text(
-        f"👑 **CAPTAIN REQUEST SENT!**\n\n"
+        f"👑 CAPTAIN REQUEST SENT!\n\n"
         f"User: {user_name}\n"
         f"Status: ⏳ PENDING APPROVAL\n\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -4788,8 +4907,8 @@ async def myrequest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if captain:
         await update.message.reply_text(
-            f"👑 **CAPTAIN REQUEST STATUS**\n\n"
-            f"Status: ✅ **APPROVED!**\n"
+            f"👑 CAPTAIN REQUEST STATUS\n\n"
+            f"Status: ✅ APPROVED!\n"
             f"Team: {captain[0]}\n"
             f"💰 Budget: {captain[1]:,}\n\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -4807,8 +4926,8 @@ async def myrequest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not req:
         await update.message.reply_text(
-            f"👑 **CAPTAIN REQUEST STATUS**\n\n"
-            f"Status: ❌ **NOT REQUESTED**\n\n"
+            f"👑 CAPTAIN REQUEST STATUS\n\n"
+            f"Status: ❌ NOT REQUESTED\n\n"
             f"💡 Use /req_captain to request captaincy",
             
         )
@@ -4819,23 +4938,23 @@ async def myrequest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if status == 'pending':
         await update.message.reply_text(
-            f"👑 **CAPTAIN REQUEST STATUS**\n\n"
-            f"Status: ⏳ **PENDING**\n"
+            f"👑 CAPTAIN REQUEST STATUS\n\n"
+            f"Status: ⏳ PENDING\n"
             f"Requested: {requested_at}\n\n"
             f"💡 Waiting for admin approval",
             
         )
     elif status == 'approved':
         await update.message.reply_text(
-            f"👑 **CAPTAIN REQUEST STATUS**\n\n"
-            f"Status: ✅ **APPROVED!**\n\n"
+            f"👑 CAPTAIN REQUEST STATUS\n\n"
+            f"Status: ✅ APPROVED!\n\n"
             f"💡 Contact admin for team assignment",
             
         )
     elif status == 'rejected':
         await update.message.reply_text(
-            f"👑 **CAPTAIN REQUEST STATUS**\n\n"
-            f"Status: ❌ **REJECTED**\n\n"
+            f"👑 CAPTAIN REQUEST STATUS\n\n"
+            f"Status: ❌ REJECTED\n\n"
             f"Reason: All captain slots filled\n"
             f"💡 Try next tournament!",
             
@@ -4864,7 +4983,7 @@ async def captain_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not requests:
         await update.message.reply_text(
-            f"👑 **CAPTAIN REQUESTS**\n\n"
+            f"👑 CAPTAIN REQUESTS\n\n"
             f"✅ Approved: {approved_count}/10\n"
             f"⏳ Pending: 0\n\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -4885,7 +5004,7 @@ async def captain_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
-        f"👑 **CAPTAIN REQUESTS**\n\n"
+        f"👑 CAPTAIN REQUESTS\n\n"
         f"✅ Approved: {approved_count}/10\n"
         f"⏳ Pending: {len(requests)}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -4934,7 +5053,7 @@ async def approve_captain_callback(update: Update, context: ContextTypes.DEFAULT
         conn.close()
         
         await query.edit_message_text(
-            f"❌ **CANNOT APPROVE!**\n\n"
+            f"❌ CANNOT APPROVE!\n\n"
             f"User: {user_name}\n"
             f"Reason: All 10 captain slots are filled!\n\n"
             f"Request marked as REJECTED.",
@@ -4945,7 +5064,7 @@ async def approve_captain_callback(update: Update, context: ContextTypes.DEFAULT
         try:
             await context.bot.send_message(
                 user_id,
-                f"❌ **CAPTAIN REQUEST REJECTED**\n\n"
+                f"❌ CAPTAIN REQUEST REJECTED\n\n"
                 f"All captain slots for this tournament are filled.\n"
                 f"💡 Try next tournament!",
                 
@@ -4963,7 +5082,7 @@ async def approve_captain_callback(update: Update, context: ContextTypes.DEFAULT
         )])
     
     await query.edit_message_text(
-        f"✅ **APPROVE CAPTAIN REQUEST**\n\n"
+        f"✅ APPROVE CAPTAIN REQUEST\n\n"
         f"User: {user_name} (ID: {user_id})\n\n"
         f"Select team for this captain:\n\n"
         f"Available Teams: {len(available_teams)}/10",
@@ -5020,8 +5139,8 @@ async def assign_team_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     try:
         await context.bot.send_message(
             user_id,
-            f"🎉 **CONGRATULATIONS!**\n\n"
-            f"Your captain request has been **APPROVED**!\n\n"
+            f"🎉 CONGRATULATIONS!\n\n"
+            f"Your captain request has been APPROVED!\n\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"🏏 Team: {team}\n"
             f"💰 Budget: {base_budget:,} ({number_to_cr(base_budget)})\n"
@@ -5036,7 +5155,7 @@ async def assign_team_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         pass
     
     await query.edit_message_text(
-        f"✅ **CAPTAIN APPROVED!**\n\n"
+        f"✅ CAPTAIN APPROVED!\n\n"
         f"User: {user_name}\n"
         f"Team: {team}\n"
         f"💰 Budget: {base_budget:,} ({number_to_cr(base_budget)})\n\n"
@@ -5057,7 +5176,7 @@ async def create_auc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if len(args) < 3:
         await update.message.reply_text(
-            "📝 **CREATE AUCTION**\n\n"
+            "📝 CREATE AUCTION\n\n"
             "Usage: `/create_auc <name> <teams> <budget>`\n"
             "Example: `/create_auc \"IPL 2024\" 10 10000000`\n\n"
             "💰 Budget in credits (e.g., 10000000 = 1cr)\n"
@@ -5131,7 +5250,7 @@ async def create_auc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     
     await update.message.reply_text(
-        f"✅ **AUCTION CREATED!**\n\n"
+        f"✅ AUCTION CREATED!\n\n"
         f"🏆 Tournament: {name}\n"
         f"👥 Total Teams: {total_teams}\n"
         f"💰 Base Budget: {base_budget:,} ({number_to_cr(base_budget)})\n"
@@ -5154,7 +5273,7 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if len(args) < 2:
         await update.message.reply_text(
-            "📝 **ADD PLAYER**\n\n"
+            "📝 ADD PLAYER\n\n"
             "Usage: `/add_player <name> <base_price>`\n"
             "Example: `/add_player \"Virat Kohli\" 10000000`\n\n"
             "💰 Base price in credits (10000000 = 1cr)\n"
@@ -5197,7 +5316,7 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     
     await update.message.reply_text(
-        f"✅ **PLAYER ADDED!**\n\n"
+        f"✅ PLAYER ADDED!\n\n"
         f"🏏 {name}\n"
         f"💰 Base Price: {base_price:,} ({number_to_cr(base_price)})\n"
         f"🆔 ID: {player_id}\n\n"
@@ -5294,7 +5413,7 @@ async def rmplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     
     await update.message.reply_text(
-        f"🗑️ **PLAYER REMOVED!**\n\n"
+        f"🗑️ PLAYER REMOVED!\n\n"
         f"❌ Removed: {player_name}\n"
         f"💰 Base Price: {player_price:,} ({number_to_cr(player_price)})\n\n"
         f"💡 /players - View updated list",
@@ -5335,7 +5454,7 @@ async def numguess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "chat_id": chat_id
     }
     
-    msg = f"🎲 **Number Guessing Game Started!**\n\n"
+    msg = f"🎲 Number Guessing Game Started!\n\n"
     msg += f"👤 Host: {user_name}\n"
     msg += f"📊 I'm thinking of a number between 1-100\n"
     msg += f"💡 Use `/ng <number>` to guess!\n"
@@ -5343,7 +5462,7 @@ async def numguess(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat_type in ['group', 'supergroup']:
         msg += f"🛑 Admin: `/ngstop` to end game"
     
-    await update.message.reply_text(msg, parse_mode="Markdown")
+    await update.message.reply_text(msg)
 
 
 async def ng(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5479,12 +5598,12 @@ async def ngstop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     del game_data[chat_id]
     
     await update.message.reply_text(
-        f"🛑 **Game Stopped!**\n\n"
+        f"🛑 Game Stopped!\n\n"
         f"👤 Host: {host_name}\n"
         f"🔢 The number was: {target}\n"
         f"📊 Total attempts: {attempts}\n\n"
         f"💡 Use /numguess to start a new game!",
-        parse_mode="Markdown"
+        
     )
 
 # ============ FARM SYSTEM - PART 1 (DATA) ==========
@@ -5509,17 +5628,18 @@ CROPS = {
 
 # ============ STORAGE LEVELS ============
 STORAGE_LEVELS = {
-    1: {"slots": 50, "next_cost": 10000, "next_slots": 70},
-    2: {"slots": 70, "next_cost": 15000, "next_slots": 95},
-    3: {"slots": 95, "next_cost": 22500, "next_slots": 125},
-    4: {"slots": 125, "next_cost": 33750, "next_slots": 160},
-    5: {"slots": 160, "next_cost": 50625, "next_slots": 200},
-    6: {"slots": 200, "next_cost": 75937, "next_slots": 245},
-    7: {"slots": 245, "next_cost": 113905, "next_slots": 295},
-    8: {"slots": 295, "next_cost": 170857, "next_slots": 350},
-    9: {"slots": 350, "next_cost": 256285, "next_slots": 410},
+    1: {"slots": 50, "next_cost": 100000, "next_slots": 70},
+    2: {"slots": 70, "next_cost": 150000, "next_slots": 95},
+    3: {"slots": 95, "next_cost": 200000, "next_slots": 125},
+    4: {"slots": 125, "next_cost": 300000, "next_slots": 160},
+    5: {"slots": 160, "next_cost": 400000, "next_slots": 200},
+    6: {"slots": 200, "next_cost": 500000, "next_slots": 245},
+    7: {"slots": 245, "next_cost": 750000, "next_slots": 295},
+    8: {"slots": 295, "next_cost": 1000000, "next_slots": 350},
+    9: {"slots": 350, "next_cost": 1500000, "next_slots": 410},
     10: {"slots": 410, "next_cost": 0, "next_slots": 410},
 }
+
 
 # ============ WORKER DATA ============
 WORKERS = {
@@ -5593,7 +5713,7 @@ async def crops(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('❌ Send /start first!')
         return
     
-    msg = "🌾 **CROP MARKET**\n\n"
+    msg = "🌾 CROP MARKET\n\n"
     msg += "┌────────────┬──────────┬──────────┬──────────┐\n"
     msg += "│ CROP       │ COST     │ SELL     │ TIME     │\n"
     msg += "├────────────┼──────────┼──────────┼──────────┤\n"
@@ -5606,7 +5726,7 @@ async def crops(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     global rain_percentage
     if rain_percentage > 0:
-        msg += f"\n🌧️ **Rain Active:** {rain_percentage}% faster for NEW crops!\n"
+        msg += f"\n🌧️ Rain Active: {rain_percentage}% faster for NEW crops!\n"
     
     msg += "\n💡 /grow <crop> <quantity>"
     
@@ -5725,7 +5845,7 @@ async def grow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     
     await update.message.reply_text(
-        f"🌱 **GROWING {crop['emoji']} {crop['name']} x{quantity}**\n\n"
+        f"🌱 GROWING {crop['emoji']} {crop['name']} x{quantity}\n\n"
         f"💰 Cost: {total_cost:,} credits deducted\n"
         f"⏰ Ready in: {format_time(grow_time)}\n"
         f"📦 Storage: {used_slots}/{total_slots} → {used_slots + quantity}/{total_slots}\n"
@@ -5777,7 +5897,7 @@ async def farm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stored_count = sum(storage_crops.values())
     used_slots = stored_count + len(crops_data)
     
-    msg = f"🌾 **YOUR FARM**\n\n💰 Wallet: {balance:,} credits\n"
+    msg = f"🌾 YOUR FARM\n\n💰 Wallet: {balance:,} credits\n"
     msg += f"📦 Storage: {used_slots}/{total_slots} ({total_slots - used_slots} free)\n"
     
     global rain_percentage
@@ -5787,7 +5907,7 @@ async def farm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += "\n"
     
     if storage_crops:
-        msg += "🤖 **STORAGE (Ready to Sell):**\n"
+        msg += "🤖 STORAGE (Ready to Sell):\n"
         for crop_name, count in storage_crops.items():
             crop = CROPS.get(crop_name)
             if crop:
@@ -5795,7 +5915,7 @@ async def farm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += "\n💡 /sell <crop> <quantity> to sell\n\n"
     
     if growing:
-        msg += "🌿 **GROWING:**\n"
+        msg += "🌿 GROWING:\n"
         for crop_info, remaining in growing[:5]:
             msg += f"   {crop_info['emoji']} {crop_info['name']} → Ready in: {format_time(int(remaining))}\n"
         if len(growing) > 5:
@@ -5803,7 +5923,7 @@ async def farm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += "\n"
     
     if ready:
-        msg += "🌾 **READY TO HARVEST:**\n"
+        msg += "🌾 READY TO HARVEST:\n"
         ready_count = {}
         for crop in ready:
             crop_name = crop['crop']
@@ -5814,7 +5934,7 @@ async def farm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += "\n💡 /harvest - Collect ready crops\n"
     
     if harvested_data:
-        msg += "📦 **HARVESTED:**\n"
+        msg += "📦 HARVESTED:\n"
         harvest_count = {}
         for crop in harvested_data:
             crop_name = crop['crop']
@@ -5826,7 +5946,7 @@ async def farm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if workers_list:
         worker_counts = Counter(workers_list)
-        msg += "\n👨‍🌾 **YOUR WORKERS:**\n"
+        msg += "\n👨‍🌾 YOUR WORKERS:\n"
         for worker_key, count in worker_counts.items():
             worker = WORKERS.get(worker_key)
             if worker:
@@ -5872,7 +5992,7 @@ async def farm_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_stats = c.fetchone()
     conn.close()
     
-    msg = "🏆 **TOP FARMERS** 🏆\n\n"
+    msg = "🏆 TOP FARMERS 🏆\n\n"
     msg += "┌─────┬────────────────────┬──────────┬──────────┐\n"
     msg += "│ #   │ NAME               │ GROWN    │ PROFIT   │\n"
     msg += "├─────┼────────────────────┼──────────┼──────────┤\n"
@@ -5889,7 +6009,7 @@ async def farm_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += "└─────┴────────────────────┴──────────┴──────────┘\n"
     
     if user_stats and user_stats[0]:
-        msg += f"\n📊 **Your Rank:** #{rank}\n"
+        msg += f"\n📊 Your Rank: #{rank}\n"
         msg += f"🌱 Total crops grown: {user_stats[0]:,}\n"
         msg += f"💰 Total earned: {user_stats[1]:,}\n"
     else:
@@ -5946,7 +6066,7 @@ async def harvest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         crop_name = crop['crop']
         harvest_count[crop_name] = harvest_count.get(crop_name, 0) + 1
     
-    msg = "🌾 **HARVESTED!**\n\n"
+    msg = "🌾 HARVESTED!\n\n"
     for crop_name, count in harvest_count.items():
         crop_info = CROPS[crop_name]
         msg += f"✅ {crop_info['emoji']} {crop_info['name']} x{count}\n"
@@ -6015,7 +6135,7 @@ async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
             conn.close()
             
             await update.message.reply_text(
-                f"💰 **SOLD FROM STORAGE!**\n\n"
+                f"💰 SOLD FROM STORAGE!\n\n"
                 f"{crop_info['emoji']} {crop_info['name']} x{quantity}\n"
                 f"💵 Price: {crop_info['sell']:,} each\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -6072,7 +6192,7 @@ async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     
     await update.message.reply_text(
-        f"💰 **SOLD FROM HARVEST!**\n\n"
+        f"💰 SOLD FROM HARVEST!\n\n"
         f"{crop_info['emoji']} {crop_info['name']} x{quantity}\n"
         f"💵 Price: {crop_info['sell']:,} each\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -6125,9 +6245,9 @@ async def storage(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if next_level in STORAGE_LEVELS:
         next_slots = STORAGE_LEVELS[next_level]["next_slots"]
         next_cost = STORAGE_LEVELS[level]["next_cost"]
-        upgrade_text = f"📈 **NEXT UPGRADE:**\nLevel {next_level} → {next_slots} slots (+{next_slots - total_slots})\n💰 Cost: {next_cost:,} credits"
+        upgrade_text = f"📈 NEXT UPGRADE:\nLevel {next_level} → {next_slots} slots (+{next_slots - total_slots})\n💰 Cost: {next_cost:,} credits"
     else:
-        upgrade_text = "🏆 **MAX LEVEL REACHED!**"
+        upgrade_text = "🏆 MAX LEVEL REACHED!"
     
     crops_text = ""
     for crop_name, count in crops_stored.items():
@@ -6141,7 +6261,7 @@ async def storage(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status = "🟢 FREE" if free_slots > 0 else "🔴 FULL"
     
     await update.message.reply_text(
-        f"📦 **YOUR STORAGE**\n\n"
+        f"📦 YOUR STORAGE\n\n"
         f"Level: {level}\n"
         f"Slots: {used_slots}/{total_slots} ({status})\n"
         f"├─ 📦 Stored: {stored_count}\n"
@@ -6149,7 +6269,7 @@ async def storage(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
         f"{upgrade_text}\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"🌾 **Crops stored:**\n{crops_text}\n"
+        f"🌾 Crops stored:\n{crops_text}\n"
         f"💡 /upgrade_storage - To upgrade"
     )
 
@@ -6193,6 +6313,7 @@ async def upgrade_storage(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     stored_count = sum(crops.values())
     used_slots = stored_count + growing_count
+    free_slots = current_slots - used_slots
     
     conn.close()
     
@@ -6206,15 +6327,100 @@ async def upgrade_storage(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
-        f"📦 **UPGRADE STORAGE**\n\n"
+        f"📦 UPGRADE STORAGE\n\n"
         f"Current Level: {level} ({current_slots} slots)\n"
-        f"Current Used: {used_slots}/{current_slots}\n"
+        f"Current Used: {used_slots}/{current_slots} (Free: {free_slots})\n"
         f"Next Level: {level + 1} ({next_slots} slots)\n"
         f"💰 Cost: {next_cost:,} credits\n\n"
         f"⚠️ Confirm upgrade?",
         reply_markup=reply_markup
     )
 
+
+async def storage_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    data = query.data
+    
+    if data == "storage_cancel":
+        await query.edit_message_text("❌ Upgrade cancelled!")
+        return
+    
+    if data.startswith("storage_confirm_"):
+        target_id = int(data.split("_")[2])
+        
+        if user_id != target_id:
+            await query.answer("Not your upgrade!", show_alert=True)
+            return
+        
+        conn = get_db()
+        c = conn.cursor()
+        
+        # Get current storage
+        c.execute("SELECT level, crops FROM user_storage WHERE user_id=?", (user_id,))
+        result = c.fetchone()
+        
+        if result:
+            level = result[0]
+            crops = json.loads(result[1]) if result[1] else {}
+        else:
+            level = 1
+            crops = {}
+        
+        if level not in STORAGE_LEVELS or STORAGE_LEVELS[level]["next_cost"] == 0:
+            await query.edit_message_text("🏆 Max level already reached!")
+            conn.close()
+            return
+        
+        current_slots = get_total_slots(level)
+        next_cost = STORAGE_LEVELS[level]["next_cost"]
+        next_slots = STORAGE_LEVELS[level]["next_slots"]
+        
+        # Check balance
+        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+        balance = c.fetchone()[0]
+        
+        if balance < next_cost:
+            await query.edit_message_text(f"❌ Need {next_cost:,} credits to upgrade!\n💰 Have: {balance:,}")
+            conn.close()
+            return
+        
+        # Process upgrade
+        c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (next_cost, user_id))
+        
+        new_level = level + 1
+        c.execute("INSERT OR REPLACE INTO user_storage (user_id, level, crops, workers) VALUES (?, ?, ?, ?)",
+                  (user_id, new_level, json.dumps(crops), json.dumps([])))
+        
+        conn.commit()
+        conn.close()
+        
+        new_slots = get_total_slots(new_level)
+        
+        # Get growing crops count
+        conn2 = get_db()
+        c2 = conn2.cursor()
+        c2.execute("SELECT crops FROM farms WHERE user_id=?", (user_id,))
+        farm_result = c2.fetchone()
+        growing_count = 0
+        if farm_result and farm_result[0]:
+            growing_crops = json.loads(farm_result[0])
+            growing_count = len(growing_crops)
+        conn2.close()
+        
+        stored_count = sum(crops.values())
+        used_slots = stored_count + growing_count
+        
+        await query.edit_message_text(
+            f"✅ STORAGE UPGRADED!\n\n"
+            f"Level: {level} → {new_level}\n"
+            f"Slots: {current_slots} → {new_slots}\n"
+            f"Used: {used_slots}/{new_slots}\n"
+            f"💰 Cost: {next_cost:,} credits\n\n"
+            f"📦 Free slots: {new_slots - used_slots}"
+        )
 
 async def storage_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -6296,7 +6502,7 @@ async def storage_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         used_slots = stored_count + growing_count
         
         await query.edit_message_text(
-            f"✅ **STORAGE UPGRADED!**\n\n"
+            f"✅ STORAGE UPGRADED!\n\n"
             f"Level: {level} → {new_level}\n"
             f"Slots: {current_slots} → {new_slots}\n"
             f"Used: {used_slots}/{new_slots}\n"
@@ -6382,7 +6588,7 @@ async def storage_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         used_slots = stored_count + growing_count
         
         await query.edit_message_text(
-            f"✅ **STORAGE UPGRADED!**\n\n"
+            f"✅ STORAGE UPGRADED!\n\n"
             f"Level: {level} → {new_level}\n"
             f"Slots: {current_slots} → {new_slots}\n"
             f"Used: {used_slots}/{new_slots}\n"
@@ -6406,7 +6612,7 @@ async def hire(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )])
     
     await update.message.reply_text(
-        "👨‍🌾 **HIRE WORKER**\n\nClick on any worker to hire:",
+        "👨‍🌾 HIRE WORKER\n\nClick on any worker to hire:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -6451,7 +6657,7 @@ async def hire_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.commit()
     conn.close()
     
-    await query.edit_message_text(f"✅ **{worker['name']} hired successfully!**")
+    await query.edit_message_text(f"✅ {worker['name']} hired successfully!")
 
 
 async def workers(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6468,18 +6674,18 @@ async def workers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     
     if not result or not result[0]:
-        await update.message.reply_text("👨‍🌾 **YOUR WORKERS**\n\nNo workers hired yet!\n\n💡 /hire - Hire workers")
+        await update.message.reply_text("👨‍🌾 YOUR WORKERS\n\nNo workers hired yet!\n\n💡 /hire - Hire workers")
         return
     
     workers_list = json.loads(result[0]) if result[0] else []
     
     if not workers_list:
-        await update.message.reply_text("👨‍🌾 **YOUR WORKERS**\n\nNo workers hired yet!\n\n💡 /hire - Hire workers")
+        await update.message.reply_text("👨‍🌾 YOUR WORKERS\n\nNo workers hired yet!\n\n💡 /hire - Hire workers")
         return
     
     now = time.time()
     worker_counts = Counter(workers_list)
-    msg = "👨‍🌾 **YOUR WORKERS**\n\n"
+    msg = "👨‍🌾 YOUR WORKERS\n\n"
     total_cost = 0
     
     for worker_key, count in worker_counts.items():
@@ -6592,13 +6798,13 @@ async def rain(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if len(args) < 1:
         await update.message.reply_text(
-            "🌧️ **RAIN COMMAND**\n\n"
+            "🌧️ RAIN COMMAND\n\n"
             "Usage: `/rain <percentage>`\n"
             "Example: `/rain 50` - 50% less time\n"
             "Example: `/rain 100` - 1 min\n"
             "Example: `/rain 0` - Normal\n\n"
             "⚠️ Only affects NEW crops!",
-            parse_mode="Markdown"
+            
         )
         return
     
@@ -6616,10 +6822,10 @@ async def rain(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rain_percentage = percentage
     
     if percentage == 0:
-        await update.message.reply_text("🌤️ **RAIN STOPPED**\n\n⏰ Grow time back to normal!")
+        await update.message.reply_text("🌤️ RAIN STOPPED\n\n⏰ Grow time back to normal!")
     else:
         await update.message.reply_text(
-            f"🌧️ **RAIN BONUS!**\n\n"
+            f"🌧️ RAIN BONUS!\n\n"
             f"⏰ NEW crops grow {percentage}% faster!\n"
             f"📉 Example: 3h crop → {int(180 - (180*percentage/100))}m\n\n"
             f"⚠️ Only affects NEW crops!"
