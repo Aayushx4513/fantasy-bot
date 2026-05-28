@@ -5207,7 +5207,6 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============ VIEW PLAYERS LIST ==========
-
 async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Admin only!")
@@ -5227,21 +5226,25 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sold = [p for p in players if p[3] == 'sold']
     unsold = [p for p in players if p[3] == 'unsold']
     
-    msg = f"🏏 **AUCTION PLAYERS LIST**\n\n"
+    msg = f"🏏 AUCTION PLAYERS LIST\n\n"
     msg += f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
     msg += f"📊 Total: {len(players)} | ✅ Sold: {len(sold)} | ❌ Unsold: {len(unsold)} | ⏳ Pending: {len(pending)}\n"
     msg += f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     
-    msg += f"**⏳ PENDING PLAYERS:**\n"
-    for i, p in enumerate(pending[:10], 1):
-        msg += f"{i}. {p[1]} - {number_to_cr(p[2])} 💰\n"
-    if len(pending) > 10:
-        msg += f"... and {len(pending)-10} more\n"
+    if pending:
+        msg += f"⏳ PENDING PLAYERS:\n"
+        for i, p in enumerate(pending[:10], 1):
+            price = p[2] if isinstance(p[2], int) else int(p[2]) if p[2] else 0
+            msg += f"{i}. {p[1]} - {number_to_cr(price)} 💰\n"
+        if len(pending) > 10:
+            msg += f"... and {len(pending)-10} more\n"
     
     if sold:
-        msg += f"\n**✅ SOLD PLAYERS:**\n"
+        msg += f"\n✅ SOLD PLAYERS:\n"
         for i, p in enumerate(sold[:5], 1):
-            msg += f"{i}. {p[1]} → {p[4]} - {number_to_cr(p[3])} 💰\n"
+            price = p[2] if isinstance(p[2], int) else int(p[2]) if p[2] else 0
+            team = p[4] if p[4] else "Unknown"
+            msg += f"{i}. {p[1]} → {team} - {number_to_cr(price)} 💰\n"
         if len(sold) > 5:
             msg += f"... and {len(sold)-5} more\n"
     
