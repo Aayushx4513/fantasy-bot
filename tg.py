@@ -6092,21 +6092,33 @@ async def storage(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     conn = get_db()
     c = conn.cursor()
+    
+    # Get storage data
     c.execute("SELECT level, crops, workers FROM user_storage WHERE user_id=?", (user_id,))
     result = c.fetchone()
-    conn.close()
     
     if result:
         level = result[0]
-        crops = json.loads(result[1]) if result[1] else {}
+        crops_stored = json.loads(result[1]) if result[1] else {}
         workers = json.loads(result[2]) if result[2] else []
     else:
         level = 1
-        crops = {}
+        crops_stored = {}
         workers = []
     
+    # 🔥 GET GROWING CROPS COUNT
+    c.execute("SELECT crops FROM farms WHERE user_id=?", (user_id,))
+    farm_result = c.fetchone()
+    growing_count = 0
+    if farm_result and farm_result[0]:
+        growing_crops = json.loads(farm_result[0])
+        growing_count = len(growing_crops)
+    
+    conn.close()
+    
     total_slots = get_total_slots(level)
-    used_slots = sum(crops.values())
+    stored_count = sum(crops_stored.values())
+    used_slots = stored_count + growing_count
     free_slots = total_slots - used_slots
     
     next_level = level + 1
@@ -6118,7 +6130,7 @@ async def storage(update: Update, context: ContextTypes.DEFAULT_TYPE):
         upgrade_text = "🏆 **MAX LEVEL REACHED!**"
     
     crops_text = ""
-    for crop_name, count in crops.items():
+    for crop_name, count in crops_stored.items():
         crop = CROPS.get(crop_name)
         if crop:
             crops_text += f"{crop['emoji']} {crop['name']} x{count}\n"
@@ -6131,7 +6143,9 @@ async def storage(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"📦 **YOUR STORAGE**\n\n"
         f"Level: {level}\n"
-        f"Slots: {used_slots}/{total_slots} ({status})\n\n"
+        f"Slots: {used_slots}/{total_slots} ({status})\n"
+        f"├─ 📦 Stored: {stored_count}\n"
+        f"└─ 🌱 Growing: {growing_count}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
         f"{upgrade_text}\n"
         f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -6139,6 +6153,7 @@ async def storage(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💡 /upgrade_storage - To upgrade"
     )
 
+# ============ STORAGE UPGRADE WITH BUTTONS ==========
 
 async def upgrade_storage(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -6168,33 +6183,212 @@ async def upgrade_storage(update: Update, context: ContextTypes.DEFAULT_TYPE):
     next_slots = STORAGE_LEVELS[level]["next_slots"]
     current_slots = get_total_slots(level)
     
-    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-    balance = c.fetchone()[0]
+    # Get growing crops count
+    c.execute("SELECT crops FROM farms WHERE user_id=?", (user_id,))
+    farm_result = c.fetchone()
+    growing_count = 0
+    if farm_result and farm_result[0]:
+        growing_crops = json.loads(farm_result[0])
+        growing_count = len(growing_crops)
+    
+    stored_count = sum(crops.values())
+    used_slots = stored_count + growing_count
+    
     conn.close()
     
-    if balance < next_cost:
-        await update.message.reply_text(f"❌ Need {next_cost:,} credits to upgrade!\n💰 Have: {balance:,}")
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (next_cost, user_id))
-    
-    new_level = level + 1
-    c.execute("INSERT OR REPLACE INTO user_storage (user_id, level, crops, workers) VALUES (?, ?, ?, ?)",
-              (user_id, new_level, json.dumps(crops), json.dumps([])))
-    conn.commit()
-    conn.close()
-    
-    new_slots = get_total_slots(new_level)
+    # Create buttons
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ CONFIRM", callback_data=f"storage_confirm_{user_id}"),
+            InlineKeyboardButton("❌ CANCEL", callback_data="storage_cancel")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
-        f"✅ **STORAGE UPGRADED!**\n\n"
-        f"Level: {level} → {new_level}\n"
-        f"Slots: {current_slots} → {new_slots}\n"
+        f"📦 **UPGRADE STORAGE**\n\n"
+        f"Current Level: {level} ({current_slots} slots)\n"
+        f"Current Used: {used_slots}/{current_slots}\n"
+        f"Next Level: {level + 1} ({next_slots} slots)\n"
         f"💰 Cost: {next_cost:,} credits\n\n"
-        f"📦 Free slots: {new_slots - sum(crops.values())}"
+        f"⚠️ Confirm upgrade?",
+        reply_markup=reply_markup
     )
+
+
+async def storage_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    data = query.data
+    
+    if data == "storage_cancel":
+        await query.edit_message_text("❌ Upgrade cancelled!")
+        return
+    
+    if data.startswith("storage_confirm_"):
+        target_id = int(data.split("_")[2])
+        
+        if user_id != target_id:
+            await query.answer("Not your upgrade!", show_alert=True)
+            return
+        
+        conn = get_db()
+        c = conn.cursor()
+        
+        # Get current storage
+        c.execute("SELECT level, crops FROM user_storage WHERE user_id=?", (user_id,))
+        result = c.fetchone()
+        
+        if result:
+            level = result[0]
+            crops = json.loads(result[1]) if result[1] else {}
+        else:
+            level = 1
+            crops = {}
+        
+        if level not in STORAGE_LEVELS or STORAGE_LEVELS[level]["next_cost"] == 0:
+            await query.edit_message_text("🏆 Max level already reached!")
+            conn.close()
+            return
+        
+        next_cost = STORAGE_LEVELS[level]["next_cost"]
+        
+        # Check balance
+        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+        balance = c.fetchone()[0]
+        
+        if balance < next_cost:
+            await query.edit_message_text(f"❌ Need {next_cost:,} credits to upgrade!\n💰 Have: {balance:,}")
+            conn.close()
+            return
+        
+        # Process upgrade
+        c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (next_cost, user_id))
+        
+        new_level = level + 1
+        c.execute("INSERT OR REPLACE INTO user_storage (user_id, level, crops, workers) VALUES (?, ?, ?, ?)",
+                  (user_id, new_level, json.dumps(crops), json.dumps([])))
+        
+        # Get workers count after upgrade
+        c.execute("SELECT workers FROM user_storage WHERE user_id=?", (user_id,))
+        workers_result = c.fetchone()
+        workers = json.loads(workers_result[0]) if workers_result and workers_result[0] else []
+        
+        conn.commit()
+        conn.close()
+        
+        new_slots = get_total_slots(new_level)
+        
+        # Get growing crops count
+        conn2 = get_db()
+        c2 = conn2.cursor()
+        c2.execute("SELECT crops FROM farms WHERE user_id=?", (user_id,))
+        farm_result = c2.fetchone()
+        growing_count = 0
+        if farm_result and farm_result[0]:
+            growing_crops = json.loads(farm_result[0])
+            growing_count = len(growing_crops)
+        conn2.close()
+        
+        stored_count = sum(crops.values())
+        used_slots = stored_count + growing_count
+        
+        await query.edit_message_text(
+            f"✅ **STORAGE UPGRADED!**\n\n"
+            f"Level: {level} → {new_level}\n"
+            f"Slots: {current_slots} → {new_slots}\n"
+            f"Used: {used_slots}/{new_slots}\n"
+            f"💰 Cost: {next_cost:,} credits\n\n"
+            f"📦 Free slots: {new_slots - used_slots}"
+        )
+
+async def storage_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    data = query.data
+    
+    if data == "storage_cancel":
+        await query.edit_message_text("❌ Upgrade cancelled!")
+        return
+    
+    if data.startswith("storage_confirm_"):
+        target_id = int(data.split("_")[2])
+        
+        if user_id != target_id:
+            await query.answer("Not your upgrade!", show_alert=True)
+            return
+        
+        conn = get_db()
+        c = conn.cursor()
+        
+        # Get current storage
+        c.execute("SELECT level, crops FROM user_storage WHERE user_id=?", (user_id,))
+        result = c.fetchone()
+        
+        if result:
+            level = result[0]
+            crops = json.loads(result[1]) if result[1] else {}
+        else:
+            level = 1
+            crops = {}
+        
+        if level not in STORAGE_LEVELS or STORAGE_LEVELS[level]["next_cost"] == 0:
+            await query.edit_message_text("🏆 Max level already reached!")
+            conn.close()
+            return
+        
+        # 🔥 DEFINE current_slots HERE
+        current_slots = get_total_slots(level)
+        next_cost = STORAGE_LEVELS[level]["next_cost"]
+        next_slots = STORAGE_LEVELS[level]["next_slots"]
+        
+        # Check balance
+        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+        balance = c.fetchone()[0]
+        
+        if balance < next_cost:
+            await query.edit_message_text(f"❌ Need {next_cost:,} credits to upgrade!\n💰 Have: {balance:,}")
+            conn.close()
+            return
+        
+        # Process upgrade
+        c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (next_cost, user_id))
+        
+        new_level = level + 1
+        c.execute("INSERT OR REPLACE INTO user_storage (user_id, level, crops, workers) VALUES (?, ?, ?, ?)",
+                  (user_id, new_level, json.dumps(crops), json.dumps([])))
+        
+        conn.commit()
+        conn.close()
+        
+        new_slots = get_total_slots(new_level)
+        
+        # Get growing crops count
+        conn2 = get_db()
+        c2 = conn2.cursor()
+        c2.execute("SELECT crops FROM farms WHERE user_id=?", (user_id,))
+        farm_result = c2.fetchone()
+        growing_count = 0
+        if farm_result and farm_result[0]:
+            growing_crops = json.loads(farm_result[0])
+            growing_count = len(growing_crops)
+        conn2.close()
+        
+        stored_count = sum(crops.values())
+        used_slots = stored_count + growing_count
+        
+        await query.edit_message_text(
+            f"✅ **STORAGE UPGRADED!**\n\n"
+            f"Level: {level} → {new_level}\n"
+            f"Slots: {current_slots} → {new_slots}\n"
+            f"Used: {used_slots}/{new_slots}\n"
+            f"💰 Cost: {next_cost:,} credits\n\n"
+            f"📦 Free slots: {new_slots - used_slots}"
+        )
 
 # ============ FARM SYSTEM - PART 9 (HIRE, WORKERS, RAIN) ==========
 
@@ -6482,6 +6676,7 @@ def main():
     app.add_handler(CommandHandler("farm_leaderboard", farm_leaderboard))
     app.add_handler(CommandHandler("storage", storage))
     app.add_handler(CommandHandler("upgrade_storage", upgrade_storage))
+    app.add_handler(CallbackQueryHandler(storage_callback, pattern="^storage_"))
     app.add_handler(CommandHandler("hire", hire))
     app.add_handler(CallbackQueryHandler(hire_callback, pattern="^hire_"))
     app.add_handler(CommandHandler("workers", workers))
