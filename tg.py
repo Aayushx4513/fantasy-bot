@@ -5300,13 +5300,13 @@ async def rmplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💡 /players - View updated list",
         
     )
-# ============ NUMBER GUESSING GAME (GROUP ONLY) ==========
 
-active_game = None  # Only one game per group
-game_data = {}  # {group_id: {"number": x, "attempts": y, "player_id": z, "player_name": w}}
+# ============ NUMBER GUESSING GAME (DM + GROUP) ==========
+
+game_data = {}  # {chat_id: {"number": x, "attempts": y, "player_id": z, "player_name": w}}
 
 async def numguess(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Start a new number guessing game (only in groups)"""
+    """Start a new number guessing game"""
     chat_id = update.effective_chat.id
     chat_type = update.effective_chat.type
     user_id = update.effective_user.id
@@ -5316,15 +5316,10 @@ async def numguess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('❌ Send /start first!')
         return
     
-    # Only allow in groups
-    if chat_type not in ['group', 'supergroup']:
-        await update.message.reply_text("❌ This command only works in groups!")
-        return
-    
-    # Check if game already active in this group
+    # Check if game already active in this chat
     if chat_id in game_data:
         await update.message.reply_text(
-            f"❌ A game is already active in this group!\n"
+            f"❌ A game is already active!\n"
             f"Started by: {game_data[chat_id]['player_name']}\n"
             f"Use /ngstop to stop it."
         )
@@ -5340,30 +5335,25 @@ async def numguess(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "chat_id": chat_id
     }
     
-    await update.message.reply_text(
-        f"🎲 **Number Guessing Game Started!**\n\n"
-        f"👤 Host: {user_name}\n"
-        f"📊 I'm thinking of a number between 1-100\n"
-        f"💡 Use `/ng <number>` to guess!\n"
-        f"🛑 Admin: `/ngstop` to end game",
-        parse_mode="Markdown"
-    )
+    msg = f"🎲 **Number Guessing Game Started!**\n\n"
+    msg += f"👤 Host: {user_name}\n"
+    msg += f"📊 I'm thinking of a number between 1-100\n"
+    msg += f"💡 Use `/ng <number>` to guess!\n"
+    
+    if chat_type in ['group', 'supergroup']:
+        msg += f"🛑 Admin: `/ngstop` to end game"
+    
+    await update.message.reply_text(msg, parse_mode="Markdown")
 
 
 async def ng(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Make a guess"""
     chat_id = update.effective_chat.id
-    chat_type = update.effective_chat.type
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
     
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    # Only allow in groups
-    if chat_type not in ['group', 'supergroup']:
-        await update.message.reply_text("❌ This command only works in groups!")
         return
     
     # Check if game exists
@@ -5392,26 +5382,41 @@ async def ng(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = game["number"]
     
     if guess == target:
-        # Game won
+        # Game won - reward based on attempts
         attempts = game["attempts"]
         winner_id = user_id
         winner_name = user_name
         
-        # Reward based on attempts
-        if attempts <= 5:
+        # Reward system: fewer attempts = more coins
+        if attempts == 1:
+            reward = 5000
+            msg = f"🎉 PERFECT! {winner_name} guessed {target} in FIRST attempt! 👑 LEGEND! +{reward} coins!"
+        elif attempts <= 3:
+            reward = 2000
+            msg = f"🎉 AMAZING! {winner_name} guessed {target} in {attempts} attempts! 🌟 INCREDIBLE! +{reward} coins!"
+        elif attempts <= 5:
+            reward = 1000
+            msg = f"🎉 EXCELLENT! {winner_name} guessed {target} in {attempts} attempts! 🎯 GREAT! +{reward} coins!"
+        elif attempts <= 7:
             reward = 500
-            msg = f"🎉 CORRECT! {winner_name} guessed {target} in {attempts} attempts! 🌟 Excellent! +{reward} coins!"
+            msg = f"🎉 GOOD JOB! {winner_name} guessed {target} in {attempts} attempts! 👍 NICE! +{reward} coins!"
         elif attempts <= 10:
-            reward = 200
-            msg = f"🎉 CORRECT! {winner_name} guessed {target} in {attempts} attempts! 👍 Good job! +{reward} coins!"
+            reward = 300
+            msg = f"🎉 NOT BAD! {winner_name} guessed {target} in {attempts} attempts! 💪 GOOD! +{reward} coins!"
+        elif attempts <= 15:
+            reward = 150
+            msg = f"🎉 OKAY! {winner_name} guessed {target} in {attempts} attempts! 📊 KEEP TRYING! +{reward} coins!"
         else:
             reward = 50
-            msg = f"🎉 CORRECT! {winner_name} guessed {target} in {attempts} attempts! 💪 Well played! +{reward} coins!"
+            msg = f"🎉 FINALLY! {winner_name} guessed {target} in {attempts} attempts! 💪 PRACTICE MORE! +{reward} coins!"
         
         # Add reward
         conn = get_db()
         c = conn.cursor()
-        c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (reward, winner_id))
+        c.execute("SELECT balance FROM users WHERE user_id=?", (winner_id,))
+        current_bal = c.fetchone()[0]
+        new_bal = current_bal + reward
+        c.execute("UPDATE users SET balance = ? WHERE user_id=?", (new_bal, winner_id))
         conn.commit()
         conn.close()
         
@@ -5427,7 +5432,7 @@ async def ng(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def ngstop(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Stop current game - Only group admins or bot admins"""
+    """Stop current game - Host, Group Admin, or Bot Admin"""
     chat_id = update.effective_chat.id
     chat_type = update.effective_chat.type
     user_id = update.effective_user.id
@@ -5436,35 +5441,40 @@ async def ngstop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('❌ Send /start first!')
         return
     
-    # Only allow in groups
-    if chat_type not in ['group', 'supergroup']:
-        await update.message.reply_text("❌ This command only works in groups!")
-        return
-    
     # Check if game exists
     if chat_id not in game_data:
         await update.message.reply_text("❌ No active game to stop!")
         return
     
-    # Check permissions - group admin OR bot admin
-    is_group_admin = False
-    is_bot_admin = user_id in ADMIN_IDS
+    game = game_data[chat_id]
     
-    if not is_bot_admin:
+    # Check permissions
+    can_stop = False
+    
+    # Bot admin
+    if user_id in ADMIN_IDS:
+        can_stop = True
+    
+    # Game host
+    if game["player_id"] == user_id:
+        can_stop = True
+    
+    # Group admin (only in groups)
+    if not can_stop and chat_type in ['group', 'supergroup']:
         try:
             chat_member = await context.bot.get_chat_member(chat_id, user_id)
             if chat_member.status in ['administrator', 'creator']:
-                is_group_admin = True
+                can_stop = True
         except:
             pass
     
-    if not is_group_admin and not is_bot_admin:
-        await update.message.reply_text("❌ Only group admins or bot admins can stop the game!")
+    if not can_stop:
+        await update.message.reply_text("❌ Only game host, group admin, or bot admin can stop the game!")
         return
     
-    target = game_data[chat_id]["number"]
-    attempts = game_data[chat_id]["attempts"]
-    host_name = game_data[chat_id]["player_name"]
+    target = game["number"]
+    attempts = game["attempts"]
+    host_name = game["player_name"]
     
     del game_data[chat_id]
     
@@ -5476,7 +5486,6 @@ async def ngstop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💡 Use /numguess to start a new game!",
         parse_mode="Markdown"
     )
-
 
 # ============ MAIN ============
 
