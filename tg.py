@@ -5714,18 +5714,18 @@ async def crops(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     msg = "🌾 CROP MARKET\n\n"
-    msg += "🥔 Potato      💰2,000 → 💰3,000   (5h)\n"
-    msg += "🥕 Carrot      💰4,000 → 💰6,000   (6h)\n"
-    msg += "🍅 Tomato      💰6,000 → 💰9,000   (12h)\n"
-    msg += "🌽 Corn        💰10,000 → 💰15,000 (24h)\n"
-    msg += "🌾 Wheat       💰14,000 → 💰21,000 (36h)\n"
-    msg += "🍓 Strawberry  💰16,000 → 💰24,000 (48h)\n"
-    msg += "🍉 Watermelon  💰20,000 → 💰30,000 (48h)\n"
-    msg += "🌿 Ganja       💰12,000 → 💰18,000 (24h)\n"
+    msg += "🥔 Potato 2k → 3k (5h)\n"
+    msg += "🥕 Carrot 4k → 6k (6h)\n"
+    msg += "🍅 Tomato 6k → 9k (12h)\n"
+    msg += "🌽 Corn 10k → 15k (24h)\n"
+    msg += "🌾 Wheat 14k → 21k (36h)\n"
+    msg += "🍓 Strawberry 16k → 24k (48h)\n"
+    msg += "🍉 Watermelon 20k → 30k (48h)\n"
+    msg += "🌿 Ganja 12k → 18k (24h)\n"
     
     global rain_percentage
     if rain_percentage > 0:
-        msg += f"\n🌧️ Rain Active: {rain_percentage}% faster for NEW crops!"
+        msg += f"\n🌧️ Rain: {rain_percentage}% faster"
     
     msg += "\n\n💡 /grow <crop> <quantity>"
     
