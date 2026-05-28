@@ -391,9 +391,16 @@ async def setpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    if not update.message.reply_to_message or not update.message.reply_to_message.photo:
+
+    # 🔥 CHECK - Reply to a message or not
+    if not update.message.reply_to_message:
         await update.message.reply_text('❌ Reply to a photo with /setpfp')
         return
+
+    if not update.message.reply_to_message.photo:
+        await update.message.reply_text('❌ Reply to a PHOTO with /setpfp')
+        return
+
     photo = update.message.reply_to_message.photo[-1].file_id
     conn = get_db()
     c = conn.cursor()
