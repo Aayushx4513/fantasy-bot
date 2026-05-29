@@ -6254,6 +6254,7 @@ def main():
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("mystats", mystats))
     app.add_handler(CallbackQueryHandler(stats_callback, pattern="^stats_"))
+    app.add_handler(CommandHandler("add_default_players", add_default_players))
 
     # Shop4
     app.add_handler(CommandHandler("shop4", shop4))
