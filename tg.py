@@ -1153,6 +1153,10 @@ async def add_default_players(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     await update.message.reply_text(f"✅ Added {len(players)} players to shop!")
 
+
+async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("✅ Bot is working!")
+
 # ============ MAIN ==========
 
 def main():
@@ -1163,6 +1167,7 @@ def main():
     app.add_handler(CommandHandler("help", help))
     app.add_handler(CommandHandler("profile", profile))
     app.add_handler(CommandHandler("setpfp", setpfp))
+    app.add_handler(CommandHandler("test", test))
     app.add_handler(CommandHandler("rmpfp", rmpfp))
     app.add_handler(CommandHandler("claim", claim))
     app.add_handler(CommandHandler("spin", spin))
