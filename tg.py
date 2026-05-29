@@ -5976,14 +5976,14 @@ async def farm_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = get_db()
     c = conn.cursor()
     
-    # Top farmers by total_grown
+    # Top 5 farmers by total_grown
     c.execute("""
         SELECT u.name, f.total_grown, f.total_earned, f.total_profit 
         FROM farms f 
         JOIN users u ON f.user_id = u.user_id 
         WHERE f.total_grown > 0 
         ORDER BY f.total_grown DESC 
-        LIMIT 10
+        LIMIT 5
     """)
     top_farmers = c.fetchall()
     
@@ -5999,29 +5999,28 @@ async def farm_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     
     msg = "🏆 TOP FARMERS 🏆\n\n"
-    msg += "┌─────┬────────────────────┬──────────┬──────────┐\n"
-    msg += "│ #   │ NAME               │ GROWN    │ PROFIT   │\n"
-    msg += "├─────┼────────────────────┼──────────┼──────────┤\n"
     
-    medals = ["👑", "🥈", "🥉"]
+    medals = ["👑", "🥈", "🥉", "4️⃣", "5️⃣"]
     
     for i, farmer in enumerate(top_farmers):
         name, grown, earned, profit = farmer
-        name_display = name[:18] if len(name) > 18 else name
-        medal = medals[i] if i < 3 else f"{i+1}."
-        
-        msg += f"│ {medal:<3} │ {name_display:<18} │ {grown:<7} │ {profit:<8} │\n"
-    
-    msg += "└─────┴────────────────────┴──────────┴──────────┘\n"
+        medal = medals[i] if i < len(medals) else f"{i+1}."
+        msg += f"{medal} {name}\n"
+        msg += f"   🌱 Crops grown: {grown}\n"
+        msg += f"   💰 Total earned: {earned}\n"
+        msg += f"   💎 Total profit: {profit}\n"
+        if i < len(top_farmers) - 1:
+            msg += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
     
     if user_stats and user_stats[0]:
         msg += f"\n📊 Your Rank: #{rank}\n"
-        msg += f"🌱 Total crops grown: {user_stats[0]:,}\n"
-        msg += f"💰 Total earned: {user_stats[1]:,}\n"
+        msg += f"🌱 Your crops: {user_stats[0]}\n"
+        msg += f"💎 Your profit: {user_stats[1]}"
     else:
         msg += f"\n📊 Your Rank: Not ranked yet!\n💡 /grow to start farming!"
     
     await update.message.reply_text(msg)
+
 
 # ============ FARM SYSTEM - PART 7 (HARVEST & SELL) ==========
 
