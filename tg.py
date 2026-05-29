@@ -1013,7 +1013,7 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     conn = get_db()
     c = conn.cursor()
-    c.execute("SELECT id, name, price FROM shop WHERE category=? AND type=?", (country, ptype))
+    c.execute("SELECT id, name, price FROM shop WHERE category=?", (country,))
     players = c.fetchall()
     conn.close()
     
