@@ -244,19 +244,6 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /history - Win/loss record\n"
         "• /top_fantasy - Fantasy points ranking\n\n"
         
-        "🌾 FARM SYSTEM\n"
-        "• /farm - Your farm status\n"
-        "• /crops - Crop prices & time\n"
-        "• /grow <crop> <qty> - Grow crops\n"
-        "• /harvest - Collect ready crops\n"
-        "• /sell <crop> <qty> - Sell crops\n"
-        "• /storage - Check storage space\n"
-        "• /upgrade_storage - Increase storage\n"
-        "• /hire - Hire workers (auto-grow)\n"
-        "• /workers - Your workers status\n"
-        "• /farm_leaderboard - Top farmers\n"
-        "• /rain - Admin only (time discount)\n\n"
-        
         "🏆 ACHIEVEMENTS\n"
         "• /achievements - Your badges\n\n"
         
@@ -285,7 +272,15 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /withdraw <amount> - Take from bank\n"
         "• /claim_interest - 5% daily\n\n"
         
+        "🎰 LOTTERY\n"
+        "• /lottery - Lottery menu\n"
+        "• /buy_ticket <qty> - Buy tickets (20k each)\n"
+        "• /mytickets - Your tickets\n"
+        "• /lottery_info - Lottery stats\n"
+        "• /claim_coupon <code> - Claim free tickets\n\n"
+        
         "🎮 GAMES\n"
+        "• /hilo <bet> - HiLo card game (0-10k bet)\n"
         "• /ttt [amount] - Tic Tac Toe\n"
         "• /mines <amount> <bombs> - Mines game\n"
         "• /CLcricket [amount] - Cricket game\n"
@@ -5309,7 +5304,13 @@ async def hilo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     args = context.args
     if len(args) < 1:
-        await update.message.reply_text("📈 HiLo Game\n\nUsage: /hilo <bet>\nExample: /hilo 500\n\nMin: 0 | Max: 10,000")
+        await update.message.reply_text(
+            "📈 HiLo Game\n\n"
+            "Usage: /hilo <bet>\n"
+            "Example: /hilo 500\n\n"
+            "💰 Min bet: 100\n"
+            "💰 Max bet: 10,000"
+        )
         return
     
     try:
@@ -5318,26 +5319,26 @@ async def hilo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Invalid bet amount!")
         return
     
-    if bet < 0 or bet > 10000:
-        await update.message.reply_text("❌ Bet must be between 0 and 10,000!")
+    if bet < 100 or bet > 10000:
+        await update.message.reply_text("❌ Bet must be between 100 and 10,000!")
         return
     
-    if bet > 0:
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-        balance = c.fetchone()[0]
-        conn.close()
-        
-        if balance < bet:
-            await update.message.reply_text(f"❌ Need {bet:,} credits! You have {balance:,}")
-            return
-        
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (bet, user_id))
-        conn.commit()
-        conn.close()
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    balance = c.fetchone()[0]
+    conn.close()
+    
+    if balance < bet:
+        await update.message.reply_text(f"❌ Need {bet:,} credits! You have {balance:,}")
+        return
+    
+    # Deduct bet
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (bet, user_id))
+    conn.commit()
+    conn.close()
     
     first_card = get_random_card()
     
@@ -5456,7 +5457,6 @@ async def hilo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await query.edit_message_text(msg)
         del hilo_games[user_id]
-
 
 # ============ MAIN ============
 
