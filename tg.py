@@ -5268,8 +5268,194 @@ async def claim_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Total tickets: {len(lottery_tickets[user_id])}"
     )
 
+# ============ HILO GAME ==========
 
+import random
 
+hilo_games = {}
+
+CARD_VALUES = {
+    'A': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10,
+    'J': 11, 'Q': 12, 'K': 13
+}
+
+SUITS = ['♠️', '♥️', '♣️', '♦️']
+
+def get_random_card():
+    value = random.choice(list(CARD_VALUES.keys()))
+    suit = random.choice(SUITS)
+    return {'value': value, 'suit': suit, 'rank': CARD_VALUES[value]}
+
+def get_multiplier_increase(diff):
+    if diff == 0:
+        return 0.50
+    elif diff == 1:
+        return 0.05
+    elif diff <= 3:
+        return 0.08
+    elif diff <= 6:
+        return 0.12
+    elif diff <= 9:
+        return 0.18
+    else:
+        return 0.25
+
+async def hilo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text("📈 HiLo Game\n\nUsage: /hilo <bet>\nExample: /hilo 500\n\nMin: 0 | Max: 10,000")
+        return
+    
+    try:
+        bet = int(args[0])
+    except:
+        await update.message.reply_text("❌ Invalid bet amount!")
+        return
+    
+    if bet < 0 or bet > 10000:
+        await update.message.reply_text("❌ Bet must be between 0 and 10,000!")
+        return
+    
+    if bet > 0:
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+        balance = c.fetchone()[0]
+        conn.close()
+        
+        if balance < bet:
+            await update.message.reply_text(f"❌ Need {bet:,} credits! You have {balance:,}")
+            return
+        
+        conn = get_db()
+        c = conn.cursor()
+        c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (bet, user_id))
+        conn.commit()
+        conn.close()
+    
+    first_card = get_random_card()
+    
+    hilo_games[user_id] = {
+        'bet': bet,
+        'multiplier': 1.0,
+        'current_card': first_card,
+        'logs': [first_card],
+        'active': True
+    }
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("🔼 HIGH", callback_data=f"hilo_high_{user_id}"),
+            InlineKeyboardButton("🔽 LOW", callback_data=f"hilo_low_{user_id}")
+        ],
+        [InlineKeyboardButton("💰 CASHOUT", callback_data=f"hilo_cashout_{user_id}")]
+    ]
+    
+    msg = f"📈 HiLo Game 📉\n\n"
+    msg += f"Bet amount: {bet:,} 💰\n"
+    msg += f"Multiplier: None\n\n"
+    msg += f"Your card: {first_card['suit']}{first_card['value']}\n"
+    
+    await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def hilo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    data = query.data
+    
+    if user_id not in hilo_games:
+        await query.edit_message_text("❌ No active game! Use /hilo")
+        return
+    
+    game = hilo_games[user_id]
+    
+    if data == f"hilo_cashout_{user_id}":
+        win_amount = int(game['bet'] * game['multiplier'])
+        
+        if win_amount > 0:
+            conn = get_db()
+            c = conn.cursor()
+            c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+            balance = c.fetchone()[0]
+            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (win_amount, user_id))
+            conn.commit()
+            conn.close()
+        
+        log_str = "".join([f"|{c['suit']}{c['value']}" for c in game['logs']])
+        
+        msg = f"📈 HiLo Game 📉\n\n"
+        msg += f"Bet amount: {game['bet']:,} 💰\n"
+        msg += f"Final Multiplier: {game['multiplier']:.3f}x\n"
+        msg += f"You won: {win_amount:,} 💰\n\n"
+        msg += f"Logs: {log_str}|"
+        
+        await query.edit_message_text(msg)
+        del hilo_games[user_id]
+        return
+    
+    # HIGH or LOW
+    guess = "high" if "high" in data else "low"
+    
+    new_card = get_random_card()
+    game['logs'].append(new_card)
+    
+    current_rank = game['current_card']['rank']
+    new_rank = new_card['rank']
+    
+    won = False
+    if guess == "high" and new_rank > current_rank:
+        won = True
+    elif guess == "low" and new_rank < current_rank:
+        won = True
+    elif new_rank == current_rank:
+        won = True
+    
+    if won:
+        diff = abs(new_rank - current_rank)
+        increase = get_multiplier_increase(diff)
+        game['multiplier'] += increase
+        game['current_card'] = new_card
+        
+        win_amount = int(game['bet'] * game['multiplier'])
+        log_str = "".join([f"|{c['suit']}{c['value']}" for c in game['logs']])
+        
+        msg = f"📈 HiLo Game 📉\n\n"
+        msg += f"Bet amount: {game['bet']:,} 💰\n"
+        msg += f"Multiplier: {game['multiplier']:.3f}x\n"
+        msg += f"Winning: {win_amount:,} 💰\n\n"
+        msg += f"✅ Card: {new_card['suit']}{new_card['value']} ({guess.upper()} won!)\n"
+        msg += f"Your card: {game['current_card']['suit']}{game['current_card']['value']}\n\n"
+        msg += f"Logs: {log_str}|\n"
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("🔼 HIGH", callback_data=f"hilo_high_{user_id}"),
+                InlineKeyboardButton("🔽 LOW", callback_data=f"hilo_low_{user_id}")
+            ],
+            [InlineKeyboardButton("💰 CASHOUT", callback_data=f"hilo_cashout_{user_id}")]
+        ]
+        
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        log_str = "".join([f"|{c['suit']}{c['value']}" for c in game['logs']])
+        
+        msg = f"📈 HiLo Game 📉\n\n"
+        msg += f"Bet amount: {game['bet']:,} 💰\n"
+        msg += f"Multiplier: 0x\n\n"
+        msg += f"❌ Game Over!\n"
+        msg += f"You bet {guess.upper()} on {new_card['suit']}{new_card['value']} and lost!\n\n"
+        msg += f"Logs: {log_str}|"
+        
+        await query.edit_message_text(msg)
+        del hilo_games[user_id]
 
 
 # ============ MAIN ============
@@ -5317,6 +5503,10 @@ def main():
     app.add_handler(CallbackQueryHandler(rps_join_callback, pattern="^rps_join_"))
     app.add_handler(CallbackQueryHandler(rps_move_callback, pattern="^rps_move_"))
     app.add_handler(CallbackQueryHandler(rps_none_callback, pattern="^rps_none"))
+    # Hilo Game
+    app.add_handler(CommandHandler("hilo", hilo))
+    app.add_handler(CallbackQueryHandler(hilo_callback, pattern="^hilo_"))
+
     # ============ LOTTERY COMMANDS ============
     app.add_handler(CommandHandler("lottery", lottery))
     app.add_handler(CommandHandler("buy_ticket", buy_ticket))
