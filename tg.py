@@ -12,7 +12,7 @@ import threading
 import json
 import time
 
-TOKEN = "8727838263:AAHJS6v-gDSecuSxfAsbWrcKWkb6wENYcXY"
+TOKEN = "8265192837:AAF_42Gi6nk2vYHPFhlr_hkqNGn2CrNUz3k"
 ADMIN_IDS = [7687078555, 1315564307]
 
 flask_app = Flask(__name__)
