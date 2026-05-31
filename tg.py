@@ -4924,48 +4924,50 @@ async def lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
     
     user_tickets = lottery_tickets.get(user_id, [])
-    status_text = "🟢 ACTIVE" if lottery_active else "🔴 NOT ACTIVE"
+    status_text = "ACTIVE" if lottery_active else "NOT ACTIVE"
     
-    keyboard = [
-        [InlineKeyboardButton("🎫 BUY 1 (20,000)", callback_data="lottery_buy_1")],
-        [InlineKeyboardButton("🎫 BUY 5 (100,000)", callback_data="lottery_buy_5")],
-        [InlineKeyboardButton("🎫 BUY 10 (200,000)", callback_data="lottery_buy_10")],
-        [InlineKeyboardButton("🎫 BUY 25 (500,000)", callback_data="lottery_buy_25")],
-        [InlineKeyboardButton("📋 MY TICKETS", callback_data="lottery_mytickets")],
-        [InlineKeyboardButton("ℹ️ INFO", callback_data="lottery_info")]
-    ]
+    msg = f"🎰 LOTTERY SYSTEM\n\n"
+    msg += f"💰 Balance: {balance:,}\n"
+    msg += f"🎫 Your tickets: {len(user_tickets)}\n"
+    msg += f"📊 Status: {status_text}\n\n"
+    msg += f"🎟️ Ticket price: 20,000 credits\n"
+    msg += f"🏆 Winner gets: ALL ticket money\n\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"📌 COMMANDS:\n"
+    msg += f"/buy_ticket <qty> - Buy tickets\n"
+    msg += f"/mytickets - Your tickets\n"
+    msg += f"/lottery_info - Lottery stats"
     
-    await update.message.reply_text(
-        f"🎰 LOTTERY SYSTEM\n\n"
-        f"💰 Balance: {balance:,}\n"
-        f"🎫 Your tickets: {len(user_tickets)}\n"
-        f"📊 Status: {status_text}\n\n"
-        f"🎟️ Ticket: 20,000 each\n"
-        f"🏆 Winner gets: ALL ticket money",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    await update.message.reply_text(msg)
 
-async def lottery_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+async def buy_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Buy lottery tickets"""
+    user_id = update.effective_user.id
     
-    user_id = query.from_user.id
-    data = query.data
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text("❌ Usage: /buy_ticket <quantity>\nExample: /buy_ticket 5")
+        return
+    
+    try:
+        quantity = int(args[0])
+    except:
+        await update.message.reply_text("❌ Invalid quantity!")
+        return
+    
+    if quantity < 1 or quantity > 100:
+        await update.message.reply_text("❌ Quantity must be 1-100")
+        return
     
     if not lottery_active:
-        await query.edit_message_text("❌ Lottery not active! Wait for admin.")
+        await update.message.reply_text("❌ Lottery not active! Wait for admin to start.")
         return
     
-    if data == "lottery_buy_1":
-        quantity, cost = 1, 20000
-    elif data == "lottery_buy_5":
-        quantity, cost = 5, 100000
-    elif data == "lottery_buy_10":
-        quantity, cost = 10, 200000
-    elif data == "lottery_buy_25":
-        quantity, cost = 25, 500000
-    else:
-        return
+    cost = quantity * 20000
     
     conn = get_db()
     c = conn.cursor()
@@ -4973,7 +4975,7 @@ async def lottery_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     balance = c.fetchone()[0]
     
     if balance < cost:
-        await query.edit_message_text(f"❌ Need {cost:,} credits! You have {balance:,}")
+        await update.message.reply_text(f"❌ Need {cost:,} credits! You have {balance:,}")
         conn.close()
         return
     
@@ -4983,7 +4985,8 @@ async def lottery_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     
     if user_id not in lottery_tickets:
         lottery_tickets[user_id] = []
-        lottery_participants.append(user_id)
+        if user_id not in lottery_participants:
+            lottery_participants.append(user_id)
     
     new_tickets = []
     for _ in range(quantity):
@@ -4994,66 +4997,70 @@ async def lottery_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     global lottery_total_tickets
     lottery_total_tickets += quantity
     
-    ticket_list = "\n".join([f"🎫 `{t}`" for t in new_tickets[:5]])
+    ticket_list = "\n".join([f"🎫 {t}" for t in new_tickets[:5]])
     if quantity > 5:
         ticket_list += f"\n... and {quantity-5} more"
     
-    await query.edit_message_text(
+    await update.message.reply_text(
         f"✅ BOUGHT {quantity} TICKETS!\n\n"
-        f"💰 Cost: {cost:,}\n"
+        f"💰 Cost: {cost:,} credits\n"
         f"🎫 Your tickets:\n{ticket_list}\n\n"
-        f"💡 /lottery - Buy more",
-        parse_mode='Markdown'
+        f"💡 /mytickets - Check all tickets"
     )
 
-async def lottery_mytickets_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+async def mytickets_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show user's tickets"""
+    user_id = update.effective_user.id
     
-    user_id = query.from_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
     user_tickets = lottery_tickets.get(user_id, [])
     
     if not user_tickets:
-        await query.edit_message_text("🎫 You don't have any tickets!\nUse /lottery to buy.")
+        await update.message.reply_text("🎫 You don't have any tickets!\nUse /buy_ticket to buy.")
         return
     
-    ticket_list = "\n".join([f"🎫 `{t}`" for t in user_tickets[:10]])
+    ticket_list = "\n".join([f"🎫 {t}" for t in user_tickets[:10]])
     if len(user_tickets) > 10:
         ticket_list += f"\n... and {len(user_tickets)-10} more"
     
-    await query.edit_message_text(
+    await update.message.reply_text(
         f"🎫 MY TICKETS\n\n"
         f"Total: {len(user_tickets)}\n"
         f"Spent: {len(user_tickets) * 20000:,}\n\n"
-        f"{ticket_list}",
-        parse_mode='Markdown'
+        f"{ticket_list}"
     )
 
-async def lottery_info_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+async def lottery_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show lottery info"""
+    user_id = update.effective_user.id
     
-    user_id = query.from_user.id
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
     user_tickets = lottery_tickets.get(user_id, [])
-    
     prize_pool = lottery_total_tickets * 20000
     win_chance = (len(user_tickets) / lottery_total_tickets * 100) if lottery_total_tickets > 0 else 0
     status_text = "🟢 ACTIVE" if lottery_active else "🔴 NOT ACTIVE"
     
-    await query.edit_message_text(
-        f"🎰 LOTTERY INFO\n\n"
-        f"Status: {status_text}\n"
-        f"Total tickets: {lottery_total_tickets}\n"
-        f"Participants: {len(lottery_participants)}\n"
-        f"Prize pool: {prize_pool:,}\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"YOUR STATS:\n"
-        f"Your tickets: {len(user_tickets)}\n"
-        f"Contribution: {len(user_tickets) * 20000:,}\n"
-        f"Win chance: {win_chance:.1f}%"
-    )
+    msg = f"🎰 LOTTERY INFO\n\n"
+    msg += f"Status: {status_text}\n"
+    msg += f"Total tickets: {lottery_total_tickets}\n"
+    msg += f"Participants: {len(lottery_participants)}\n"
+    msg += f"Prize pool: {prize_pool:,}\n\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"📊 YOUR STATS:\n"
+    msg += f"Your tickets: {len(user_tickets)}\n"
+    msg += f"Contribution: {len(user_tickets) * 20000:,}\n"
+    msg += f"Win chance: {win_chance:.1f}%"
+    
+    await update.message.reply_text(msg)
 
 async def start_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: Start lottery"""
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Admin only!")
         return
@@ -5072,13 +5079,15 @@ async def start_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         "✅ LOTTERY STARTED!\n\n"
-        "🎟️ Ticket: 20,000 credits\n"
+        "🎟️ Ticket price: 20,000 credits\n"
         "🏆 Winner gets: ALL prize pool\n"
-        "📢 Users: /lottery to buy tickets\n\n"
+        "📢 Users can buy tickets:\n"
+        "/buy_ticket <quantity>\n\n"
         "💡 /draw_winner - Draw winner"
     )
 
 async def draw_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: Draw lottery winner"""
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Admin only!")
         return
@@ -5129,12 +5138,13 @@ async def draw_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🏆 Winner: {winner_name}\n"
         f"🎫 Ticket: {winner_ticket}\n"
         f"💰 Prize: {prize_pool:,}\n\n"
-        f"💡 /reset_lottery - Start new"
+        f"💡 /reset_lottery - Start new lottery"
     )
     
     lottery_active = False
 
 async def reset_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: Reset lottery"""
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Admin only!")
         return
@@ -5150,6 +5160,7 @@ async def reset_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Lottery reset! Use /start_lottery to begin.")
 
 async def lottery_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin: Generate coupon code"""
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Admin only!")
         return
@@ -5176,13 +5187,13 @@ async def lottery_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         f"✅ COUPON GENERATED!\n\n"
-        f"🔑 Code: `{coupon_code}`\n"
+        f"🔑 Code: {coupon_code}\n"
         f"🎫 Free tickets: {quantity}\n\n"
-        f"Claim: /claim_coupon {coupon_code}",
-        parse_mode='Markdown'
+        f"Claim: /claim_coupon {coupon_code}"
     )
 
 async def claim_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """User: Claim coupon code"""
     user_id = update.effective_user.id
     
     if not is_registered(user_id):
@@ -5202,14 +5213,14 @@ async def claim_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     coupon = c.fetchone()
     
     if not coupon:
-        await update.message.reply_text("❌ Invalid coupon!")
+        await update.message.reply_text("❌ Invalid coupon code!")
         conn.close()
         return
     
     quantity, used = coupon
     
     if used >= quantity:
-        await update.message.reply_text("❌ Coupon already used!")
+        await update.message.reply_text("❌ This coupon has been fully used!")
         conn.close()
         return
     
@@ -5231,7 +5242,8 @@ async def claim_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if user_id not in lottery_tickets:
         lottery_tickets[user_id] = []
-        lottery_participants.append(user_id)
+        if user_id not in lottery_participants:
+            lottery_participants.append(user_id)
     
     new_tickets = []
     for _ in range(quantity):
@@ -5242,15 +5254,15 @@ async def claim_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global lottery_total_tickets
     lottery_total_tickets += quantity
     
-    ticket_list = "\n".join([f"🎫 `{t}`" for t in new_tickets])
+    ticket_list = "\n".join([f"🎫 {t}" for t in new_tickets])
     
     await update.message.reply_text(
         f"✅ COUPON CLAIMED!\n\n"
         f"🎫 Free tickets: {quantity}\n"
         f"{ticket_list}\n\n"
-        f"Total tickets: {len(lottery_tickets[user_id])}",
-        parse_mode='Markdown'
+        f"Total tickets: {len(lottery_tickets[user_id])}"
     )
+
 
 
 
@@ -5287,19 +5299,6 @@ def main():
     app.add_handler(CommandHandler("numguess", numguess))
     app.add_handler(CommandHandler("ng", ng))
     app.add_handler(CommandHandler("ngstop", ngstop))
-# Lottery commands
-    app.add_handler(CommandHandler("lottery", lottery))
-    app.add_handler(CommandHandler("mytickets", lottery_mytickets_callback))  # Optional direct command
-    app.add_handler(CommandHandler("start_lottery", start_lottery))
-    app.add_handler(CommandHandler("draw_winner", draw_winner))
-    app.add_handler(CommandHandler("reset_lottery", reset_lottery))
-    app.add_handler(CommandHandler("lottery_coupon", lottery_coupon))
-    app.add_handler(CommandHandler("claim_coupon", claim_coupon))
-
-# Lottery callbacks
-    app.add_handler(CallbackQueryHandler(lottery_buy_callback, pattern="^lottery_buy_"))
-    app.add_handler(CallbackQueryHandler(lottery_mytickets_callback, pattern="^lottery_mytickets"))
-    app.add_handler(CallbackQueryHandler(lottery_info_callback, pattern="^lottery_info"))
 
     # Shop commands
     app.add_handler(CommandHandler("shop", shop))
@@ -5313,6 +5312,18 @@ def main():
     app.add_handler(CallbackQueryHandler(rps_join_callback, pattern="^rps_join_"))
     app.add_handler(CallbackQueryHandler(rps_move_callback, pattern="^rps_move_"))
     app.add_handler(CallbackQueryHandler(rps_none_callback, pattern="^rps_none"))
+    # ============ LOTTERY COMMANDS ============
+    app.add_handler(CommandHandler("lottery", lottery))
+    app.add_handler(CommandHandler("buy_ticket", buy_ticket))
+    app.add_handler(CommandHandler("mytickets", mytickets_command))
+    app.add_handler(CommandHandler("lottery_info", lottery_info_command))
+
+# ============ LOTTERY ADMIN COMMANDS ============
+    app.add_handler(CommandHandler("start_lottery", start_lottery))
+    app.add_handler(CommandHandler("draw_winner", draw_winner))
+    app.add_handler(CommandHandler("reset_lottery", reset_lottery))
+    app.add_handler(CommandHandler("lottery_coupon", lottery_coupon))
+    app.add_handler(CommandHandler("claim_coupon", claim_coupon))
 
     # Numpuz Game
     app.add_handler(CommandHandler("numpuz", numpuz))
