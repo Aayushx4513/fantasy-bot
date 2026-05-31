@@ -12,7 +12,7 @@ import threading
 import json
 import time
 
-TOKEN = "8265192837:AAHsPddjDoRWuf-6Ht8iELdHDopkTBoOPhs"
+TOKEN = "7797951219:AAEIYTjmivQD5lpQUm3HYVR_ogkDPiHwj6Q"
 ADMIN_IDS = [7687078555, 1315564307]
 
 flask_app = Flask(__name__)
@@ -4630,1228 +4630,6 @@ async def ngstop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     )
 
-# ============ FARM SYSTEM - PART 1 (DATA) ==========
-
-import json
-import threading
-import time
-from datetime import datetime, timedelta
-from collections import Counter
-
-# ============ CROP DATA ============
-CROPS = {
-    "potato": {"name": "🥔 Potato", "price": 2000, "sell": 3000, "time": 300, "emoji": "🥔"},
-    "carrot": {"name": "🥕 Carrot", "price": 4000, "sell": 6000, "time": 360, "emoji": "🥕"},
-    "tomato": {"name": "🍅 Tomato", "price": 6000, "sell": 9000, "time": 720, "emoji": "🍅"},
-    "corn": {"name": "🌽 Corn", "price": 10000, "sell": 15000, "time": 1440, "emoji": "🌽"},
-    "wheat": {"name": "🌾 Wheat", "price": 14000, "sell": 21000, "time": 2160, "emoji": "🌾"},
-    "strawberry": {"name": "🍓 Strawberry", "price": 16000, "sell": 24000, "time": 2880, "emoji": "🍓"},
-    "watermelon": {"name": "🍉 Watermelon", "price": 20000, "sell": 30000, "time": 2880, "emoji": "🍉"},
-    "ganja": {"name": "🌿 Ganja", "price": 12000, "sell": 18000, "time": 1440, "emoji": "🌿"},
-}
-
-# ============ STORAGE LEVELS ============
-STORAGE_LEVELS = {
-    1: {"slots": 50, "next_cost": 100000, "next_slots": 70},
-    2: {"slots": 70, "next_cost": 150000, "next_slots": 95},
-    3: {"slots": 95, "next_cost": 200000, "next_slots": 125},
-    4: {"slots": 125, "next_cost": 300000, "next_slots": 160},
-    5: {"slots": 160, "next_cost": 400000, "next_slots": 200},
-    6: {"slots": 200, "next_cost": 500000, "next_slots": 245},
-    7: {"slots": 245, "next_cost": 750000, "next_slots": 295},
-    8: {"slots": 295, "next_cost": 1000000, "next_slots": 350},
-    9: {"slots": 350, "next_cost": 1500000, "next_slots": 410},
-    10: {"slots": 410, "next_cost": 0, "next_slots": 410},
-}
-
-
-# ============ WORKER DATA ============
-WORKERS = {
-    "potato": {"name": "🥔 Potato Worker", "price": 16000, "time": 180, "emoji": "🥔"},
-    "carrot": {"name": "🥕 Carrot Worker", "price": 32000, "time": 360, "emoji": "🥕"},
-    "tomato": {"name": "🍅 Tomato Worker", "price": 48000, "time": 720, "emoji": "🍅"},
-    "corn": {"name": "🌽 Corn Worker", "price": 80000, "time": 1440, "emoji": "🌽"},
-    "wheat": {"name": "🌾 Wheat Worker", "price": 112000, "time": 2160, "emoji": "🌾"},
-    "strawberry": {"name": "🍓 Strawberry Worker", "price": 128000, "time": 2880, "emoji": "🍓"},
-    "watermelon": {"name": "🍉 Watermelon Worker", "price": 160000, "time": 2880, "emoji": "🍉"},
-    "ganja": {"name": "🌿 Ganja Worker", "price": 96000, "time": 1440, "emoji": "🌿"},
-}
-
-# ============ GLOBAL VARIABLES ============
-rain_percentage = 0
-last_grow = {}
-
-
-# ============ HELPER FUNCTIONS ============
-def format_time(minutes):
-    if minutes < 60:
-        return f"{minutes}m"
-    hours = minutes // 60
-    mins = minutes % 60
-    if mins == 0:
-        return f"{hours}h"
-    return f"{hours}h {mins}m"
-
-def get_grow_time(crop_time):
-    global rain_percentage
-    if rain_percentage > 0:
-        reduced = crop_time - (crop_time * rain_percentage / 100)
-        return int(max(1, reduced))
-    return crop_time
-
-def get_total_slots(level):
-    return STORAGE_LEVELS.get(level, {"slots": 50})["slots"]
-
-# ============ FARM SYSTEM - PART 2 (DATABASE) ==========
-
-def init_farm_db():
-    conn = get_db()
-    c = conn.cursor()
-    
-    # Farms table (manual growing)
-    c.execute('''CREATE TABLE IF NOT EXISTS farms
-                 (user_id INTEGER PRIMARY KEY,
-                  crops TEXT DEFAULT '[]',
-                  harvested TEXT DEFAULT '[]',
-                  total_grown INTEGER DEFAULT 0,
-                  total_earned INTEGER DEFAULT 0,
-                  total_profit INTEGER DEFAULT 0)''')
-    
-    # User storage table (auto-grown by workers + stored crops)
-    c.execute('''CREATE TABLE IF NOT EXISTS user_storage
-                 (user_id INTEGER PRIMARY KEY,
-                  level INTEGER DEFAULT 1,
-                  crops TEXT DEFAULT '{}',
-                  workers TEXT DEFAULT '[]')''')
-    
-    conn.commit()
-    conn.close()
-
-init_farm_db()
-
-# ============ FARM SYSTEM - PART 3 (CROPS) ==========
-
-async def crops(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    msg = "🌾 CROP MARKET\n\n"
-    msg += "🥔 Potato 2k → 3k (5h)\n"
-    msg += "🥕 Carrot 4k → 6k (6h)\n"
-    msg += "🍅 Tomato 6k → 9k (12h)\n"
-    msg += "🌽 Corn 10k → 15k (24h)\n"
-    msg += "🌾 Wheat 14k → 21k (36h)\n"
-    msg += "🍓 Strawberry 16k → 24k (48h)\n"
-    msg += "🍉 Watermelon 20k → 30k (48h)\n"
-    msg += "🌿 Ganja 12k → 18k (24h)\n"
-    
-    global rain_percentage
-    if rain_percentage > 0:
-        msg += f"\n🌧️ Rain: {rain_percentage}% faster"
-    
-    msg += "\n\n💡 /grow <crop> <quantity>"
-    
-    await update.message.reply_text(msg)
-
-# ============ FARM SYSTEM - PART 4 (GROW) ==========
-
-async def grow(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    args = context.args
-    if len(args) < 2:
-        await update.message.reply_text("❌ Usage: /grow <crop> <quantity>\nExample: /grow potato 5")
-        return
-    
-    crop_name = args[0].lower()
-    try:
-        quantity = int(args[1])
-    except:
-        await update.message.reply_text("❌ Invalid quantity!")
-        return
-    
-    if crop_name not in CROPS:
-        await update.message.reply_text(f"❌ Unknown crop! Use /crops")
-        return
-    
-    if quantity < 1 or quantity > 100:
-        await update.message.reply_text("❌ Quantity must be between 1 and 100!")
-        return
-    
-    crop = CROPS[crop_name]
-    total_cost = crop['price'] * quantity
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-    balance = c.fetchone()[0]
-    
-    if balance < total_cost:
-        await update.message.reply_text(f"❌ Need {total_cost:,} credits!\n💰 Have: {balance:,}")
-        conn.close()
-        return
-    
-    # Storage check
-    c.execute("SELECT level, crops FROM user_storage WHERE user_id=?", (user_id,))
-    storage_result = c.fetchone()
-    
-    if storage_result:
-        level = storage_result[0]
-        crops_stored = json.loads(storage_result[1]) if storage_result[1] else {}
-    else:
-        level = 1
-        crops_stored = {}
-    
-    # Get currently growing crops count
-    c.execute("SELECT crops FROM farms WHERE user_id=?", (user_id,))
-    farm_result = c.fetchone()
-    growing_count = 0
-    if farm_result and farm_result[0]:
-        growing_crops = json.loads(farm_result[0])
-        growing_count = len(growing_crops)
-    
-    total_slots = get_total_slots(level)
-    stored_count = sum(crops_stored.values())
-    used_slots = stored_count + growing_count
-    free_slots = total_slots - used_slots
-    
-    if quantity > free_slots:
-        await update.message.reply_text(
-            f"❌ NOT ENOUGH STORAGE!\n\n"
-            f"Need: {quantity} slots\n"
-            f"📦 Stored: {stored_count} | 🌱 Growing: {growing_count}\n"
-            f"🟢 Free: {free_slots}/{total_slots} slots\n\n"
-            f"💡 /upgrade_storage to increase capacity\n"
-            f"💡 /sell to free up space"
-        )
-        conn.close()
-        return
-    
-    # Deduct cost
-    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (total_cost, user_id))
-    
-    # Get farm data
-    c.execute("SELECT crops, harvested, total_grown, total_earned, total_profit FROM farms WHERE user_id=?", (user_id,))
-    farm = c.fetchone()
-    
-    if farm:
-        crops_data = json.loads(farm[0]) if farm[0] else []
-        harvested_data = json.loads(farm[1]) if farm[1] else []
-        total_grown = farm[2] or 0
-        total_earned = farm[3] or 0
-        total_profit = farm[4] or 0
-    else:
-        crops_data = []
-        harvested_data = []
-        total_grown = 0
-        total_earned = 0
-        total_profit = 0
-    
-    now = datetime.now()
-    grow_time = get_grow_time(crop['time'])
-    
-    for i in range(quantity):
-        crops_data.append({
-            "crop": crop_name,
-            "planted": now.isoformat(),
-            "ready_time": (now + timedelta(minutes=grow_time)).isoformat()
-        })
-    
-    c.execute("INSERT OR REPLACE INTO farms (user_id, crops, harvested, total_grown, total_earned, total_profit) VALUES (?, ?, ?, ?, ?, ?)",
-              (user_id, json.dumps(crops_data), json.dumps(harvested_data), total_grown + quantity, total_earned, total_profit))
-    conn.commit()
-    conn.close()
-    
-    await update.message.reply_text(
-        f"🌱 GROWING {crop['emoji']} {crop['name']} x{quantity}\n\n"
-        f"💰 Cost: {total_cost:,} credits deducted\n"
-        f"⏰ Ready in: {format_time(grow_time)}\n"
-        f"📦 Storage: {used_slots}/{total_slots} → {used_slots + quantity}/{total_slots}\n"
-        f"💡 /farm - Check status\n"
-        f"💡 /harvest - When ready"
-    )
-
-# ============ FARM SYSTEM - PART 5 (FARM) ==========
-
-async def farm(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-    balance = c.fetchone()[0]
-    
-    c.execute("SELECT crops, harvested FROM farms WHERE user_id=?", (user_id,))
-    farm = c.fetchone()
-    
-    c.execute("SELECT level, crops, workers FROM user_storage WHERE user_id=?", (user_id,))
-    storage = c.fetchone()
-    conn.close()
-    
-    crops_data = json.loads(farm[0]) if farm and farm[0] else []
-    harvested_data = json.loads(farm[1]) if farm and farm[1] else []
-    
-    storage_crops = json.loads(storage[1]) if storage and storage[1] else {}
-    workers_list = json.loads(storage[2]) if storage and storage[2] else []
-    level = storage[0] if storage else 1
-    
-    now = datetime.now()
-    growing = []
-    ready = []
-    
-    for crop in crops_data:
-        ready_time = datetime.fromisoformat(crop['ready_time'])
-        crop_info = CROPS[crop['crop']]
-        if now >= ready_time:
-            ready.append(crop)
-        else:
-            remaining = (ready_time - now).total_seconds() / 60
-            growing.append((crop_info, remaining))
-    
-    total_slots = get_total_slots(level)
-    stored_count = sum(storage_crops.values())
-    used_slots = stored_count + len(crops_data)
-    
-    msg = f"🌾 YOUR FARM\n\n💰 Wallet: {balance:,} credits\n"
-    msg += f"📦 Storage: {used_slots}/{total_slots} ({total_slots - used_slots} free)\n"
-    
-    global rain_percentage
-    if rain_percentage > 0:
-        msg += f"🌧️ Rain: {rain_percentage}% faster for NEW crops\n"
-    
-    msg += "\n"
-    
-    if storage_crops:
-        msg += "🤖 STORAGE (Ready to Sell):\n"
-        for crop_name, count in storage_crops.items():
-            crop = CROPS.get(crop_name)
-            if crop:
-                msg += f"   {crop['emoji']} {crop['name']} x{count}\n"
-        msg += "\n💡 /sell <crop> <quantity> to sell\n\n"
-    
-    if growing:
-        msg += "🌿 GROWING:\n"
-        for crop_info, remaining in growing[:5]:
-            msg += f"   {crop_info['emoji']} {crop_info['name']} → Ready in: {format_time(int(remaining))}\n"
-        if len(growing) > 5:
-            msg += f"   +{len(growing)-5} more\n"
-        msg += "\n"
-    
-    if ready:
-        msg += "🌾 READY TO HARVEST:\n"
-        ready_count = {}
-        for crop in ready:
-            crop_name = crop['crop']
-            ready_count[crop_name] = ready_count.get(crop_name, 0) + 1
-        for crop_name, count in ready_count.items():
-            crop_info = CROPS[crop_name]
-            msg += f"   {crop_info['emoji']} {crop_info['name']} x{count} → READY!\n"
-        msg += "\n💡 /harvest - Collect ready crops\n"
-    
-    if harvested_data:
-        msg += "📦 HARVESTED:\n"
-        harvest_count = {}
-        for crop in harvested_data:
-            crop_name = crop['crop']
-            harvest_count[crop_name] = harvest_count.get(crop_name, 0) + 1
-        for crop_name, count in list(harvest_count.items())[:5]:
-            crop_info = CROPS[crop_name]
-            msg += f"   {crop_info['emoji']} {crop_info['name']} x{count}\n"
-        msg += "\n💡 /sell <crop> <quantity> to sell\n"
-    
-    if workers_list:
-        worker_counts = Counter(workers_list)
-        msg += "\n👨‍🌾 YOUR WORKERS:\n"
-        for worker_key, count in worker_counts.items():
-            worker = WORKERS.get(worker_key)
-            if worker:
-                msg += f"   {worker['emoji']} {worker['name']} x{count}\n"
-        msg += "\n💡 /workers - Check auto-grow status\n"
-    
-    if not growing and not ready and not harvested_data and not storage_crops:
-        msg += "🌱 Empty farm!\n💡 /grow <crop> <quantity> to start!\n💡 /hire to hire workers!"
-    
-    await update.message.reply_text(msg)
-
-# ============ FARM SYSTEM - PART 6 (LEADERBOARD) ==========
-
-async def farm_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    
-    # Top 5 farmers by total_grown
-    c.execute("""
-        SELECT u.name, f.total_grown, f.total_earned, f.total_profit 
-        FROM farms f 
-        JOIN users u ON f.user_id = u.user_id 
-        WHERE f.total_grown > 0 
-        ORDER BY f.total_grown DESC 
-        LIMIT 5
-    """)
-    top_farmers = c.fetchall()
-    
-    # Get user's rank
-    c.execute("""
-        SELECT COUNT(*) + 1 FROM farms WHERE total_grown > (SELECT total_grown FROM farms WHERE user_id=?)
-    """, (user_id,))
-    rank = c.fetchone()[0]
-    
-    # Get user's stats
-    c.execute("SELECT total_grown, total_profit FROM farms WHERE user_id=?", (user_id,))
-    user_stats = c.fetchone()
-    conn.close()
-    
-    msg = "🏆 TOP FARMERS 🏆\n\n"
-    
-    medals = ["👑", "🥈", "🥉", "4️⃣", "5️⃣"]
-    
-    for i, farmer in enumerate(top_farmers):
-        name, grown, earned, profit = farmer
-        medal = medals[i] if i < len(medals) else f"{i+1}."
-        msg += f"{medal} {name}\n"
-        msg += f"   🌱 Crops grown: {grown}\n"
-        msg += f"   💰 Total earned: {earned}\n"
-        msg += f"   💎 Total profit: {profit}\n"
-        if i < len(top_farmers) - 1:
-            msg += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-    
-    if user_stats and user_stats[0]:
-        msg += f"\n📊 Your Rank: #{rank}\n"
-        msg += f"🌱 Your crops: {user_stats[0]}\n"
-        msg += f"💎 Your profit: {user_stats[1]}"
-    else:
-        msg += f"\n📊 Your Rank: Not ranked yet!\n💡 /grow to start farming!"
-    
-    await update.message.reply_text(msg)
-
-
-# ============ FARM SYSTEM - PART 7 (HARVEST & SELL) ==========
-
-async def harvest(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT crops, harvested FROM farms WHERE user_id=?", (user_id,))
-    farm = c.fetchone()
-    
-    if not farm:
-        await update.message.reply_text("🌱 No crops to harvest!")
-        conn.close()
-        return
-    
-    crops_data = json.loads(farm[0]) if farm[0] else []
-    harvested_data = json.loads(farm[1]) if farm[1] else []
-    
-    now = datetime.now()
-    ready_crops = []
-    still_growing = []
-    
-    for crop in crops_data:
-        ready_time = datetime.fromisoformat(crop['ready_time'])
-        if now >= ready_time:
-            ready_crops.append(crop)
-        else:
-            still_growing.append(crop)
-    
-    if not ready_crops:
-        await update.message.reply_text("🌱 No crops ready to harvest yet!\n💡 /farm to check status")
-        conn.close()
-        return
-    
-    harvested_data.extend(ready_crops)
-    
-    c.execute("UPDATE farms SET crops = ?, harvested = ? WHERE user_id=?", 
-              (json.dumps(still_growing), json.dumps(harvested_data), user_id))
-    conn.commit()
-    conn.close()
-    
-    harvest_count = {}
-    for crop in ready_crops:
-        crop_name = crop['crop']
-        harvest_count[crop_name] = harvest_count.get(crop_name, 0) + 1
-    
-    msg = "🌾 HARVESTED!\n\n"
-    for crop_name, count in harvest_count.items():
-        crop_info = CROPS[crop_name]
-        msg += f"✅ {crop_info['emoji']} {crop_info['name']} x{count}\n"
-    msg += f"\n📦 Added to inventory!\n💡 /sell <crop> <quantity> to sell"
-    
-    await update.message.reply_text(msg)
-
-
-async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    args = context.args
-    if len(args) < 2:
-        await update.message.reply_text("❌ Usage: /sell <crop> <quantity>\nExample: /sell potato 5")
-        return
-    
-    crop_name = args[0].lower()
-    try:
-        quantity = int(args[1])
-    except:
-        await update.message.reply_text("❌ Invalid quantity!")
-        return
-    
-    if crop_name not in CROPS:
-        await update.message.reply_text(f"❌ Unknown crop!")
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    crop_info = CROPS[crop_name]
-    sell_price = crop_info['sell'] * quantity
-    
-    # Check storage first (auto-grown crops)
-    c.execute("SELECT crops FROM user_storage WHERE user_id=?", (user_id,))
-    storage_result = c.fetchone()
-    
-    if storage_result:
-        storage_crops = json.loads(storage_result[0]) if storage_result[0] else {}
-        available_in_storage = storage_crops.get(crop_name, 0)
-        
-        if available_in_storage >= quantity:
-            # Sell from storage
-            storage_crops[crop_name] = available_in_storage - quantity
-            if storage_crops[crop_name] <= 0:
-                del storage_crops[crop_name]
-            
-            c.execute("UPDATE user_storage SET crops = ? WHERE user_id=?", (json.dumps(storage_crops), user_id))
-            
-            c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-            current_bal = c.fetchone()[0]
-            c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (sell_price, user_id))
-            
-            # Update farm stats
-            c.execute("SELECT total_earned, total_profit FROM farms WHERE user_id=?", (user_id,))
-            stats = c.fetchone()
-            if stats:
-                total_earned = (stats[0] or 0) + sell_price
-                total_profit = (stats[1] or 0) + (sell_price - (crop_info['price'] * quantity))
-                c.execute("UPDATE farms SET total_earned = ?, total_profit = ? WHERE user_id=?", 
-                         (total_earned, total_profit, user_id))
-            
-            conn.commit()
-            conn.close()
-            
-            await update.message.reply_text(
-                f"💰 SOLD FROM STORAGE!\n\n"
-                f"{crop_info['emoji']} {crop_info['name']} x{quantity}\n"
-                f"💵 Price: {crop_info['sell']:,} each\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"💰 Total: {sell_price:,} credits\n"
-                f"💳 New balance: {current_bal + sell_price:,}"
-            )
-            return
-    
-    # If not in storage, check harvested (manual)
-    c.execute("SELECT harvested FROM farms WHERE user_id=?", (user_id,))
-    farm = c.fetchone()
-    
-    if not farm:
-        await update.message.reply_text("📦 No crops to sell!")
-        conn.close()
-        return
-    
-    harvested_data = json.loads(farm[0]) if farm[0] else []
-    
-    available = 0
-    for crop in harvested_data:
-        if crop['crop'] == crop_name:
-            available += 1
-    
-    if available < quantity:
-        await update.message.reply_text(f"❌ You have only {available} {crop_info['emoji']} {crop_info['name']}!")
-        conn.close()
-        return
-    
-    sold_count = 0
-    new_harvested = []
-    for crop in harvested_data:
-        if crop['crop'] == crop_name and sold_count < quantity:
-            sold_count += 1
-        else:
-            new_harvested.append(crop)
-    
-    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-    current_bal = c.fetchone()[0]
-    c.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (sell_price, user_id))
-    
-    c.execute("SELECT total_earned, total_profit FROM farms WHERE user_id=?", (user_id,))
-    stats = c.fetchone()
-    if stats:
-        total_earned = (stats[0] or 0) + sell_price
-        total_profit = (stats[1] or 0) + (sell_price - (crop_info['price'] * quantity))
-    else:
-        total_earned = sell_price
-        total_profit = sell_price - (crop_info['price'] * quantity)
-    
-    c.execute("UPDATE farms SET harvested = ?, total_earned = ?, total_profit = ? WHERE user_id=?",
-              (json.dumps(new_harvested), total_earned, total_profit, user_id))
-    conn.commit()
-    conn.close()
-    
-    await update.message.reply_text(
-        f"💰 SOLD FROM HARVEST!\n\n"
-        f"{crop_info['emoji']} {crop_info['name']} x{quantity}\n"
-        f"💵 Price: {crop_info['sell']:,} each\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"💰 Total: {sell_price:,} credits\n"
-        f"💎 Profit: {(sell_price - (crop_info['price'] * quantity)):,} credits\n\n"
-        f"💳 New balance: {current_bal + sell_price:,}"
-    )
-
-# ============ FARM SYSTEM - PART 8 (STORAGE & UPGRADE) ==========
-
-async def storage(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    
-    # Get storage data
-    c.execute("SELECT level, crops, workers FROM user_storage WHERE user_id=?", (user_id,))
-    result = c.fetchone()
-    
-    if result:
-        level = result[0]
-        crops_stored = json.loads(result[1]) if result[1] else {}
-        workers = json.loads(result[2]) if result[2] else []
-    else:
-        level = 1
-        crops_stored = {}
-        workers = []
-    
-    # 🔥 GET GROWING CROPS COUNT
-    c.execute("SELECT crops FROM farms WHERE user_id=?", (user_id,))
-    farm_result = c.fetchone()
-    growing_count = 0
-    if farm_result and farm_result[0]:
-        growing_crops = json.loads(farm_result[0])
-        growing_count = len(growing_crops)
-    
-    conn.close()
-    
-    total_slots = get_total_slots(level)
-    stored_count = sum(crops_stored.values())
-    used_slots = stored_count + growing_count
-    free_slots = total_slots - used_slots
-    
-    next_level = level + 1
-    if next_level in STORAGE_LEVELS:
-        next_slots = STORAGE_LEVELS[next_level]["next_slots"]
-        next_cost = STORAGE_LEVELS[level]["next_cost"]
-        upgrade_text = f"📈 NEXT UPGRADE:\nLevel {next_level} → {next_slots} slots (+{next_slots - total_slots})\n💰 Cost: {next_cost:,} credits"
-    else:
-        upgrade_text = "🏆 MAX LEVEL REACHED!"
-    
-    crops_text = ""
-    for crop_name, count in crops_stored.items():
-        crop = CROPS.get(crop_name)
-        if crop:
-            crops_text += f"{crop['emoji']} {crop['name']} x{count}\n"
-    
-    if not crops_text:
-        crops_text = "🌱 No crops stored\n"
-    
-    status = "🟢 FREE" if free_slots > 0 else "🔴 FULL"
-    
-    await update.message.reply_text(
-        f"📦 YOUR STORAGE\n\n"
-        f"Level: {level}\n"
-        f"Slots: {used_slots}/{total_slots} ({status})\n"
-        f"├─ 📦 Stored: {stored_count}\n"
-        f"└─ 🌱 Growing: {growing_count}\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"{upgrade_text}\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"🌾 Crops stored:\n{crops_text}\n"
-        f"💡 /upgrade_storage - To upgrade"
-    )
-
-# ============ STORAGE UPGRADE WITH BUTTONS ==========
-
-async def upgrade_storage(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT level, crops FROM user_storage WHERE user_id=?", (user_id,))
-    result = c.fetchone()
-    
-    if result:
-        level = result[0]
-        crops = json.loads(result[1]) if result[1] else {}
-    else:
-        level = 1
-        crops = {}
-    
-    if level not in STORAGE_LEVELS or STORAGE_LEVELS[level]["next_cost"] == 0:
-        await update.message.reply_text("🏆 You have reached MAX storage level!")
-        conn.close()
-        return
-    
-    next_cost = STORAGE_LEVELS[level]["next_cost"]
-    next_slots = STORAGE_LEVELS[level]["next_slots"]
-    current_slots = get_total_slots(level)
-    
-    # Get growing crops count
-    c.execute("SELECT crops FROM farms WHERE user_id=?", (user_id,))
-    farm_result = c.fetchone()
-    growing_count = 0
-    if farm_result and farm_result[0]:
-        growing_crops = json.loads(farm_result[0])
-        growing_count = len(growing_crops)
-    
-    stored_count = sum(crops.values())
-    used_slots = stored_count + growing_count
-    free_slots = current_slots - used_slots
-    
-    conn.close()
-    
-    # Create buttons
-    keyboard = [
-        [
-            InlineKeyboardButton("✅ CONFIRM", callback_data=f"storage_confirm_{user_id}"),
-            InlineKeyboardButton("❌ CANCEL", callback_data="storage_cancel")
-        ]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(
-        f"📦 UPGRADE STORAGE\n\n"
-        f"Current Level: {level} ({current_slots} slots)\n"
-        f"Current Used: {used_slots}/{current_slots} (Free: {free_slots})\n"
-        f"Next Level: {level + 1} ({next_slots} slots)\n"
-        f"💰 Cost: {next_cost:,} credits\n\n"
-        f"⚠️ Confirm upgrade?",
-        reply_markup=reply_markup
-    )
-
-
-async def storage_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    user_id = update.effective_user.id
-    data = query.data
-    
-    if data == "storage_cancel":
-        await query.edit_message_text("❌ Upgrade cancelled!")
-        return
-    
-    if data.startswith("storage_confirm_"):
-        target_id = int(data.split("_")[2])
-        
-        if user_id != target_id:
-            await query.answer("Not your upgrade!", show_alert=True)
-            return
-        
-        conn = get_db()
-        c = conn.cursor()
-        
-        # Get current storage
-        c.execute("SELECT level, crops FROM user_storage WHERE user_id=?", (user_id,))
-        result = c.fetchone()
-        
-        if result:
-            level = result[0]
-            crops = json.loads(result[1]) if result[1] else {}
-        else:
-            level = 1
-            crops = {}
-        
-        if level not in STORAGE_LEVELS or STORAGE_LEVELS[level]["next_cost"] == 0:
-            await query.edit_message_text("🏆 Max level already reached!")
-            conn.close()
-            return
-        
-        current_slots = get_total_slots(level)
-        next_cost = STORAGE_LEVELS[level]["next_cost"]
-        next_slots = STORAGE_LEVELS[level]["next_slots"]
-        
-        # Check balance
-        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-        balance = c.fetchone()[0]
-        
-        if balance < next_cost:
-            await query.edit_message_text(f"❌ Need {next_cost:,} credits to upgrade!\n💰 Have: {balance:,}")
-            conn.close()
-            return
-        
-        # Process upgrade
-        c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (next_cost, user_id))
-        
-        new_level = level + 1
-        c.execute("INSERT OR REPLACE INTO user_storage (user_id, level, crops, workers) VALUES (?, ?, ?, ?)",
-                  (user_id, new_level, json.dumps(crops), json.dumps([])))
-        
-        conn.commit()
-        conn.close()
-        
-        new_slots = get_total_slots(new_level)
-        
-        # Get growing crops count
-        conn2 = get_db()
-        c2 = conn2.cursor()
-        c2.execute("SELECT crops FROM farms WHERE user_id=?", (user_id,))
-        farm_result = c2.fetchone()
-        growing_count = 0
-        if farm_result and farm_result[0]:
-            growing_crops = json.loads(farm_result[0])
-            growing_count = len(growing_crops)
-        conn2.close()
-        
-        stored_count = sum(crops.values())
-        used_slots = stored_count + growing_count
-        
-        await query.edit_message_text(
-            f"✅ STORAGE UPGRADED!\n\n"
-            f"Level: {level} → {new_level}\n"
-            f"Slots: {current_slots} → {new_slots}\n"
-            f"Used: {used_slots}/{new_slots}\n"
-            f"💰 Cost: {next_cost:,} credits\n\n"
-            f"📦 Free slots: {new_slots - used_slots}"
-        )
-
-async def storage_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    user_id = update.effective_user.id
-    data = query.data
-    
-    if data == "storage_cancel":
-        await query.edit_message_text("❌ Upgrade cancelled!")
-        return
-    
-    if data.startswith("storage_confirm_"):
-        target_id = int(data.split("_")[2])
-        
-        if user_id != target_id:
-            await query.answer("Not your upgrade!", show_alert=True)
-            return
-        
-        conn = get_db()
-        c = conn.cursor()
-        
-        # Get current storage
-        c.execute("SELECT level, crops FROM user_storage WHERE user_id=?", (user_id,))
-        result = c.fetchone()
-        
-        if result:
-            level = result[0]
-            crops = json.loads(result[1]) if result[1] else {}
-        else:
-            level = 1
-            crops = {}
-        
-        if level not in STORAGE_LEVELS or STORAGE_LEVELS[level]["next_cost"] == 0:
-            await query.edit_message_text("🏆 Max level already reached!")
-            conn.close()
-            return
-        
-        next_cost = STORAGE_LEVELS[level]["next_cost"]
-        
-        # Check balance
-        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-        balance = c.fetchone()[0]
-        
-        if balance < next_cost:
-            await query.edit_message_text(f"❌ Need {next_cost:,} credits to upgrade!\n💰 Have: {balance:,}")
-            conn.close()
-            return
-        
-        # Process upgrade
-        c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (next_cost, user_id))
-        
-        new_level = level + 1
-        c.execute("INSERT OR REPLACE INTO user_storage (user_id, level, crops, workers) VALUES (?, ?, ?, ?)",
-                  (user_id, new_level, json.dumps(crops), json.dumps([])))
-        
-        # Get workers count after upgrade
-        c.execute("SELECT workers FROM user_storage WHERE user_id=?", (user_id,))
-        workers_result = c.fetchone()
-        workers = json.loads(workers_result[0]) if workers_result and workers_result[0] else []
-        
-        conn.commit()
-        conn.close()
-        
-        new_slots = get_total_slots(new_level)
-        
-        # Get growing crops count
-        conn2 = get_db()
-        c2 = conn2.cursor()
-        c2.execute("SELECT crops FROM farms WHERE user_id=?", (user_id,))
-        farm_result = c2.fetchone()
-        growing_count = 0
-        if farm_result and farm_result[0]:
-            growing_crops = json.loads(farm_result[0])
-            growing_count = len(growing_crops)
-        conn2.close()
-        
-        stored_count = sum(crops.values())
-        used_slots = stored_count + growing_count
-        
-        await query.edit_message_text(
-            f"✅ STORAGE UPGRADED!\n\n"
-            f"Level: {level} → {new_level}\n"
-            f"Slots: {current_slots} → {new_slots}\n"
-            f"Used: {used_slots}/{new_slots}\n"
-            f"💰 Cost: {next_cost:,} credits\n\n"
-            f"📦 Free slots: {new_slots - used_slots}"
-        )
-
-async def storage_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    user_id = update.effective_user.id
-    data = query.data
-    
-    if data == "storage_cancel":
-        await query.edit_message_text("❌ Upgrade cancelled!")
-        return
-    
-    if data.startswith("storage_confirm_"):
-        target_id = int(data.split("_")[2])
-        
-        if user_id != target_id:
-            await query.answer("Not your upgrade!", show_alert=True)
-            return
-        
-        conn = get_db()
-        c = conn.cursor()
-        
-        # Get current storage
-        c.execute("SELECT level, crops FROM user_storage WHERE user_id=?", (user_id,))
-        result = c.fetchone()
-        
-        if result:
-            level = result[0]
-            crops = json.loads(result[1]) if result[1] else {}
-        else:
-            level = 1
-            crops = {}
-        
-        if level not in STORAGE_LEVELS or STORAGE_LEVELS[level]["next_cost"] == 0:
-            await query.edit_message_text("🏆 Max level already reached!")
-            conn.close()
-            return
-        
-        # 🔥 DEFINE current_slots HERE
-        current_slots = get_total_slots(level)
-        next_cost = STORAGE_LEVELS[level]["next_cost"]
-        next_slots = STORAGE_LEVELS[level]["next_slots"]
-        
-        # Check balance
-        c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-        balance = c.fetchone()[0]
-        
-        if balance < next_cost:
-            await query.edit_message_text(f"❌ Need {next_cost:,} credits to upgrade!\n💰 Have: {balance:,}")
-            conn.close()
-            return
-        
-        # Process upgrade
-        c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (next_cost, user_id))
-        
-        new_level = level + 1
-        c.execute("INSERT OR REPLACE INTO user_storage (user_id, level, crops, workers) VALUES (?, ?, ?, ?)",
-                  (user_id, new_level, json.dumps(crops), json.dumps([])))
-        
-        conn.commit()
-        conn.close()
-        
-        new_slots = get_total_slots(new_level)
-        
-        # Get growing crops count
-        conn2 = get_db()
-        c2 = conn2.cursor()
-        c2.execute("SELECT crops FROM farms WHERE user_id=?", (user_id,))
-        farm_result = c2.fetchone()
-        growing_count = 0
-        if farm_result and farm_result[0]:
-            growing_crops = json.loads(farm_result[0])
-            growing_count = len(growing_crops)
-        conn2.close()
-        
-        stored_count = sum(crops.values())
-        used_slots = stored_count + growing_count
-        
-        await query.edit_message_text(
-            f"✅ STORAGE UPGRADED!\n\n"
-            f"Level: {level} → {new_level}\n"
-            f"Slots: {current_slots} → {new_slots}\n"
-            f"Used: {used_slots}/{new_slots}\n"
-            f"💰 Cost: {next_cost:,} credits\n\n"
-            f"📦 Free slots: {new_slots - used_slots}"
-        )
-
-# ============ FARM SYSTEM - PART 9 (HIRE, WORKERS, RAIN) ==========
-
-async def hire(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    keyboard = []
-    for key, worker in WORKERS.items():
-        keyboard.append([InlineKeyboardButton(
-            f"{worker['emoji']} {worker['name']} - {worker['price']:,} credits",
-            callback_data=f"hire_{key}"
-        )])
-    
-    await update.message.reply_text(
-        "👨‍🌾 HIRE WORKER\n\nClick on any worker to hire:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-
-async def hire_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    user_id = update.effective_user.id
-    data = query.data
-    
-    if not data.startswith("hire_"):
-        return
-    
-    crop_key = data[5:]
-    worker = WORKERS.get(crop_key)
-    
-    if not worker:
-        await query.edit_message_text("❌ Invalid worker!")
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    
-    c.execute("SELECT workers FROM user_storage WHERE user_id=?", (user_id,))
-    row = c.fetchone()
-    workers = json.loads(row[0]) if row and row[0] else []
-    
-    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-    balance = c.fetchone()[0]
-    
-    if balance < worker["price"]:
-        await query.edit_message_text(f"❌ Need {worker['price']:,} credits!")
-        conn.close()
-        return
-    
-    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (worker["price"], user_id))
-    workers.append(crop_key)
-    
-    c.execute("INSERT OR REPLACE INTO user_storage (user_id, level, crops, workers) VALUES (?, 1, '{}', ?)",
-              (user_id, json.dumps(workers)))
-    conn.commit()
-    conn.close()
-    
-    await query.edit_message_text(f"✅ {worker['name']} hired successfully!")
-
-
-async def workers(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    if not is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT workers FROM user_storage WHERE user_id=?", (user_id,))
-    result = c.fetchone()
-    conn.close()
-    
-    if not result or not result[0]:
-        await update.message.reply_text("👨‍🌾 YOUR WORKERS\n\nNo workers hired yet!\n\n💡 /hire - Hire workers")
-        return
-    
-    workers_list = json.loads(result[0]) if result[0] else []
-    
-    if not workers_list:
-        await update.message.reply_text("👨‍🌾 YOUR WORKERS\n\nNo workers hired yet!\n\n💡 /hire - Hire workers")
-        return
-    
-    now = time.time()
-    worker_counts = Counter(workers_list)
-    msg = "👨‍🌾 YOUR WORKERS\n\n"
-    total_cost = 0
-    
-    for worker_key, count in worker_counts.items():
-        worker = WORKERS.get(worker_key)
-        if worker:
-            key = f"{user_id}_{worker_key}"
-            last = last_grow.get(key, 0)
-            time_passed = now - last
-            time_needed = worker["time"] * 60
-            remaining = time_needed - time_passed
-            
-            if remaining <= 0:
-                remaining_text = "✅ READY!"
-            else:
-                minutes = int(remaining // 60)
-                seconds = int(remaining % 60)
-                remaining_text = f"⏰ {minutes}m {seconds}s"
-            
-            msg += f"{worker['emoji']} {worker['name']} x{count}\n"
-            msg += f"   - {remaining_text}\n\n"
-            total_cost += worker["price"] * count
-    
-    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
-    msg += f"💰 Total spent: {total_cost:,} credits\n\n"
-    msg += f"💡 /hire - Hire more workers\n"
-    msg += f"📦 Storage full = auto-grow paused"
-    
-    await update.message.reply_text(msg)
-
-
-# ============ AUTO GROW WORKER ==========
-
-def auto_grow_worker():
-    while True:
-        try:
-            conn = get_db()
-            c = conn.cursor()
-            c.execute("SELECT user_id, workers FROM user_storage")
-            users = c.fetchall()
-            conn.close()
-            
-            now = time.time()
-            
-            for user_id, workers_json in users:
-                workers = json.loads(workers_json) if workers_json else []
-                
-                # Get storage info
-                conn2 = get_db()
-                c2 = conn2.cursor()
-                c2.execute("SELECT level, crops FROM user_storage WHERE user_id=?", (user_id,))
-                storage_result = c2.fetchone()
-                conn2.close()
-                
-                if storage_result:
-                    level = storage_result[0]
-                    stored_crops = json.loads(storage_result[1]) if storage_result[1] else {}
-                    total_slots = get_total_slots(level)
-                    used_slots = sum(stored_crops.values())
-                    free_slots = total_slots - used_slots
-                else:
-                    free_slots = 50
-                
-                for w in workers:
-                    worker = WORKERS.get(w)
-                    if not worker:
-                        continue
-                    
-                    key = f"{user_id}_{w}"
-                    last = last_grow.get(key, 0)
-                    time_passed = now - last
-                    time_needed = worker["time"] * 60
-                    
-                    if time_passed >= time_needed:
-                        if free_slots <= 0:
-                            continue
-                        
-                        conn3 = get_db()
-                        c3 = conn3.cursor()
-                        c3.execute("SELECT crops FROM user_storage WHERE user_id=?", (user_id,))
-                        result = c3.fetchone()
-                        
-                        crops = json.loads(result[0]) if result and result[0] else {}
-                        crops[w] = crops.get(w, 0) + 1
-                        
-                        c3.execute("UPDATE user_storage SET crops = ? WHERE user_id=?", 
-                                   (json.dumps(crops), user_id))
-                        conn3.commit()
-                        conn3.close()
-                        
-                        last_grow[key] = now
-                        free_slots -= 1
-                        
-            time.sleep(60)
-        except Exception as e:
-            print(f"Worker error: {e}")
-            time.sleep(60)
-
-
-# Start background thread
-threading.Thread(target=auto_grow_worker, daemon=True).start()
-
-
-# ============ RAIN COMMAND ==========
-
-async def rain(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("❌ Admin only!")
-        return
-    
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text(
-            "🌧️ RAIN COMMAND\n\n"
-            "Usage: `/rain <percentage>`\n"
-            "Example: `/rain 50` - 50% less time\n"
-            "Example: `/rain 100` - 1 min\n"
-            "Example: `/rain 0` - Normal\n\n"
-            "⚠️ Only affects NEW crops!",
-            
-        )
-        return
-    
-    try:
-        percentage = int(args[0])
-    except:
-        await update.message.reply_text("❌ Invalid percentage!")
-        return
-    
-    if percentage < 0 or percentage > 100:
-        await update.message.reply_text("❌ Percentage must be between 0 and 100!")
-        return
-    
-    global rain_percentage
-    rain_percentage = percentage
-    
-    if percentage == 0:
-        await update.message.reply_text("🌤️ RAIN STOPPED\n\n⏰ Grow time back to normal!")
-    else:
-        await update.message.reply_text(
-            f"🌧️ RAIN BONUS!\n\n"
-            f"⏰ NEW crops grow {percentage}% faster!\n"
-            f"📉 Example: 3h crop → {int(180 - (180*percentage/100))}m\n\n"
-            f"⚠️ Only affects NEW crops!"
-        )
 
 async def add_default_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
@@ -6113,6 +4891,369 @@ async def add_default_players(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"💰 Prices: 30,000 - 5,00,000"
     )
 
+# ============ LOTTERY SYSTEM ============
+
+import random
+import string
+from datetime import datetime
+
+# Global variables
+lottery_active = False
+lottery_tickets = {}
+lottery_total_tickets = 0
+lottery_participants = []
+lottery_winner = None
+lottery_start_time = None
+
+def generate_ticket_number():
+    """Generate unique ticket number"""
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+
+async def lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Main lottery menu"""
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    balance = c.fetchone()[0]
+    conn.close()
+    
+    user_tickets = lottery_tickets.get(user_id, [])
+    status_text = "🟢 ACTIVE" if lottery_active else "🔴 NOT ACTIVE"
+    
+    keyboard = [
+        [InlineKeyboardButton("🎫 BUY 1 (20,000)", callback_data="lottery_buy_1")],
+        [InlineKeyboardButton("🎫 BUY 5 (100,000)", callback_data="lottery_buy_5")],
+        [InlineKeyboardButton("🎫 BUY 10 (200,000)", callback_data="lottery_buy_10")],
+        [InlineKeyboardButton("🎫 BUY 25 (500,000)", callback_data="lottery_buy_25")],
+        [InlineKeyboardButton("📋 MY TICKETS", callback_data="lottery_mytickets")],
+        [InlineKeyboardButton("ℹ️ INFO", callback_data="lottery_info")]
+    ]
+    
+    await update.message.reply_text(
+        f"🎰 LOTTERY SYSTEM\n\n"
+        f"💰 Balance: {balance:,}\n"
+        f"🎫 Your tickets: {len(user_tickets)}\n"
+        f"📊 Status: {status_text}\n\n"
+        f"🎟️ Ticket: 20,000 each\n"
+        f"🏆 Winner gets: ALL ticket money",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+async def lottery_buy_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    data = query.data
+    
+    if not lottery_active:
+        await query.edit_message_text("❌ Lottery not active! Wait for admin.")
+        return
+    
+    if data == "lottery_buy_1":
+        quantity, cost = 1, 20000
+    elif data == "lottery_buy_5":
+        quantity, cost = 5, 100000
+    elif data == "lottery_buy_10":
+        quantity, cost = 10, 200000
+    elif data == "lottery_buy_25":
+        quantity, cost = 25, 500000
+    else:
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+    balance = c.fetchone()[0]
+    
+    if balance < cost:
+        await query.edit_message_text(f"❌ Need {cost:,} credits! You have {balance:,}")
+        conn.close()
+        return
+    
+    c.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (cost, user_id))
+    conn.commit()
+    conn.close()
+    
+    if user_id not in lottery_tickets:
+        lottery_tickets[user_id] = []
+        lottery_participants.append(user_id)
+    
+    new_tickets = []
+    for _ in range(quantity):
+        ticket = generate_ticket_number()
+        lottery_tickets[user_id].append(ticket)
+        new_tickets.append(ticket)
+    
+    global lottery_total_tickets
+    lottery_total_tickets += quantity
+    
+    ticket_list = "\n".join([f"🎫 `{t}`" for t in new_tickets[:5]])
+    if quantity > 5:
+        ticket_list += f"\n... and {quantity-5} more"
+    
+    await query.edit_message_text(
+        f"✅ BOUGHT {quantity} TICKETS!\n\n"
+        f"💰 Cost: {cost:,}\n"
+        f"🎫 Your tickets:\n{ticket_list}\n\n"
+        f"💡 /lottery - Buy more",
+        parse_mode='Markdown'
+    )
+
+async def lottery_mytickets_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    user_tickets = lottery_tickets.get(user_id, [])
+    
+    if not user_tickets:
+        await query.edit_message_text("🎫 You don't have any tickets!\nUse /lottery to buy.")
+        return
+    
+    ticket_list = "\n".join([f"🎫 `{t}`" for t in user_tickets[:10]])
+    if len(user_tickets) > 10:
+        ticket_list += f"\n... and {len(user_tickets)-10} more"
+    
+    await query.edit_message_text(
+        f"🎫 MY TICKETS\n\n"
+        f"Total: {len(user_tickets)}\n"
+        f"Spent: {len(user_tickets) * 20000:,}\n\n"
+        f"{ticket_list}",
+        parse_mode='Markdown'
+    )
+
+async def lottery_info_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    user_tickets = lottery_tickets.get(user_id, [])
+    
+    prize_pool = lottery_total_tickets * 20000
+    win_chance = (len(user_tickets) / lottery_total_tickets * 100) if lottery_total_tickets > 0 else 0
+    status_text = "🟢 ACTIVE" if lottery_active else "🔴 NOT ACTIVE"
+    
+    await query.edit_message_text(
+        f"🎰 LOTTERY INFO\n\n"
+        f"Status: {status_text}\n"
+        f"Total tickets: {lottery_total_tickets}\n"
+        f"Participants: {len(lottery_participants)}\n"
+        f"Prize pool: {prize_pool:,}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"YOUR STATS:\n"
+        f"Your tickets: {len(user_tickets)}\n"
+        f"Contribution: {len(user_tickets) * 20000:,}\n"
+        f"Win chance: {win_chance:.1f}%"
+    )
+
+async def start_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    global lottery_active, lottery_tickets, lottery_total_tickets, lottery_participants, lottery_start_time
+    
+    if lottery_active:
+        await update.message.reply_text("❌ Lottery already active!")
+        return
+    
+    lottery_active = True
+    lottery_tickets = {}
+    lottery_total_tickets = 0
+    lottery_participants = []
+    lottery_start_time = datetime.now()
+    
+    await update.message.reply_text(
+        "✅ LOTTERY STARTED!\n\n"
+        "🎟️ Ticket: 20,000 credits\n"
+        "🏆 Winner gets: ALL prize pool\n"
+        "📢 Users: /lottery to buy tickets\n\n"
+        "💡 /draw_winner - Draw winner"
+    )
+
+async def draw_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    global lottery_active, lottery_winner
+    
+    if not lottery_active:
+        await update.message.reply_text("❌ Lottery not active!")
+        return
+    
+    if lottery_total_tickets == 0:
+        await update.message.reply_text("❌ No tickets sold!")
+        return
+    
+    all_tickets = []
+    for uid, tickets in lottery_tickets.items():
+        for ticket in tickets:
+            all_tickets.append((uid, ticket))
+    
+    winner_id, winner_ticket = random.choice(all_tickets)
+    lottery_winner = winner_id
+    prize_pool = lottery_total_tickets * 20000
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT name FROM users WHERE user_id=?", (winner_id,))
+    winner_name = c.fetchone()[0]
+    
+    c.execute("SELECT balance FROM users WHERE user_id=?", (winner_id,))
+    current_bal = c.fetchone()[0]
+    c.execute("UPDATE users SET balance = ? WHERE user_id=?", (current_bal + prize_pool, winner_id))
+    conn.commit()
+    conn.close()
+    
+    try:
+        await context.bot.send_message(
+            winner_id,
+            f"🎉 YOU WON THE LOTTERY! 🎉\n\n"
+            f"🏆 Ticket: {winner_ticket}\n"
+            f"💰 Prize: {prize_pool:,}\n"
+            f"💳 New balance: {current_bal + prize_pool:,}"
+        )
+    except:
+        pass
+    
+    await update.message.reply_text(
+        f"🎉 LOTTERY WINNER! 🎉\n\n"
+        f"🏆 Winner: {winner_name}\n"
+        f"🎫 Ticket: {winner_ticket}\n"
+        f"💰 Prize: {prize_pool:,}\n\n"
+        f"💡 /reset_lottery - Start new"
+    )
+    
+    lottery_active = False
+
+async def reset_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    global lottery_active, lottery_tickets, lottery_total_tickets, lottery_participants, lottery_winner
+    
+    lottery_active = False
+    lottery_tickets = {}
+    lottery_total_tickets = 0
+    lottery_participants = []
+    lottery_winner = None
+    
+    await update.message.reply_text("✅ Lottery reset! Use /start_lottery to begin.")
+
+async def lottery_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text("Usage: /lottery_coupon <quantity>\nExample: /lottery_coupon 5")
+        return
+    
+    try:
+        quantity = int(args[0])
+    except:
+        await update.message.reply_text("❌ Invalid quantity!")
+        return
+    
+    coupon_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("CREATE TABLE IF NOT EXISTS lottery_coupons (code TEXT PRIMARY KEY, quantity INTEGER, used INTEGER DEFAULT 0)")
+    c.execute("INSERT INTO lottery_coupons (code, quantity) VALUES (?, ?)", (coupon_code, quantity))
+    conn.commit()
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✅ COUPON GENERATED!\n\n"
+        f"🔑 Code: `{coupon_code}`\n"
+        f"🎫 Free tickets: {quantity}\n\n"
+        f"Claim: /claim_coupon {coupon_code}",
+        parse_mode='Markdown'
+    )
+
+async def claim_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text("❌ /claim_coupon <code>")
+        return
+    
+    coupon_code = args[0].upper()
+    
+    conn = get_db()
+    c = conn.cursor()
+    c.execute("SELECT quantity, used FROM lottery_coupons WHERE code=?", (coupon_code,))
+    coupon = c.fetchone()
+    
+    if not coupon:
+        await update.message.reply_text("❌ Invalid coupon!")
+        conn.close()
+        return
+    
+    quantity, used = coupon
+    
+    if used >= quantity:
+        await update.message.reply_text("❌ Coupon already used!")
+        conn.close()
+        return
+    
+    c.execute("CREATE TABLE IF NOT EXISTS coupon_used (code TEXT, user_id INTEGER, PRIMARY KEY (code, user_id))")
+    c.execute("SELECT * FROM coupon_used WHERE code=? AND user_id=?", (coupon_code, user_id))
+    if c.fetchone():
+        await update.message.reply_text("❌ You already used this coupon!")
+        conn.close()
+        return
+    
+    c.execute("INSERT INTO coupon_used (code, user_id) VALUES (?, ?)", (coupon_code, user_id))
+    c.execute("UPDATE lottery_coupons SET used = used + 1 WHERE code=?", (coupon_code,))
+    conn.commit()
+    conn.close()
+    
+    if not lottery_active:
+        await update.message.reply_text(f"✅ Coupon claimed! You got {quantity} free tickets.\nBut lottery is not active. Wait for /start_lottery")
+        return
+    
+    if user_id not in lottery_tickets:
+        lottery_tickets[user_id] = []
+        lottery_participants.append(user_id)
+    
+    new_tickets = []
+    for _ in range(quantity):
+        ticket = generate_ticket_number()
+        lottery_tickets[user_id].append(ticket)
+        new_tickets.append(ticket)
+    
+    global lottery_total_tickets
+    lottery_total_tickets += quantity
+    
+    ticket_list = "\n".join([f"🎫 `{t}`" for t in new_tickets])
+    
+    await update.message.reply_text(
+        f"✅ COUPON CLAIMED!\n\n"
+        f"🎫 Free tickets: {quantity}\n"
+        f"{ticket_list}\n\n"
+        f"Total tickets: {len(lottery_tickets[user_id])}",
+        parse_mode='Markdown'
+    )
+
+
+
 
 # ============ MAIN ============
 
@@ -6146,6 +5287,19 @@ def main():
     app.add_handler(CommandHandler("numguess", numguess))
     app.add_handler(CommandHandler("ng", ng))
     app.add_handler(CommandHandler("ngstop", ngstop))
+# Lottery commands
+    app.add_handler(CommandHandler("lottery", lottery))
+    app.add_handler(CommandHandler("mytickets", lottery_mytickets_callback))  # Optional direct command
+    app.add_handler(CommandHandler("start_lottery", start_lottery))
+    app.add_handler(CommandHandler("draw_winner", draw_winner))
+    app.add_handler(CommandHandler("reset_lottery", reset_lottery))
+    app.add_handler(CommandHandler("lottery_coupon", lottery_coupon))
+    app.add_handler(CommandHandler("claim_coupon", claim_coupon))
+
+# Lottery callbacks
+    app.add_handler(CallbackQueryHandler(lottery_buy_callback, pattern="^lottery_buy_"))
+    app.add_handler(CallbackQueryHandler(lottery_mytickets_callback, pattern="^lottery_mytickets"))
+    app.add_handler(CallbackQueryHandler(lottery_info_callback, pattern="^lottery_info"))
 
     # Shop commands
     app.add_handler(CommandHandler("shop", shop))
@@ -6154,21 +5308,6 @@ def main():
     app.add_handler(CommandHandler("myteam", myteam))
     app.add_handler(CommandHandler("top", top))
     app.add_handler(CallbackQueryHandler(shop_callback, pattern="^shop_"))
-    # Farm handlers
-    app.add_handler(CommandHandler("crops", crops))
-    app.add_handler(CommandHandler("grow", grow))
-    app.add_handler(CommandHandler("farm", farm))
-    app.add_handler(CommandHandler("harvest", harvest))
-    app.add_handler(CommandHandler("sell", sell))
-    app.add_handler(CommandHandler("farm_leaderboard", farm_leaderboard))
-    app.add_handler(CommandHandler("storage", storage))
-    app.add_handler(CommandHandler("upgrade_storage", upgrade_storage))
-    app.add_handler(CallbackQueryHandler(storage_callback, pattern="^storage_"))
-    app.add_handler(CommandHandler("hire", hire))
-    app.add_handler(CallbackQueryHandler(hire_callback, pattern="^hire_"))
-    app.add_handler(CommandHandler("workers", workers))
-    app.add_handler(CommandHandler("rain", rain))
-
     # RPS Game
     app.add_handler(CommandHandler("rps", rps))
     app.add_handler(CallbackQueryHandler(rps_join_callback, pattern="^rps_join_"))
