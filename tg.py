@@ -958,7 +958,6 @@ async def achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\nTotal: {len(ach)} achievements"
     await update.message.reply_text(msg)
 
-# ============ SHOP ============
 async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_registered(user_id):
@@ -966,19 +965,14 @@ async def shop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     keyboard = [
-        [InlineKeyboardButton("🇮🇳 India (Current)", callback_data="shop_India_current")],
-        [InlineKeyboardButton("🇮🇳 India (Legends)", callback_data="shop_India_legend")],
-        [InlineKeyboardButton("🏴󠁧󠁢󠁥󠁮󠁧󠁿 England (Current)", callback_data="shop_England_current")],
-        [InlineKeyboardButton("🏴󠁧󠁢󠁥󠁮󠁧󠁿 England (Legends)", callback_data="shop_England_legend")],
-        [InlineKeyboardButton("🇳🇿 New Zealand (Current)", callback_data="shop_New Zealand_current")],
-        [InlineKeyboardButton("🇳🇿 New Zealand (Legends)", callback_data="shop_New Zealand_legend")],
-        [InlineKeyboardButton("🇦🇺 Australia (Current)", callback_data="shop_Australia_current")],
-        [InlineKeyboardButton("🇦🇺 Australia (Legends)", callback_data="shop_Australia_legend")],
+        [InlineKeyboardButton("🇮🇳 India", callback_data="shop_India")],
+        [InlineKeyboardButton("🏴󠁧󠁢󠁥󠁮󠁧󠁿 England", callback_data="shop_England")],
+        [InlineKeyboardButton("🇦🇺 Australia", callback_data="shop_Australia")],
+        [InlineKeyboardButton("🇳🇿 New Zealand", callback_data="shop_New Zealand")],
         [InlineKeyboardButton("👩 Women Players", callback_data="shop_women")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("🛒 CRICKETER SHOP\n\nSelect category:", reply_markup=reply_markup)
-
+    await update.message.reply_text("🛒 CRICKETER SHOP\n\nSelect country:", reply_markup=reply_markup)
 
 async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1004,18 +998,21 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     parts = data.split('_')
-    if len(parts) < 3:
+    if len(parts) < 2:
         await query.edit_message_text("❌ Invalid selection")
         return
 
     country = parts[1]
-    # ptype = parts[2]  # IGNORE - not using anymore
+    
+    # Fix for "New Zealand" (has space)
+    if len(parts) > 2:
+        country = parts[1] + " " + parts[2]
 
     conn = get_db()
     c = conn.cursor()
     
-    # 🔥 FIXED: Only search by country, ignore type
-    c.execute("SELECT id, name, price FROM shop WHERE category=?", (country,))
+    # 🔥 SIRF CATEGORY SE SEARCH KARO (Current + Legends dono)
+    c.execute("SELECT id, name, price, type FROM shop WHERE category=?", (country,))
     players = c.fetchall()
     conn.close()
 
@@ -1023,12 +1020,25 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"❌ No players found for {country}")
         return
 
-    # Show all players (both current and legends together)
+    # Separate Current and Legends for display
+    current_players = [p for p in players if p[3] == 'current']
+    legend_players = [p for p in players if p[3] == 'legend']
+    
     msg = f"🛒 {country} PLAYERS\n\n"
-    for p in players:
-        msg += f"{p[0]}. {p[1]} - {p[2]:,} 💰\n"
+    
+    if current_players:
+        msg += f"━━━━━━━━━━━━━━━━━━━━━━\n🔵 CURRENT PLAYERS ({len(current_players)}):\n"
+        for p in current_players:
+            msg += f"{p[0]}. {p[1]} - {p[2]:,} 💰\n"
+    
+    if legend_players:
+        msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n🌟 LEGENDS ({len(legend_players)}):\n"
+        for p in legend_players:
+            msg += f"{p[0]}. {p[1]} - {p[2]:,} 💰\n"
+    
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /buy <number> to purchase"
     await query.edit_message_text(msg)
+
 
 # ============ BUY MENS ============
 async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4633,7 +4643,7 @@ async def ngstop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def add_default_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def add_all_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Admin only!")
         return
@@ -4641,10 +4651,11 @@ async def add_default_players(update: Update, context: ContextTypes.DEFAULT_TYPE
     conn = get_db()
     c = conn.cursor()
     
+    # Clear existing
     c.execute("DELETE FROM shop")
     
-    # INDIA CURRENT
-    india_players = [
+    # ========== INDIA CURRENT (20) ==========
+    india_current = [
         ("Virat Kohli", 2000000, "India", "current"),
         ("Rohit Sharma", 1900000, "India", "current"),
         ("Shubman Gill", 1700000, "India", "current"),
@@ -4666,259 +4677,6 @@ async def add_default_players(update: Update, context: ContextTypes.DEFAULT_TYPE
         ("Shardul Thakur", 1320000, "India", "current"),
         ("Washington Sundar", 1300000, "India", "current")
     ]
-    
-    # ENGLAND CURRENT
-    england_players = [
-        ("Joe Root", 1800000, "England", "current"),
-        ("Ben Stokes", 1900000, "England", "current"),
-        ("Jos Buttler", 1700000, "England", "current"),
-        ("Jonny Bairstow", 1600000, "England", "current"),
-        ("Jofra Archer", 1750000, "England", "current"),
-        ("Moeen Ali", 1500000, "England", "current"),
-        ("Sam Curran", 1550000, "England", "current"),
-        ("Chris Woakes", 1400000, "England", "current"),
-        ("Mark Wood", 1450000, "England", "current"),
-        ("Adil Rashid", 1350000, "England", "current"),
-        ("Dawid Malan", 1300000, "England", "current"),
-        ("Jason Roy", 1250000, "England", "current"),
-        ("Liam Livingstone", 1450000, "England", "current"),
-        ("Harry Brook", 1500000, "England", "current"),
-        ("Reece Topley", 1200000, "England", "current"),
-        ("David Willey", 1150000, "England", "current"),
-        ("Phil Salt", 1100000, "England", "current"),
-        ("Will Jacks", 1050000, "England", "current"),
-        ("Gus Atkinson", 1000000, "England", "current"),
-        ("Tom Curran", 1080000, "England", "current")
-    ]
-    
-    # AUSTRALIA CURRENT
-    australia_players = [
-        ("Pat Cummins", 1900000, "Australia", "current"),
-        ("Steve Smith", 2000000, "Australia", "current"),
-        ("David Warner", 1800000, "Australia", "current"),
-        ("Mitchell Starc", 1850000, "Australia", "current"),
-        ("Glenn Maxwell", 1750000, "Australia", "current"),
-        ("Travis Head", 1650000, "Australia", "current"),
-        ("Marnus Labuschagne", 1700000, "Australia", "current"),
-        ("Josh Hazlewood", 1600000, "Australia", "current"),
-        ("Adam Zampa", 1500000, "Australia", "current"),
-        ("Marcus Stoinis", 1450000, "Australia", "current"),
-        ("Cameron Green", 1550000, "Australia", "current"),
-        ("Alex Carey", 1350000, "Australia", "current"),
-        ("Mitchell Marsh", 1400000, "Australia", "current"),
-        ("Nathan Lyon", 1480000, "Australia", "current"),
-        ("Matthew Wade", 1300000, "Australia", "current"),
-        ("Tim David", 1380000, "Australia", "current"),
-        ("Ashton Agar", 1250000, "Australia", "current"),
-        ("Sean Abbott", 1200000, "Australia", "current"),
-        ("Ben McDermott", 1150000, "Australia", "current"),
-        ("Kane Richardson", 1100000, "Australia", "current")
-    ]
-    
-    # NEW ZEALAND CURRENT
-    nz_players = [
-        ("Kane Williamson", 1900000, "New Zealand", "current"),
-        ("Trent Boult", 1800000, "New Zealand", "current"),
-        ("Devon Conway", 1600000, "New Zealand", "current"),
-        ("Daryl Mitchell", 1550000, "New Zealand", "current"),
-        ("Mitchell Santner", 1450000, "New Zealand", "current"),
-        ("Lockie Ferguson", 1500000, "New Zealand", "current"),
-        ("Tim Southee", 1400000, "New Zealand", "current"),
-        ("Glenn Phillips", 1350000, "New Zealand", "current"),
-        ("Michael Bracewell", 1250000, "New Zealand", "current"),
-        ("Finn Allen", 1300000, "New Zealand", "current"),
-        ("Adam Milne", 1200000, "New Zealand", "current"),
-        ("Ish Sodhi", 1150000, "New Zealand", "current"),
-        ("James Neesham", 1250000, "New Zealand", "current"),
-        ("Tom Latham", 1300000, "New Zealand", "current"),
-        ("Martin Guptill", 1400000, "New Zealand", "current"),
-        ("Matt Henry", 1200000, "New Zealand", "current"),
-        ("Kyle Jamieson", 1350000, "New Zealand", "current"),
-        ("Henry Nicholls", 1100000, "New Zealand", "current"),
-        ("Will Young", 1050000, "New Zealand", "current"),
-        ("Ben Sears", 1000000, "New Zealand", "current")
-    ]
-    
-    # INSERT
-    for name, price, country, ptype in india_players:
-        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
-    for name, price, country, ptype in england_players:
-        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
-    for name, price, country, ptype in australia_players:
-        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
-    for name, price, country, ptype in nz_players:
-        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
-    
-    conn.commit()
-    
-    c.execute("SELECT COUNT(*) FROM shop")
-    count = c.fetchone()[0]
-    conn.close()
-    
-    await update.message.reply_text(
-        f"✅ PLAYERS ADDED!\n\n"
-        f"🏏 Total: {count} players\n"
-        f"🇮🇳 India: 20\n"
-        f"🏴󠁧󠁢󠁥󠁮󠁧󠁿 England: 20\n"
-        f"🇦🇺 Australia: 20\n"
-        f"🇳🇿 New Zealand: 20\n\n"
-        f"💡 /shop to buy"
-    )
-
-    # ========== SHOP 2 - AFFORDABLE STORE (20 players) ==========
-    affordable_players = [
-        ("Ruturaj Gaikwad", 50000, "India", "batter"),
-        ("Ishan Kishan", 45000, "India", "wicketkeeper"),
-        ("Deepak Chahar", 40000, "India", "bowler"),
-        ("Shivam Dube", 35000, "India", "allrounder"),
-        ("Rahul Tripathi", 30000, "India", "batter"),
-        ("Venkatesh Iyer", 48000, "India", "allrounder"),
-        ("Ravi Bishnoi", 42000, "India", "bowler"),
-        ("Arshdeep Singh", 38000, "India", "bowler"),
-        ("Umran Malik", 36000, "India", "bowler"),
-        ("Tilak Varma", 34000, "India", "batter"),
-        ("Phil Salt", 55000, "England", "wicketkeeper"),
-        ("Will Jacks", 50000, "England", "allrounder"),
-        ("Reece Topley", 45000, "England", "bowler"),
-        ("Sam Billings", 40000, "England", "wicketkeeper"),
-        ("David Willey", 48000, "England", "allrounder"),
-        ("Tim David", 60000, "Australia", "batter"),
-        ("Nathan Ellis", 42000, "Australia", "bowler"),
-        ("Josh Inglis", 40000, "Australia", "wicketkeeper"),
-        ("Finn Allen", 45000, "New Zealand", "batter"),
-        ("Adam Milne", 38000, "New Zealand", "bowler"),
-    ]
-    
-    # ========== SHOP 3 - TG PLAYERS (20 players) ==========
-    tg_players = [
-        ("TG Star Player", 100000, "TG", "special"),
-        ("TG Legend Batter", 120000, "TG", "batter"),
-        ("TG Legend Bowler", 120000, "TG", "bowler"),
-        ("TG All-Rounder", 110000, "TG", "allrounder"),
-        ("TG Wicketkeeper", 105000, "TG", "wicketkeeper"),
-        ("TG Diamond Player", 150000, "TG", "special"),
-        ("TG Gold Player", 130000, "TG", "special"),
-        ("TG Silver Player", 90000, "TG", "special"),
-        ("TG Bronze Player", 80000, "TG", "special"),
-        ("TG Icon Player", 200000, "TG", "icon"),
-        ("TG Master Blaster", 180000, "TG", "batter"),
-        ("TG Pace Machine", 170000, "TG", "bowler"),
-        ("TG Spin Wizard", 160000, "TG", "bowler"),
-        ("TG Power Hitter", 150000, "TG", "batter"),
-        ("TG Death Bowler", 140000, "TG", "bowler"),
-        ("TG Fielding Star", 120000, "TG", "special"),
-        ("TG Rising Star", 100000, "TG", "special"),
-        ("TG Veteran", 130000, "TG", "special"),
-        ("TG Super Star", 180000, "TG", "special"),
-        ("TG Mega Star", 250000, "TG", "icon"),
-    ]
-    
-    # ========== SHOP 4 - SPECIAL SHOP (20 players) ==========
-    special_players = [
-        ("Special Edition Kohli", 500000, "Special", "legend"),
-        ("Special Edition Dhoni", 500000, "Special", "legend"),
-        ("Special Edition Sachin", 500000, "Special", "legend"),
-        ("Special Edition ABD", 450000, "Special", "legend"),
-        ("Special Edition Gayle", 450000, "Special", "legend"),
-        ("Special Edition Warner", 400000, "Special", "legend"),
-        ("Special Edition Bumrah", 400000, "Special", "legend"),
-        ("Special Edition Rashid", 380000, "Special", "legend"),
-        ("Special Edition Pollard", 350000, "Special", "legend"),
-        ("Special Edition Narine", 350000, "Special", "legend"),
-        ("Special Edition Russel", 380000, "Special", "legend"),
-        ("Special Edition Bravo", 350000, "Special", "legend"),
-        ("Special Edition Malinga", 400000, "Special", "legend"),
-        ("Special Edition Steyn", 380000, "Special", "legend"),
-        ("Special Edition Lee", 350000, "Special", "legend"),
-        ("Special Edition Afridi", 400000, "Special", "legend"),
-        ("Special Edition Yuvraj", 420000, "Special", "legend"),
-        ("Special Edition Sehwag", 400000, "Special", "legend"),
-        ("Special Edition Gilchrist", 450000, "Special", "legend"),
-        ("Special Edition Ponting", 450000, "Special", "legend"),
-    ]
-    
-    # ========== WOMEN PLAYERS (20) ==========
-    women_players = [
-        ("Smriti Mandhana", 1500000, "Women", "batter"),
-        ("Harmanpreet Kaur", 1400000, "Women", "batter"),
-        ("Jemimah Rodrigues", 1300000, "Women", "batter"),
-        ("Shafali Verma", 1350000, "Women", "batter"),
-        ("Deepti Sharma", 1250000, "Women", "allrounder"),
-        ("Poonam Yadav", 1150000, "Women", "bowler"),
-        ("Richa Ghosh", 1200000, "Women", "wicketkeeper"),
-        ("Meg Lanning", 1600000, "Women", "batter"),
-        ("Ellyse Perry", 1800000, "Women", "allrounder"),
-        ("Alyssa Healy", 1550000, "Women", "wicketkeeper"),
-        ("Sophie Devine", 1650000, "Women", "allrounder"),
-        ("Amelia Kerr", 1450000, "Women", "allrounder"),
-        ("Suzy Bates", 1500000, "Women", "batter"),
-        ("Natalie Sciver", 1550000, "Women", "allrounder"),
-        ("Heather Knight", 1500000, "Women", "batter"),
-        ("Tammy Beaumont", 1400000, "Women", "batter"),
-        ("Marizanne Kapp", 1450000, "Women", "allrounder"),
-        ("Laura Wolvaardt", 1350000, "Women", "batter"),
-        ("Tahlia McGrath", 1400000, "Women", "allrounder"),
-        ("Beth Mooney", 1450000, "Women", "wicketkeeper"),
-    ]
-    
-    # Insert into SHOP
-    for name, price, country, ptype in india_players:
-        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
-    for name, price, country, ptype in england_players:
-        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
-    for name, price, country, ptype in australia_players:
-        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
-    for name, price, country, ptype in nz_players:
-        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
-    
-    # Insert into SHOP2 (AFFORDABLE)
-    for name, price, country, ptype in affordable_players:
-        c.execute("INSERT INTO shop2 (name, price) VALUES (?, ?)", (name, price))
-    
-    # Insert into SHOP3 (TG PLAYERS)
-    for name, price, category, ptype in tg_players:
-        c.execute("INSERT INTO shop3 (name, price) VALUES (?, ?)", (name, price))
-    
-    # Insert into SHOP4 (SPECIAL)
-    for name, price, country, ptype in special_players:
-        c.execute("INSERT INTO shop4 (name, price) VALUES (?, ?)", (name, price))
-    
-    # Insert into WOMEN SHOP
-    for name, price, country, ptype in women_players:
-        c.execute("INSERT INTO shop_women (name, price, country, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
-    
-    conn.commit()
-    
-    c.execute("SELECT COUNT(*) FROM shop")
-    shop_count = c.fetchone()[0]
-    c.execute("SELECT COUNT(*) FROM shop2")
-    shop2_count = c.fetchone()[0]
-    c.execute("SELECT COUNT(*) FROM shop3")
-    shop3_count = c.fetchone()[0]
-    c.execute("SELECT COUNT(*) FROM shop4")
-    shop4_count = c.fetchone()[0]
-    c.execute("SELECT COUNT(*) FROM shop_women")
-    women_count = c.fetchone()[0]
-    
-    conn.close()
-    
-    await update.message.reply_text(
-        f"✅ DEFAULT PLAYERS ADDED!\n\n"
-        f"🏏 MAIN SHOP: {shop_count} players (4 countries x 20)\n"
-        f"🛍️ AFFORDABLE SHOP: {shop2_count} players\n"
-        f"💎 TG PLAYERS: {shop3_count} players\n"
-        f"✨ SPECIAL SHOP: {shop4_count} players\n"
-        f"👩 WOMEN SHOP: {women_count} players\n\n"
-        f"💰 Prices: 30,000 - 5,00,000"
-    )
-
-async def add_legends_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("❌ Admin only!")
-        return
-    
-    conn = get_db()
-    c = conn.cursor()
     
     # ========== INDIA LEGENDS (20) ==========
     india_legends = [
@@ -4942,6 +4700,30 @@ async def add_legends_players(update: Update, context: ContextTypes.DEFAULT_TYPE
         ("Bishan Bedi", 2600000, "India", "legend"),
         ("Bhagwat Chandrasekhar", 2400000, "India", "legend"),
         ("Venkatesh Prasad", 2300000, "India", "legend")
+    ]
+    
+    # ========== ENGLAND CURRENT (20) ==========
+    england_current = [
+        ("Joe Root", 1800000, "England", "current"),
+        ("Ben Stokes", 1900000, "England", "current"),
+        ("Jos Buttler", 1700000, "England", "current"),
+        ("Jonny Bairstow", 1600000, "England", "current"),
+        ("Jofra Archer", 1750000, "England", "current"),
+        ("Moeen Ali", 1500000, "England", "current"),
+        ("Sam Curran", 1550000, "England", "current"),
+        ("Chris Woakes", 1400000, "England", "current"),
+        ("Mark Wood", 1450000, "England", "current"),
+        ("Adil Rashid", 1350000, "England", "current"),
+        ("Dawid Malan", 1300000, "England", "current"),
+        ("Jason Roy", 1250000, "England", "current"),
+        ("Liam Livingstone", 1450000, "England", "current"),
+        ("Harry Brook", 1500000, "England", "current"),
+        ("Reece Topley", 1200000, "England", "current"),
+        ("David Willey", 1150000, "England", "current"),
+        ("Phil Salt", 1100000, "England", "current"),
+        ("Will Jacks", 1050000, "England", "current"),
+        ("Gus Atkinson", 1000000, "England", "current"),
+        ("Tom Curran", 1080000, "England", "current")
     ]
     
     # ========== ENGLAND LEGENDS (20) ==========
@@ -4968,6 +4750,30 @@ async def add_legends_players(update: Update, context: ContextTypes.DEFAULT_TYPE
         ("WG Grace", 5000000, "England", "legend")
     ]
     
+    # ========== AUSTRALIA CURRENT (20) ==========
+    australia_current = [
+        ("Pat Cummins", 1900000, "Australia", "current"),
+        ("Steve Smith", 2000000, "Australia", "current"),
+        ("David Warner", 1800000, "Australia", "current"),
+        ("Mitchell Starc", 1850000, "Australia", "current"),
+        ("Glenn Maxwell", 1750000, "Australia", "current"),
+        ("Travis Head", 1650000, "Australia", "current"),
+        ("Marnus Labuschagne", 1700000, "Australia", "current"),
+        ("Josh Hazlewood", 1600000, "Australia", "current"),
+        ("Adam Zampa", 1500000, "Australia", "current"),
+        ("Marcus Stoinis", 1450000, "Australia", "current"),
+        ("Cameron Green", 1550000, "Australia", "current"),
+        ("Alex Carey", 1350000, "Australia", "current"),
+        ("Mitchell Marsh", 1400000, "Australia", "current"),
+        ("Nathan Lyon", 1480000, "Australia", "current"),
+        ("Matthew Wade", 1300000, "Australia", "current"),
+        ("Tim David", 1380000, "Australia", "current"),
+        ("Ashton Agar", 1250000, "Australia", "current"),
+        ("Sean Abbott", 1200000, "Australia", "current"),
+        ("Ben McDermott", 1150000, "Australia", "current"),
+        ("Kane Richardson", 1100000, "Australia", "current")
+    ]
+    
     # ========== AUSTRALIA LEGENDS (20) ==========
     australia_legends = [
         ("Don Bradman", 10000000, "Australia", "legend"),
@@ -4990,6 +4796,30 @@ async def add_legends_players(update: Update, context: ContextTypes.DEFAULT_TYPE
         ("Damien Martyn", 3700000, "Australia", "legend"),
         ("Jason Gillespie", 3600000, "Australia", "legend"),
         ("Michael Hussey", 4300000, "Australia", "legend")
+    ]
+    
+    # ========== NEW ZEALAND CURRENT (20) ==========
+    nz_current = [
+        ("Kane Williamson", 1900000, "New Zealand", "current"),
+        ("Trent Boult", 1800000, "New Zealand", "current"),
+        ("Devon Conway", 1600000, "New Zealand", "current"),
+        ("Daryl Mitchell", 1550000, "New Zealand", "current"),
+        ("Mitchell Santner", 1450000, "New Zealand", "current"),
+        ("Lockie Ferguson", 1500000, "New Zealand", "current"),
+        ("Tim Southee", 1400000, "New Zealand", "current"),
+        ("Glenn Phillips", 1350000, "New Zealand", "current"),
+        ("Michael Bracewell", 1250000, "New Zealand", "current"),
+        ("Finn Allen", 1300000, "New Zealand", "current"),
+        ("Adam Milne", 1200000, "New Zealand", "current"),
+        ("Ish Sodhi", 1150000, "New Zealand", "current"),
+        ("James Neesham", 1250000, "New Zealand", "current"),
+        ("Tom Latham", 1300000, "New Zealand", "current"),
+        ("Martin Guptill", 1400000, "New Zealand", "current"),
+        ("Matt Henry", 1200000, "New Zealand", "current"),
+        ("Kyle Jamieson", 1350000, "New Zealand", "current"),
+        ("Henry Nicholls", 1100000, "New Zealand", "current"),
+        ("Will Young", 1050000, "New Zealand", "current"),
+        ("Ben Sears", 1000000, "New Zealand", "current")
     ]
     
     # ========== NEW ZEALAND LEGENDS (20) ==========
@@ -5016,31 +4846,55 @@ async def add_legends_players(update: Update, context: ContextTypes.DEFAULT_TYPE
         ("Bert Sutcliffe", 3200000, "New Zealand", "legend")
     ]
     
-    # Insert legends
+    # ========== INSERT ALL ==========
+    
+    # India
+    for name, price, country, ptype in india_current:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
     for name, price, country, ptype in india_legends:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
+    
+    # England
+    for name, price, country, ptype in england_current:
         c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
     for name, price, country, ptype in england_legends:
         c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
+    
+    # Australia
+    for name, price, country, ptype in australia_current:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
     for name, price, country, ptype in australia_legends:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
+    
+    # New Zealand
+    for name, price, country, ptype in nz_current:
         c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
     for name, price, country, ptype in nz_legends:
         c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
     
     conn.commit()
     
+    c.execute("SELECT COUNT(*) FROM shop")
+    total = c.fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM shop WHERE type='current'")
+    current_count = c.fetchone()[0]
     c.execute("SELECT COUNT(*) FROM shop WHERE type='legend'")
-    count = c.fetchone()[0]
+    legend_count = c.fetchone()[0]
+    
     conn.close()
     
     await update.message.reply_text(
-        f"✅ LEGENDS ADDED!\n\n"
-        f"🏏 Total legends added: {count}\n"
-        f"🇮🇳 India: 20\n"
-        f"🏴󠁧󠁢󠁥󠁮󠁧󠁿 England: 20\n"
-        f"🇦🇺 Australia: 20\n"
-        f"🇳🇿 New Zealand: 20\n\n"
-        f"💡 Now /shop - Legends button will show legends"
+        f"✅ ALL PLAYERS ADDED!\n\n"
+        f"🏏 TOTAL: {total} players\n"
+        f"📊 Current: {current_count} players\n"
+        f"📊 Legends: {legend_count} players\n\n"
+        f"🇮🇳 India: 20 Current + 20 Legends\n"
+        f"🏴󠁧󠁢󠁥󠁮󠁧󠁿 England: 20 Current + 20 Legends\n"
+        f"🇦🇺 Australia: 20 Current + 20 Legends\n"
+        f"🇳🇿 New Zealand: 20 Current + 20 Legends\n\n"
+        f"💡 /shop - Now buy players!"
     )
+
 
 # ============ LOTTERY SYSTEM ============
 
@@ -5555,8 +5409,7 @@ def main():
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("mystats", mystats))
     app.add_handler(CallbackQueryHandler(stats_callback, pattern="^stats_"))
-    app.add_handler(CommandHandler("add_default_players", add_default_players))
-
+    app.add_handler(CommandHandler("add_all_players", add_all_players))
     # Shop4
     app.add_handler(CommandHandler("shop4", shop4))
     app.add_handler(CommandHandler("buy4", buy4))
