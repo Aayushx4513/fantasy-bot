@@ -984,49 +984,51 @@ async def shop_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
-    
+
     if data == "shop_women":
         conn = get_db()
         c = conn.cursor()
         c.execute("SELECT id, name, price FROM shop_women ORDER BY id")
         players = c.fetchall()
         conn.close()
-        
+
         if not players:
             await query.edit_message_text("👩 WOMEN CRICKETERS\n\nNo players yet!")
             return
-        
+
         msg = "👩 WOMEN CRICKETERS\n\n"
         for p in players:
             msg += f"{p[0]}. {p[1]} - {p[2]:,} 💰\n"
         msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /buyw <number> to purchase"
         await query.edit_message_text(msg)
         return
-    
+
     parts = data.split('_')
     if len(parts) < 3:
         await query.edit_message_text("❌ Invalid selection")
         return
-    
+
     country = parts[1]
-    ptype = parts[2]
-    
+    # ptype = parts[2]  # IGNORE - not using anymore
+
     conn = get_db()
     c = conn.cursor()
+    
+    # 🔥 FIXED: Only search by country, ignore type
     c.execute("SELECT id, name, price FROM shop WHERE category=?", (country,))
     players = c.fetchall()
     conn.close()
-    
+
     if not players:
-        await query.edit_message_text(f"❌ No players found")
+        await query.edit_message_text(f"❌ No players found for {country}")
         return
-    
-    msg = f"🛒 {country} {ptype.upper()} PLAYERS\n\n"
+
+    # Show all players (both current and legends together)
+    msg = f"🛒 {country} PLAYERS\n\n"
     for p in players:
         msg += f"{p[0]}. {p[1]} - {p[2]:,} 💰\n"
     msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /buy <number> to purchase"
     await query.edit_message_text(msg)
-
 
 # ============ BUY MENS ============
 async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4639,111 +4641,130 @@ async def add_default_players(update: Update, context: ContextTypes.DEFAULT_TYPE
     conn = get_db()
     c = conn.cursor()
     
-    # Clear existing
     c.execute("DELETE FROM shop")
-    c.execute("DELETE FROM shop2")
-    c.execute("DELETE FROM shop3")
-    c.execute("DELETE FROM shop4")
-    c.execute("DELETE FROM shop_women")
     
-    # ========== SHOP 1 - MAIN PLAYERS (India, England, Australia, NZ) ==========
-    
-    # India (20)
+    # INDIA CURRENT
     india_players = [
-        ("Virat Kohli", 2000000, "India", "batter"),
-        ("Rohit Sharma", 1900000, "India", "batter"),
-        ("Shubman Gill", 1700000, "India", "batter"),
-        ("Hardik Pandya", 1800000, "India", "allrounder"),
-        ("Jasprit Bumrah", 2000000, "India", "bowler"),
-        ("Ravindra Jadeja", 1600000, "India", "allrounder"),
-        ("KL Rahul", 1500000, "India", "wicketkeeper"),
-        ("Suryakumar Yadav", 1750000, "India", "batter"),
-        ("Mohammed Shami", 1650000, "India", "bowler"),
-        ("Rishabh Pant", 1550000, "India", "wicketkeeper"),
-        ("Mohammed Siraj", 1450000, "India", "bowler"),
-        ("Axar Patel", 1400000, "India", "allrounder"),
-        ("Shreyas Iyer", 1480000, "India", "batter"),
-        ("Ishan Kishan", 1380000, "India", "wicketkeeper"),
-        ("Deepak Chahar", 1350000, "India", "bowler"),
-        ("Sanju Samson", 1420000, "India", "wicketkeeper"),
-        ("Yuzvendra Chahal", 1390000, "India", "bowler"),
-        ("Bhuvneshwar Kumar", 1370000, "India", "bowler"),
-        ("Shardul Thakur", 1320000, "India", "bowler"),
-        ("Washington Sundar", 1300000, "India", "allrounder"),
+        ("Virat Kohli", 2000000, "India", "current"),
+        ("Rohit Sharma", 1900000, "India", "current"),
+        ("Shubman Gill", 1700000, "India", "current"),
+        ("Hardik Pandya", 1800000, "India", "current"),
+        ("Jasprit Bumrah", 2000000, "India", "current"),
+        ("Ravindra Jadeja", 1600000, "India", "current"),
+        ("KL Rahul", 1500000, "India", "current"),
+        ("Suryakumar Yadav", 1750000, "India", "current"),
+        ("Mohammed Shami", 1650000, "India", "current"),
+        ("Rishabh Pant", 1550000, "India", "current"),
+        ("Mohammed Siraj", 1450000, "India", "current"),
+        ("Axar Patel", 1400000, "India", "current"),
+        ("Shreyas Iyer", 1480000, "India", "current"),
+        ("Ishan Kishan", 1380000, "India", "current"),
+        ("Deepak Chahar", 1350000, "India", "current"),
+        ("Sanju Samson", 1420000, "India", "current"),
+        ("Yuzvendra Chahal", 1390000, "India", "current"),
+        ("Bhuvneshwar Kumar", 1370000, "India", "current"),
+        ("Shardul Thakur", 1320000, "India", "current"),
+        ("Washington Sundar", 1300000, "India", "current")
     ]
     
-    # England (20)
+    # ENGLAND CURRENT
     england_players = [
-        ("Joe Root", 1800000, "England", "batter"),
-        ("Ben Stokes", 1900000, "England", "allrounder"),
-        ("Jos Buttler", 1700000, "England", "wicketkeeper"),
-        ("Jonny Bairstow", 1600000, "England", "wicketkeeper"),
-        ("Jofra Archer", 1750000, "England", "bowler"),
-        ("Moeen Ali", 1500000, "England", "allrounder"),
-        ("Sam Curran", 1550000, "England", "allrounder"),
-        ("Chris Woakes", 1400000, "England", "bowler"),
-        ("Mark Wood", 1450000, "England", "bowler"),
-        ("Adil Rashid", 1350000, "England", "bowler"),
-        ("Dawid Malan", 1300000, "England", "batter"),
-        ("Jason Roy", 1250000, "England", "batter"),
-        ("Liam Livingstone", 1450000, "England", "allrounder"),
-        ("Harry Brook", 1500000, "England", "batter"),
-        ("Reece Topley", 1200000, "England", "bowler"),
-        ("David Willey", 1150000, "England", "allrounder"),
-        ("Phil Salt", 1100000, "England", "wicketkeeper"),
-        ("Will Jacks", 1050000, "England", "allrounder"),
-        ("Gus Atkinson", 1000000, "England", "bowler"),
-        ("Tom Curran", 1080000, "England", "allrounder"),
+        ("Joe Root", 1800000, "England", "current"),
+        ("Ben Stokes", 1900000, "England", "current"),
+        ("Jos Buttler", 1700000, "England", "current"),
+        ("Jonny Bairstow", 1600000, "England", "current"),
+        ("Jofra Archer", 1750000, "England", "current"),
+        ("Moeen Ali", 1500000, "England", "current"),
+        ("Sam Curran", 1550000, "England", "current"),
+        ("Chris Woakes", 1400000, "England", "current"),
+        ("Mark Wood", 1450000, "England", "current"),
+        ("Adil Rashid", 1350000, "England", "current"),
+        ("Dawid Malan", 1300000, "England", "current"),
+        ("Jason Roy", 1250000, "England", "current"),
+        ("Liam Livingstone", 1450000, "England", "current"),
+        ("Harry Brook", 1500000, "England", "current"),
+        ("Reece Topley", 1200000, "England", "current"),
+        ("David Willey", 1150000, "England", "current"),
+        ("Phil Salt", 1100000, "England", "current"),
+        ("Will Jacks", 1050000, "England", "current"),
+        ("Gus Atkinson", 1000000, "England", "current"),
+        ("Tom Curran", 1080000, "England", "current")
     ]
     
-    # Australia (20)
+    # AUSTRALIA CURRENT
     australia_players = [
-        ("Pat Cummins", 1900000, "Australia", "bowler"),
-        ("Steve Smith", 2000000, "Australia", "batter"),
-        ("David Warner", 1800000, "Australia", "batter"),
-        ("Mitchell Starc", 1850000, "Australia", "bowler"),
-        ("Glenn Maxwell", 1750000, "Australia", "allrounder"),
-        ("Travis Head", 1650000, "Australia", "batter"),
-        ("Marnus Labuschagne", 1700000, "Australia", "batter"),
-        ("Josh Hazlewood", 1600000, "Australia", "bowler"),
-        ("Adam Zampa", 1500000, "Australia", "bowler"),
-        ("Marcus Stoinis", 1450000, "Australia", "allrounder"),
-        ("Cameron Green", 1550000, "Australia", "allrounder"),
-        ("Alex Carey", 1350000, "Australia", "wicketkeeper"),
-        ("Mitchell Marsh", 1400000, "Australia", "allrounder"),
-        ("Nathan Lyon", 1480000, "Australia", "bowler"),
-        ("Matthew Wade", 1300000, "Australia", "wicketkeeper"),
-        ("Tim David", 1380000, "Australia", "batter"),
-        ("Ashton Agar", 1250000, "Australia", "allrounder"),
-        ("Sean Abbott", 1200000, "Australia", "bowler"),
-        ("Ben McDermott", 1150000, "Australia", "batter"),
-        ("Kane Richardson", 1100000, "Australia", "bowler"),
+        ("Pat Cummins", 1900000, "Australia", "current"),
+        ("Steve Smith", 2000000, "Australia", "current"),
+        ("David Warner", 1800000, "Australia", "current"),
+        ("Mitchell Starc", 1850000, "Australia", "current"),
+        ("Glenn Maxwell", 1750000, "Australia", "current"),
+        ("Travis Head", 1650000, "Australia", "current"),
+        ("Marnus Labuschagne", 1700000, "Australia", "current"),
+        ("Josh Hazlewood", 1600000, "Australia", "current"),
+        ("Adam Zampa", 1500000, "Australia", "current"),
+        ("Marcus Stoinis", 1450000, "Australia", "current"),
+        ("Cameron Green", 1550000, "Australia", "current"),
+        ("Alex Carey", 1350000, "Australia", "current"),
+        ("Mitchell Marsh", 1400000, "Australia", "current"),
+        ("Nathan Lyon", 1480000, "Australia", "current"),
+        ("Matthew Wade", 1300000, "Australia", "current"),
+        ("Tim David", 1380000, "Australia", "current"),
+        ("Ashton Agar", 1250000, "Australia", "current"),
+        ("Sean Abbott", 1200000, "Australia", "current"),
+        ("Ben McDermott", 1150000, "Australia", "current"),
+        ("Kane Richardson", 1100000, "Australia", "current")
     ]
     
-    # New Zealand (20)
+    # NEW ZEALAND CURRENT
     nz_players = [
-        ("Kane Williamson", 1900000, "New Zealand", "batter"),
-        ("Trent Boult", 1800000, "New Zealand", "bowler"),
-        ("Devon Conway", 1600000, "New Zealand", "batter"),
-        ("Daryl Mitchell", 1550000, "New Zealand", "allrounder"),
-        ("Mitchell Santner", 1450000, "New Zealand", "allrounder"),
-        ("Lockie Ferguson", 1500000, "New Zealand", "bowler"),
-        ("Tim Southee", 1400000, "New Zealand", "bowler"),
-        ("Glenn Phillips", 1350000, "New Zealand", "wicketkeeper"),
-        ("Michael Bracewell", 1250000, "New Zealand", "allrounder"),
-        ("Finn Allen", 1300000, "New Zealand", "batter"),
-        ("Adam Milne", 1200000, "New Zealand", "bowler"),
-        ("Ish Sodhi", 1150000, "New Zealand", "bowler"),
-        ("James Neesham", 1250000, "New Zealand", "allrounder"),
-        ("Tom Latham", 1300000, "New Zealand", "wicketkeeper"),
-        ("Martin Guptill", 1400000, "New Zealand", "batter"),
-        ("Matt Henry", 1200000, "New Zealand", "bowler"),
-        ("Kyle Jamieson", 1350000, "New Zealand", "bowler"),
-        ("Henry Nicholls", 1100000, "New Zealand", "batter"),
-        ("Will Young", 1050000, "New Zealand", "batter"),
-        ("Ben Sears", 1000000, "New Zealand", "bowler"),
+        ("Kane Williamson", 1900000, "New Zealand", "current"),
+        ("Trent Boult", 1800000, "New Zealand", "current"),
+        ("Devon Conway", 1600000, "New Zealand", "current"),
+        ("Daryl Mitchell", 1550000, "New Zealand", "current"),
+        ("Mitchell Santner", 1450000, "New Zealand", "current"),
+        ("Lockie Ferguson", 1500000, "New Zealand", "current"),
+        ("Tim Southee", 1400000, "New Zealand", "current"),
+        ("Glenn Phillips", 1350000, "New Zealand", "current"),
+        ("Michael Bracewell", 1250000, "New Zealand", "current"),
+        ("Finn Allen", 1300000, "New Zealand", "current"),
+        ("Adam Milne", 1200000, "New Zealand", "current"),
+        ("Ish Sodhi", 1150000, "New Zealand", "current"),
+        ("James Neesham", 1250000, "New Zealand", "current"),
+        ("Tom Latham", 1300000, "New Zealand", "current"),
+        ("Martin Guptill", 1400000, "New Zealand", "current"),
+        ("Matt Henry", 1200000, "New Zealand", "current"),
+        ("Kyle Jamieson", 1350000, "New Zealand", "current"),
+        ("Henry Nicholls", 1100000, "New Zealand", "current"),
+        ("Will Young", 1050000, "New Zealand", "current"),
+        ("Ben Sears", 1000000, "New Zealand", "current")
     ]
     
+    # INSERT
+    for name, price, country, ptype in india_players:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
+    for name, price, country, ptype in england_players:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
+    for name, price, country, ptype in australia_players:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
+    for name, price, country, ptype in nz_players:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
+    
+    conn.commit()
+    
+    c.execute("SELECT COUNT(*) FROM shop")
+    count = c.fetchone()[0]
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✅ PLAYERS ADDED!\n\n"
+        f"🏏 Total: {count} players\n"
+        f"🇮🇳 India: 20\n"
+        f"🏴󠁧󠁢󠁥󠁮󠁧󠁿 England: 20\n"
+        f"🇦🇺 Australia: 20\n"
+        f"🇳🇿 New Zealand: 20\n\n"
+        f"💡 /shop to buy"
+    )
+
     # ========== SHOP 2 - AFFORDABLE STORE (20 players) ==========
     affordable_players = [
         ("Ruturaj Gaikwad", 50000, "India", "batter"),
@@ -4889,6 +4910,136 @@ async def add_default_players(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"✨ SPECIAL SHOP: {shop4_count} players\n"
         f"👩 WOMEN SHOP: {women_count} players\n\n"
         f"💰 Prices: 30,000 - 5,00,000"
+    )
+
+async def add_legends_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    conn = get_db()
+    c = conn.cursor()
+    
+    # ========== INDIA LEGENDS (20) ==========
+    india_legends = [
+        ("Sachin Tendulkar", 5000000, "India", "legend"),
+        ("MS Dhoni", 4500000, "India", "legend"),
+        ("Rahul Dravid", 4000000, "India", "legend"),
+        ("Sourav Ganguly", 3800000, "India", "legend"),
+        ("Virender Sehwag", 4200000, "India", "legend"),
+        ("VVS Laxman", 3500000, "India", "legend"),
+        ("Anil Kumble", 3600000, "India", "legend"),
+        ("Kapil Dev", 4800000, "India", "legend"),
+        ("Sunil Gavaskar", 4400000, "India", "legend"),
+        ("Zaheer Khan", 3200000, "India", "legend"),
+        ("Harbhajan Singh", 3100000, "India", "legend"),
+        ("Yuvraj Singh", 4300000, "India", "legend"),
+        ("Gautam Gambhir", 3400000, "India", "legend"),
+        ("Mohammad Azharuddin", 3300000, "India", "legend"),
+        ("Navjot Sidhu", 2800000, "India", "legend"),
+        ("Kris Srikkanth", 2700000, "India", "legend"),
+        ("Erapalli Prasanna", 2500000, "India", "legend"),
+        ("Bishan Bedi", 2600000, "India", "legend"),
+        ("Bhagwat Chandrasekhar", 2400000, "India", "legend"),
+        ("Venkatesh Prasad", 2300000, "India", "legend")
+    ]
+    
+    # ========== ENGLAND LEGENDS (20) ==========
+    england_legends = [
+        ("Ian Botham", 4800000, "England", "legend"),
+        ("Alastair Cook", 4000000, "England", "legend"),
+        ("Andrew Flintoff", 4500000, "England", "legend"),
+        ("Kevin Pietersen", 4200000, "England", "legend"),
+        ("James Anderson", 5000000, "England", "legend"),
+        ("Stuart Broad", 4500000, "England", "legend"),
+        ("Graeme Swann", 3800000, "England", "legend"),
+        ("Michael Vaughan", 3500000, "England", "legend"),
+        ("Alec Stewart", 3400000, "England", "legend"),
+        ("Marcus Trescothick", 3300000, "England", "legend"),
+        ("Paul Collingwood", 3200000, "England", "legend"),
+        ("Monty Panesar", 2800000, "England", "legend"),
+        ("Matthew Hoggard", 2700000, "England", "legend"),
+        ("Steve Harmison", 3000000, "England", "legend"),
+        ("Darren Gough", 2900000, "England", "legend"),
+        ("Graeme Hick", 3100000, "England", "legend"),
+        ("David Gower", 3500000, "England", "legend"),
+        ("Geoffrey Boycott", 3800000, "England", "legend"),
+        ("Fred Trueman", 4000000, "England", "legend"),
+        ("WG Grace", 5000000, "England", "legend")
+    ]
+    
+    # ========== AUSTRALIA LEGENDS (20) ==========
+    australia_legends = [
+        ("Don Bradman", 10000000, "Australia", "legend"),
+        ("Ricky Ponting", 5500000, "Australia", "legend"),
+        ("Shane Warne", 6000000, "Australia", "legend"),
+        ("Glenn McGrath", 5500000, "Australia", "legend"),
+        ("Adam Gilchrist", 5000000, "Australia", "legend"),
+        ("Matthew Hayden", 4500000, "Australia", "legend"),
+        ("Michael Clarke", 4200000, "Australia", "legend"),
+        ("Steve Waugh", 4800000, "Australia", "legend"),
+        ("Mark Waugh", 4000000, "Australia", "legend"),
+        ("Brett Lee", 4500000, "Australia", "legend"),
+        ("Dennis Lillee", 5000000, "Australia", "legend"),
+        ("Jeff Thomson", 4200000, "Australia", "legend"),
+        ("Allan Border", 4600000, "Australia", "legend"),
+        ("Greg Chappell", 4400000, "Australia", "legend"),
+        ("Ian Chappell", 4200000, "Australia", "legend"),
+        ("David Boon", 3800000, "Australia", "legend"),
+        ("Dean Jones", 3900000, "Australia", "legend"),
+        ("Damien Martyn", 3700000, "Australia", "legend"),
+        ("Jason Gillespie", 3600000, "Australia", "legend"),
+        ("Michael Hussey", 4300000, "Australia", "legend")
+    ]
+    
+    # ========== NEW ZEALAND LEGENDS (20) ==========
+    nz_legends = [
+        ("Richard Hadlee", 5500000, "New Zealand", "legend"),
+        ("Martin Crowe", 4800000, "New Zealand", "legend"),
+        ("Brendon McCullum", 4500000, "New Zealand", "legend"),
+        ("Daniel Vettori", 4200000, "New Zealand", "legend"),
+        ("Stephen Fleming", 4000000, "New Zealand", "legend"),
+        ("Chris Cairns", 3800000, "New Zealand", "legend"),
+        ("Nathan Astle", 3600000, "New Zealand", "legend"),
+        ("Craig McMillan", 3400000, "New Zealand", "legend"),
+        ("Scott Styris", 3300000, "New Zealand", "legend"),
+        ("Jacob Oram", 3200000, "New Zealand", "legend"),
+        ("Shane Bond", 4500000, "New Zealand", "legend"),
+        ("Geoff Allott", 2800000, "New Zealand", "legend"),
+        ("Dion Nash", 2900000, "New Zealand", "legend"),
+        ("John Wright", 3100000, "New Zealand", "legend"),
+        ("Mark Greatbatch", 3000000, "New Zealand", "legend"),
+        ("Ian Smith", 2900000, "New Zealand", "legend"),
+        ("Lance Cairns", 3500000, "New Zealand", "legend"),
+        ("Ewen Chatfield", 2800000, "New Zealand", "legend"),
+        ("Bruce Taylor", 3000000, "New Zealand", "legend"),
+        ("Bert Sutcliffe", 3200000, "New Zealand", "legend")
+    ]
+    
+    # Insert legends
+    for name, price, country, ptype in india_legends:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
+    for name, price, country, ptype in england_legends:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
+    for name, price, country, ptype in australia_legends:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
+    for name, price, country, ptype in nz_legends:
+        c.execute("INSERT INTO shop (name, price, category, type) VALUES (?, ?, ?, ?)", (name, price, country, ptype))
+    
+    conn.commit()
+    
+    c.execute("SELECT COUNT(*) FROM shop WHERE type='legend'")
+    count = c.fetchone()[0]
+    conn.close()
+    
+    await update.message.reply_text(
+        f"✅ LEGENDS ADDED!\n\n"
+        f"🏏 Total legends added: {count}\n"
+        f"🇮🇳 India: 20\n"
+        f"🏴󠁧󠁢󠁥󠁮󠁧󠁿 England: 20\n"
+        f"🇦🇺 Australia: 20\n"
+        f"🇳🇿 New Zealand: 20\n\n"
+        f"💡 Now /shop - Legends button will show legends"
     )
 
 # ============ LOTTERY SYSTEM ============
