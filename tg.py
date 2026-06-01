@@ -108,6 +108,14 @@ async def init_db():
     ''')
     
     await db.execute('''
+        CREATE TABLE IF NOT EXISTS daily (
+            user_id BIGINT PRIMARY KEY,
+            last_claim DATE
+        )
+    ''')
+
+
+    await db.execute('''
         CREATE TABLE IF NOT EXISTS shop_women (
             id SERIAL PRIMARY KEY,
             name TEXT,
@@ -2799,7 +2807,6 @@ async def add_all_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for name, price in nz_legends:
         await db.execute("INSERT INTO shop (name, price, category, type) VALUES ($1, $2, 'New Zealand', 'legend')", name, price)
     
-    await db.commit()
     
     total = await db.fetchval("SELECT COUNT(*) FROM shop")
     current_count = await db.fetchval("SELECT COUNT(*) FROM shop WHERE type = 'current'")
