@@ -13,7 +13,7 @@ import asyncio
 import asyncpg
 
 # ============ TOKEN & ADMINS ============
-TOKEN = os.environ.get("BOT_TOKEN", "7797951219:AAEIYTjmivQD5lpQUm3HYVR_ogkDPiHwj6Q")
+TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAF_42Gi6nk2vYHPFhlr_hkqNGn2CrNUz3k")
 ADMIN_IDS = [7687078555, 1315564307]
 
 # ============ DATABASE URL ============
@@ -4477,16 +4477,6 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += f"🏆 Fantasy Points: {user['points']}"
     
     await update.message.reply_text(msg)
-# ============ TEST COMMAND ==========
-async def test(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    if not await is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    await update.message.reply_text("✅ Bot is working!")
-
 
 # ============ MAIN ==========
 async def main():
@@ -4534,7 +4524,6 @@ async def main():
     app.add_handler(CallbackQueryHandler(rps_join_callback, pattern="^rps_join_"))
     app.add_handler(CallbackQueryHandler(rps_move_callback, pattern="^rps_move_"))
     app.add_handler(CallbackQueryHandler(rps_none_callback, pattern="^rps_none"))
-    app.add_handler(CommandHandler("test", test))
     # Hilo Game
     app.add_handler(CommandHandler("hilo", hilo))
     app.add_handler(CallbackQueryHandler(hilo_callback, pattern="^hilo_"))
