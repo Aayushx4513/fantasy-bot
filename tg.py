@@ -4346,12 +4346,24 @@ async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message and update.message.chat.type in ['group', 'supergroup']:
         group_id = update.message.chat.id
         group_name = update.message.chat.title or "Unknown Group"
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("CREATE TABLE IF NOT EXISTS groups (group_id INTEGER PRIMARY KEY, group_name TEXT, added_at TEXT)")
-        c.execute("INSERT OR IGNORE INTO groups (group_id, group_name, added_at) VALUES (?, ?, ?)", (group_id, group_name, datetime.now().isoformat()))
-        conn.commit()
-        conn.close()
+        
+        db = await get_db()
+        
+        # Table already exists in init_postgres, but just in case:
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS groups (
+                group_id BIGINT PRIMARY KEY,
+                group_name TEXT,
+                added_at TEXT
+            )
+        ''')
+        
+        await db.execute(
+            "INSERT INTO groups (group_id, group_name, added_at) VALUES ($1, $2, $3) ON CONFLICT (group_id) DO NOTHING",
+            group_id, group_name, datetime.now().isoformat()
+        )
+        
+        await db.close()
 
 
 # ============ NUMBER GUESSING GAME (DM + GROUP) ==========
