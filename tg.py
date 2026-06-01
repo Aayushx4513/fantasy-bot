@@ -1,7 +1,4 @@
 from flask import Flask
-from telegram.ext import MessageHandler
-import asyncio
-from db_postgres import init_db as init_postgres, get_db, is_registered, get_user, update_balance, get_balance
 from telegram.ext import filters
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
 import random
@@ -11,8 +8,10 @@ import os
 import threading
 import json
 import time
+import asyncio
+from db_postgres import init_db as init_postgres, get_db, is_registered, get_user, update_balance, get_balance
 
-TOKEN = "8265192837:AAF_42Gi6nk2vYHPFhlr_hkqNGn2CrNUz3k"
+TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAF_42Gi6nk2vYHPFhlr_hkqNGn2CrNUz3k")
 ADMIN_IDS = [7687078555, 1315564307]
 
 flask_app = Flask(__name__)
@@ -25,15 +24,8 @@ def run_flask():
     port = int(os.environ.get("PORT", 8080))
     flask_app.run(host="0.0.0.0", port=port)
 
-def get_db():
-    conn = sqlite3.connect('fantasy.db', timeout=30)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    return conn
-
-def init_db():
-    conn = get_db()
-    c = conn.cursor()
+async def init_db():
+    await init_postgres()
     c.execute('''CREATE TABLE IF NOT EXISTS users
                  (user_id INTEGER PRIMARY KEY, name TEXT, balance INTEGER, points INTEGER, won INTEGER, total INTEGER)''')
     c.execute('''CREATE TABLE IF NOT EXISTS matches
@@ -3453,27 +3445,6 @@ async def removeplayer3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(f"✅ PLAYER REMOVED FROM SHOP3!\n{player[0]}")
 
-# ============ CLAIM CODE SYSTEM ============
-
-def init_claimcode_db():
-    conn = get_db()
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS claim_codes 
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  code TEXT UNIQUE,
-                  amount INTEGER,
-                  max_claims INTEGER,
-                  claimed_count INTEGER DEFAULT 0,
-                  created_by INTEGER,
-                  created_at TEXT,
-                  expires_at TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS code_claims 
-                 (code TEXT, user_id INTEGER, claimed_at TEXT,
-                  PRIMARY KEY (code, user_id))''')
-    conn.commit()
-    conn.close()
-
-init_claimcode_db()
 
 async def createcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
@@ -5460,10 +5431,11 @@ async def hilo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ============ MAIN ============
 
-def main():
-    threading.Thread(target=run_flask, daemon=True).start()
-    app = Application.builder().token(TOKEN).build()
+async def main():
+    await init_db()
     
+    app = Application.builder().token(TOKEN).build()
+
     # User commands
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("refer", refer))
@@ -5498,22 +5470,24 @@ def main():
     app.add_handler(CommandHandler("myteam", myteam))
     app.add_handler(CommandHandler("top", top))
     app.add_handler(CallbackQueryHandler(shop_callback, pattern="^shop_"))
+    
     # RPS Game
     app.add_handler(CommandHandler("rps", rps))
     app.add_handler(CallbackQueryHandler(rps_join_callback, pattern="^rps_join_"))
     app.add_handler(CallbackQueryHandler(rps_move_callback, pattern="^rps_move_"))
     app.add_handler(CallbackQueryHandler(rps_none_callback, pattern="^rps_none"))
+    
     # Hilo Game
     app.add_handler(CommandHandler("hilo", hilo))
     app.add_handler(CallbackQueryHandler(hilo_callback, pattern="^hilo_"))
 
-    # ============ LOTTERY COMMANDS ============
+    # Lottery Commands
     app.add_handler(CommandHandler("lottery", lottery))
     app.add_handler(CommandHandler("buy_ticket", buy_ticket))
     app.add_handler(CommandHandler("mytickets", mytickets_command))
     app.add_handler(CommandHandler("lottery_info", lottery_info_command))
 
-# ============ LOTTERY ADMIN COMMANDS ============
+    # Lottery Admin Commands
     app.add_handler(CommandHandler("start_lottery", start_lottery))
     app.add_handler(CommandHandler("draw_winner", draw_winner))
     app.add_handler(CommandHandler("reset_lottery", reset_lottery))
@@ -5600,6 +5574,7 @@ def main():
     app.add_handler(CommandHandler("mystats", mystats))
     app.add_handler(CallbackQueryHandler(stats_callback, pattern="^stats_"))
     app.add_handler(CommandHandler("add_all_players", add_all_players))
+    
     # Shop4
     app.add_handler(CommandHandler("shop4", shop4))
     app.add_handler(CommandHandler("buy4", buy4))
@@ -5613,7 +5588,10 @@ def main():
     app.add_handler(MessageHandler(filters.ChatType.GROUP | filters.ChatType.SUPERGROUP, track_group))
 
     print("🤖 Bot is running...")
-    app.run_polling()
+    await app.run_polling()
+
 
 if __name__ == "__main__":
-    main()
+    threading.Thread(target=run_flask, daemon=True).start()
+    asyncio.run(main())
+
