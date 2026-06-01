@@ -566,6 +566,7 @@ async def rmpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text('❌ Profile photo removed!')
 
 # ============ CLAIM ==========
+# ============ CLAIM ==========
 async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_id = update.message.chat.id
@@ -579,7 +580,6 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     db = await get_db()
     
-    # Create claim table if not exists (already in init, but just in case)
     last = await db.fetchval("SELECT last_claim FROM claim WHERE user_id = $1", user_id)
 
     today = datetime.now().date()
@@ -4486,47 +4486,6 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 # ============ DAILY ==========
-async def daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    chat_id = update.message.chat.id
-    chat_type = update.message.chat.type
-
-    if not await is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-
-    CL_GROUP_ID = -1001661258033
-
-    db = await get_db()
-    
-    last = await db.fetchval("SELECT last_claim FROM claim WHERE user_id = $1", user_id)
-
-    today = datetime.now().date()
-    today_str = today.strftime("%m/%d/%y")
-
-    if last:
-        if last == today:
-            await update.message.reply_text("⚠️ Already claimed today!\nCome back tomorrow.")
-            await db.close()
-            return
-
-    if chat_type in ['group', 'supergroup'] and chat_id == CL_GROUP_ID:
-        reward = 1000
-        extra_note = "\n\n✨ BONUS: You get 1000 credits in CL Zone Group!"
-    else:
-        reward = 500
-        extra_note = f"\n\n💡 Tip: Use /daily in CL Zone Group to get 1000 credits!"
-
-    await db.execute("INSERT INTO claim (user_id, last_claim) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_claim = $2", user_id, today.isoformat())
-    await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", reward, user_id)
-    
-    new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    await db.close()
-
-    await update.message.reply_text(
-        f"✅ Daily Rewards Claimed!\n\n💰 +{reward} credits\n📅 {today_str}\n💳 New balance: {new_bal:,}{extra_note}\n\n🔄 Next claim: tomorrow",
-        disable_web_page_preview=True
-    )
 
 # ============ MAIN ==========
 async def main():
@@ -4577,7 +4536,6 @@ async def main():
     # Hilo Game
     app.add_handler(CommandHandler("hilo", hilo))
     app.add_handler(CallbackQueryHandler(hilo_callback, pattern="^hilo_"))
-    app.add_handler(CommandHandler("daily", daily))
     # Lottery
     app.add_handler(CommandHandler("lottery", lottery))
     app.add_handler(CommandHandler("buy_ticket", buy_ticket))
