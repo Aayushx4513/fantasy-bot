@@ -1,9 +1,9 @@
 from flask import Flask
 from telegram.ext import MessageHandler
 import asyncio
+from db_postgres import init_db as init_postgres, get_db, is_registered, get_user, update_balance, get_balance
 from telegram.ext import filters
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
-import sqlite3
 import random
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
