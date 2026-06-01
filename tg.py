@@ -1,3 +1,4 @@
+from telegram.ext import MessageHandler
 from flask import Flask
 from telegram.ext import filters
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
