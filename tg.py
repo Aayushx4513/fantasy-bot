@@ -12,7 +12,7 @@ import time
 import asyncio
 from db_postgres import init_db as init_postgres, get_db, is_registered, get_user, update_balance, get_balance
 
-TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAF_42Gi6nk2vYHPFhlr_hkqNGn2CrNUz3k")
+TOKEN = os.environ.get("BOT_TOKEN", "7797951219:AAEIYTjmivQD5lpQUm3HYVR_ogkDPiHwj6Q")
 ADMIN_IDS = [7687078555, 1315564307]
 
 flask_app = Flask(__name__)
