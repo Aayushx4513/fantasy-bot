@@ -601,6 +601,115 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         disable_web_page_preview=True
     )
 
+# ============ ACHIEVE COMMAND (ADMIN) ==========
+async def achieve(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text('❌ Admin only!')
+        return
+    if not update.message.reply_to_message:
+        await update.message.reply_text('❌ Reply to user with /achieve ACHIEVEMENT_NAME')
+        return
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text('❌ /achieve ACHIEVEMENT_NAME')
+        return
+    achievement = ' '.join(args)
+    target = update.message.reply_to_message.from_user
+    db = await get_db()
+    await db.execute("INSERT INTO achievements (user_id, achievement) VALUES ($1, $2)", target.id, achievement)
+    await db.close()
+    await update.message.reply_text(f"✅ ACHIEVEMENT GIVEN!\n\nUser: {target.first_name}\nAchievement: {achievement} 🏆")
+
+# ============ RMACHIEVE COMMAND (ADMIN) ==========
+async def rmachieve(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text('❌ Admin only!')
+        return
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text('❌ /rmachieve <number>')
+        return
+    try:
+        num = int(args[0])
+    except:
+        await update.message.reply_text('❌ Invalid number')
+        return
+    target_id = update.effective_user.id
+    if update.message.reply_to_message:
+        target_id = update.message.reply_to_message.from_user.id
+    db = await get_db()
+    achievements = await db.fetch("SELECT row_number() OVER () as rowid, achievement FROM achievements WHERE user_id = $1", target_id)
+    if num < 1 or num > len(achievements):
+        await update.message.reply_text(f'❌ Choose 1-{len(achievements)}')
+        await db.close()
+        return
+    removed = achievements[num-1]
+    await db.execute("DELETE FROM achievements WHERE user_id = $1 AND achievement = $2", target_id, removed['achievement'])
+    await db.close()
+    await update.message.reply_text(f"✅ ACHIEVEMENT REMOVED!\n\nRemoved: {removed['achievement']} 🏆")
+
+# ============ UNLOCKMATCH COMMAND (ADMIN) ==========
+async def unlockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text('❌ Admin only!')
+        return
+    args = context.args
+    if len(args) < 3:
+        await update.message.reply_text('❌ /unlockmatch TEAM1 vs TEAM2')
+        return
+    team1 = args[0].upper()
+    team2 = args[2].upper()
+    db = await get_db()
+    match = await db.fetchrow("SELECT id, team1, team2, locked FROM matches WHERE team1 = $1 AND team2 = $2", team1, team2)
+    if not match:
+        await update.message.reply_text(f'❌ Match not found!')
+        await db.close()
+        return
+    if match['locked'] == 0:
+        await update.message.reply_text(f'⚠️ Match is already UNLOCKED!')
+        await db.close()
+        return
+    await db.execute("UPDATE matches SET locked = 0 WHERE id = $1", match['id'])
+    total = await db.fetchval("SELECT COALESCE(SUM(amount), 0) FROM bets WHERE match_id = $1", match['id'])
+    count = await db.fetchval("SELECT COUNT(*) FROM bets WHERE match_id = $1", match['id'])
+    await db.close()
+    await update.message.reply_text(f"🔓 MATCH UNLOCKED!\n\n🏏 {match['team1']} vs {match['team2']}\n📊 Current Bets: {count}\n💰 Current Pool: {total:,} 💰")
+
+# ============ CODELER COMMANDS (ADMIN) ==========
+async def deletecode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text("❌ Usage: /deletecode CODE123")
+        return
+    code = args[0].upper()
+    db = await get_db()
+    exists = await db.fetchval("SELECT code FROM claim_codes WHERE code = $1", code)
+    if not exists:
+        await update.message.reply_text(f"❌ Code '{code}' not found!")
+        await db.close()
+        return
+    await db.execute("DELETE FROM claim_codes WHERE code = $1", code)
+    await db.execute("DELETE FROM code_claims WHERE code = $1", code)
+    await db.close()
+    await update.message.reply_text(f"✅ Code '{code}' deleted!")
+
+async def codestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    db = await get_db()
+    total_codes = await db.fetchval("SELECT COUNT(*) FROM claim_codes")
+    active_codes = await db.fetchval("SELECT COUNT(*) FROM claim_codes WHERE expires_at > now() AND claimed_count < max_claims")
+    total_claims = await db.fetchval("SELECT COUNT(*) FROM code_claims")
+    total_given = await db.fetchval("SELECT COALESCE(SUM(amount), 0) FROM code_claims cc JOIN claim_codes c ON cc.code = c.code")
+    unique_users = await db.fetchval("SELECT COUNT(DISTINCT user_id) FROM code_claims")
+    await db.close()
+    await update.message.reply_text(f"📊 CODE STATS\n\n📝 Total codes: {total_codes}\n🟢 Active codes: {active_codes}\n🎯 Total claims: {total_claims}\n💰 Credits given: {total_given:,}\n👥 Unique users: {unique_users}")
+
+
 # ============ SPIN ==========
 async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
