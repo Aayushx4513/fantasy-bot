@@ -4640,6 +4640,7 @@ async def main():
     # Mines
     app.add_handler(CommandHandler("mines", mines))
     app.add_handler(CallbackQueryHandler(mine_callback, pattern="^mine_"))
+    app.add_handler(CommandHandler("add_all_players", add_all_players))
 
     # Claim Codes
     app.add_handler(CommandHandler("claimcode", claimcode))
