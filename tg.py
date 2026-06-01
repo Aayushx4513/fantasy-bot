@@ -369,6 +369,84 @@ async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
     await update.message.reply_text(f"👥 REFERRAL SYSTEM\n\nInvite friends and earn 1,000 credits each!\n\nYour Link: {ref_link}\n\nNew users get +500 bonus!")
 
+# ============ START COMMAND ==========
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    name = user.first_name if user.first_name else user.username or "User"
+    user_id = user.id
+    
+    referred_by = None
+    if context.args and len(context.args) > 0 and context.args[0].startswith("ref_"):
+        try:
+            referred_by = int(context.args[0].split("_")[1])
+        except:
+            pass
+    
+    db = await get_db()
+    
+    existing = await db.fetchrow("SELECT * FROM users WHERE user_id = $1", user_id)
+    
+    if not existing:
+        await db.execute(
+            "INSERT INTO users (user_id, name, balance, points, won, total) VALUES ($1, $2, 1000, 0, 0, 0)",
+            user_id, name
+        )
+        
+        if referred_by and referred_by != user_id:
+            ref_exists = await db.fetchval("SELECT user_id FROM users WHERE user_id = $1", referred_by)
+            if ref_exists:
+                ref_used = await db.fetchval("SELECT user_id FROM referral WHERE user_id = $1", user_id)
+                if not ref_used:
+                    await db.execute(
+                        "INSERT INTO referral (user_id, referred_by, referred_at) VALUES ($1, $2, $3)",
+                        user_id, referred_by, datetime.now().isoformat()
+                    )
+                    await db.execute("UPDATE users SET balance = balance + 1000 WHERE user_id = $1", referred_by)
+                    await db.execute("UPDATE users SET balance = balance + 500 WHERE user_id = $1", user_id)
+                    try:
+                        await context.bot.send_message(referred_by, f"🎉 REFERRAL REWARD!\n\n@{name} joined using your link!\n💰 +1,000 credits!")
+                    except:
+                        pass
+                    await update.message.reply_text("🎉 WELCOME!\n\nYou joined with a referral!\n💰 +500 bonus credits!")
+        
+        keyboard = [
+            [InlineKeyboardButton("📢 UPDATES", url="https://t.me/clbotofficial")],
+            [InlineKeyboardButton("👥 MAIN GROUP", url="https://t.me/+eTD1m8Cjc_wyOTNl")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            f"✨ WELCOME TO CL ZONE ✨\n\n"
+            f"👑 {name}, you've joined the elite club!\n"
+            f"💰 1000 credits | 🏆 0 pts\n\n"
+            f"🎯 /claim - Daily rewards\n"
+            f"🎡 /spin - Daily spin\n"
+            f"👤 /profile - Your stats\n"
+            f"🏆 /leaderboard - Top players\n\n"
+            f"📌 Join our channels for exclusive updates!",
+            reply_markup=reply_markup
+        )
+    else:
+        keyboard = [
+            [InlineKeyboardButton("📢 UPDATES", url="https://t.me/clbotofficial")],
+            [InlineKeyboardButton("👥 MAIN GROUP", url="https://t.me/+eTD1m8Cjc_wyOTNl")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            f"✨ WELCOME BACK TO CL ZONE ✨\n\n"
+            f"👑 {name}\n"
+            f"💰 {existing['balance']:,} credits | 🏆 {existing['points']} pts\n\n"
+            f"🎯 /claim - Daily rewards\n"
+            f"🎡 /spin - Daily spin\n"
+            f"👤 /profile - Your stats\n"
+            f"🏆 /leaderboard - Top players\n\n"
+            f"📌 Stay connected with our community!",
+            reply_markup=reply_markup
+        )
+    
+    await db.close()
+
 # ============ PROFILE ==========
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
