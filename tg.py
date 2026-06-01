@@ -29,13 +29,11 @@ async def init_db():
     await init_postgres()
 
 
-def is_registered(user_id):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE user_id=?", (user_id,))
-    user = c.fetchone()
-    conn.close()
-    return user is not None
+async def is_registered(user_id):
+    db = await get_db()
+    result = await db.fetchval("SELECT user_id FROM users WHERE user_id = $1", user_id)
+    await db.close()
+    return result is not None
 
 def get_user(user_id, name=""):
     conn = get_db()
