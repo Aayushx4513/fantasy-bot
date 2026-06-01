@@ -4265,7 +4265,7 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(msg)
 
-```
+
 # ============ MAIN ==========
 async def main():
     await init_db()
