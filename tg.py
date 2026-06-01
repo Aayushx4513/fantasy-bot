@@ -5363,12 +5363,14 @@ async def hilo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ============ MAIN ============
 
+# ============ MAIN ============
+
 async def main():
     await init_db()
-    
+
     app = Application.builder().token(TOKEN).build()
 
-    # User commands
+    # ============ USER COMMANDS ============
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("refer", refer))
     app.add_handler(CommandHandler("help", help))
@@ -5395,49 +5397,49 @@ async def main():
     app.add_handler(CommandHandler("ng", ng))
     app.add_handler(CommandHandler("ngstop", ngstop))
 
-    # Shop commands
+    # ============ SHOP COMMANDS ============
     app.add_handler(CommandHandler("shop", shop))
     app.add_handler(CommandHandler("buy", buy))
     app.add_handler(CommandHandler("buyw", buyw))
     app.add_handler(CommandHandler("myteam", myteam))
     app.add_handler(CommandHandler("top", top))
     app.add_handler(CallbackQueryHandler(shop_callback, pattern="^shop_"))
-    
-    # RPS Game
+
+    # ============ RPS GAME ============
     app.add_handler(CommandHandler("rps", rps))
     app.add_handler(CallbackQueryHandler(rps_join_callback, pattern="^rps_join_"))
     app.add_handler(CallbackQueryHandler(rps_move_callback, pattern="^rps_move_"))
     app.add_handler(CallbackQueryHandler(rps_none_callback, pattern="^rps_none"))
-    
-    # Hilo Game
+
+    # ============ HILO GAME ============
     app.add_handler(CommandHandler("hilo", hilo))
     app.add_handler(CallbackQueryHandler(hilo_callback, pattern="^hilo_"))
 
-    # Lottery Commands
+    # ============ LOTTERY COMMANDS ============
     app.add_handler(CommandHandler("lottery", lottery))
     app.add_handler(CommandHandler("buy_ticket", buy_ticket))
     app.add_handler(CommandHandler("mytickets", mytickets_command))
     app.add_handler(CommandHandler("lottery_info", lottery_info_command))
 
-    # Lottery Admin Commands
+    # ============ LOTTERY ADMIN COMMANDS ============
     app.add_handler(CommandHandler("start_lottery", start_lottery))
     app.add_handler(CommandHandler("draw_winner", draw_winner))
     app.add_handler(CommandHandler("reset_lottery", reset_lottery))
     app.add_handler(CommandHandler("lottery_coupon", lottery_coupon))
     app.add_handler(CommandHandler("claim_coupon", claim_coupon))
 
-    # Numpuz Game
+    # ============ NUMPUZ GAME ============
     app.add_handler(CommandHandler("numpuz", numpuz))
     app.add_handler(CallbackQueryHandler(numpuz_callback, pattern="^numpuz_"))
 
-    # Hall of Fame
+    # ============ HALL OF FAME ============
     app.add_handler(CommandHandler("hof", hof))
     app.add_handler(CommandHandler("addhof", addhof))
     app.add_handler(CommandHandler("rmhof", rmhof))
     app.add_handler(CommandHandler("edithof", edithof))
     app.add_handler(CommandHandler("ping", ping))
 
-    # Shop2
+    # ============ SHOP2 ============
     app.add_handler(CommandHandler("shop2", shop2))
     app.add_handler(CommandHandler("buy2", buy2))
     app.add_handler(CommandHandler("myteam2", myteam2))
@@ -5446,13 +5448,13 @@ async def main():
     app.add_handler(CommandHandler("setprice2", setprice2))
     app.add_handler(CommandHandler("removeplayer2", removeplayer2))
 
-    # Bank
+    # ============ BANK ============
     app.add_handler(CommandHandler("bank", bank))
     app.add_handler(CommandHandler("deposit", deposit))
     app.add_handler(CommandHandler("withdraw", withdraw))
     app.add_handler(CommandHandler("claim_interest", claim_interest))
 
-    # Admin
+    # ============ ADMIN CRICKET ============
     app.add_handler(CommandHandler("addmatch", addmatch))
     app.add_handler(CommandHandler("deletematch", deletematch))
     app.add_handler(CommandHandler("lockmatch", lockmatch))
@@ -5464,7 +5466,7 @@ async def main():
     app.add_handler(CommandHandler("rmachieve", rmachieve))
     app.add_handler(CommandHandler("unlockmatch", unlockmatch))
 
-    # CLcricket
+    # ============ CLCRICKET ============
     app.add_handler(CommandHandler("CLcricket", clcricket))
     app.add_handler(CallbackQueryHandler(cricket_mode_callback, pattern="^cricket_mode_"))
     app.add_handler(CallbackQueryHandler(cricket_join_callback, pattern="^cricket_join_"))
@@ -5473,11 +5475,11 @@ async def main():
     app.add_handler(CallbackQueryHandler(cricket_bowl_callback, pattern="^cricket_bowl_"))
     app.add_handler(CallbackQueryHandler(cricket_bat_callback, pattern="^cricket_bat_"))
 
-    # Mines
+    # ============ MINES ============
     app.add_handler(CommandHandler("mines", mines))
     app.add_handler(CallbackQueryHandler(mine_callback, pattern="^mine_"))
 
-    # Shop3
+    # ============ SHOP3 ============
     app.add_handler(CommandHandler("shop3", shop3))
     app.add_handler(CommandHandler("buy3", buy3))
     app.add_handler(CommandHandler("myteam3", myteam3))
@@ -5486,28 +5488,28 @@ async def main():
     app.add_handler(CommandHandler("setprice3", setprice3))
     app.add_handler(CommandHandler("removeplayer3", removeplayer3))
 
-    # Claim codes
+    # ============ CLAIM CODES ============
     app.add_handler(CommandHandler("claimcode", claimcode))
     app.add_handler(CommandHandler("activecodes", activecodes))
     app.add_handler(CommandHandler("createcode", createcode))
     app.add_handler(CommandHandler("deletecode", deletecode))
     app.add_handler(CommandHandler("codestats", codestats))
 
-    # Tic Tac Toe
+    # ============ TIC TAC TOE ============
     app.add_handler(CommandHandler("ttt", ttt))
     app.add_handler(CallbackQueryHandler(ttt_callback, pattern="^ttt_"))
 
-    # Broadcast
+    # ============ BROADCAST ============
     app.add_handler(CommandHandler("broadcast", broadcast_cmd))
     app.add_handler(CommandHandler("broadcast_stats", broadcast_stats))
 
-    # Stats
+    # ============ STATS ============
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("mystats", mystats))
     app.add_handler(CallbackQueryHandler(stats_callback, pattern="^stats_"))
     app.add_handler(CommandHandler("add_all_players", add_all_players))
-    
-    # Shop4
+
+    # ============ SHOP4 ============
     app.add_handler(CommandHandler("shop4", shop4))
     app.add_handler(CommandHandler("buy4", buy4))
     app.add_handler(CommandHandler("myteam4", myteam4))
@@ -5516,14 +5518,35 @@ async def main():
     app.add_handler(CommandHandler("setprice4", setprice4))
     app.add_handler(CommandHandler("removeplayer4", removeplayer4))
 
-    # Group tracking
+    # ============ GROUP TRACKING ============
     app.add_handler(MessageHandler(filters.ChatType.GROUP | filters.ChatType.SUPERGROUP, track_group))
 
     print("🤖 Bot is running...")
-    await app.run_polling()
+    
+    # ============ START BOT ============
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    
+    # Keep running
+    try:
+        await asyncio.Event().wait()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        await app.stop()
+        await app.shutdown()
 
 
+# ============ RUN ============
 if __name__ == "__main__":
     threading.Thread(target=run_flask, daemon=True).start()
-    asyncio.run(main())
-
+    
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(main())
+    except KeyboardInterrupt:
+        pass
+    finally:
+        loop.close()
