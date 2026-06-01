@@ -26,76 +26,7 @@ def run_flask():
 
 async def init_db():
     await init_postgres()
-    c.execute('''CREATE TABLE IF NOT EXISTS users
-                 (user_id INTEGER PRIMARY KEY, name TEXT, balance INTEGER, points INTEGER, won INTEGER, total INTEGER)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS matches
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, team1 TEXT, team2 TEXT, date TEXT, status TEXT, locked INTEGER DEFAULT 0)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS bets
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, match_id INTEGER, team TEXT, amount INTEGER)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS claim
-                 (user_id INTEGER PRIMARY KEY, last_claim DATE)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS spin
-                 (user_id INTEGER PRIMARY KEY, last_claim TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS shop
-                 (id INTEGER PRIMARY KEY, name TEXT, price INTEGER, country TEXT, type TEXT, category TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS shop_women
-                 (id INTEGER PRIMARY KEY, name TEXT, price INTEGER, country TEXT, type TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS user_players
-                 (user_id INTEGER, player_id INTEGER, type TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS shop2
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, price INTEGER)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS user_players2
-                 (user_id INTEGER, player_id INTEGER)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS achievements
-                 (user_id INTEGER, achievement TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS bank
-                 (user_id INTEGER PRIMARY KEY, balance INTEGER DEFAULT 0, last_interest TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS shop3
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, price INTEGER)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS user_players3
-                 (user_id INTEGER, player_id INTEGER)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS shop4
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, price INTEGER)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS user_players4
-                 (user_id INTEGER, player_id INTEGER)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS profiles
-                 (user_id INTEGER PRIMARY KEY, photo TEXT DEFAULT NULL, bio TEXT DEFAULT NULL,
-                  points INTEGER DEFAULT 0, won INTEGER DEFAULT 0, total INTEGER DEFAULT 0,
-                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS referral
-                 (user_id INTEGER PRIMARY KEY, referred_by INTEGER, referred_at TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS groups
-                 (group_id INTEGER PRIMARY KEY, group_name TEXT, added_at TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS cricket_stats
-                 (user_id INTEGER PRIMARY KEY, name TEXT, runs INTEGER DEFAULT 0,
-                  wickets INTEGER DEFAULT 0, wins INTEGER DEFAULT 0, losses INTEGER DEFAULT 0,
-                  highest_score INTEGER DEFAULT 0)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS claim_codes
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT UNIQUE, amount INTEGER,
-                  max_claims INTEGER, claimed_count INTEGER DEFAULT 0, created_by INTEGER,
-                  created_at TEXT, expires_at TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS code_claims
-                 (code TEXT, user_id INTEGER, claimed_at TEXT, PRIMARY KEY (code, user_id))''')
-    c.execute('''CREATE TABLE IF NOT EXISTS hall_of_fame
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT, winner TEXT, added_by INTEGER, added_at TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS numpuz_progress
-                 (user_id INTEGER PRIMARY KEY, level INTEGER DEFAULT 1, board TEXT, moves INTEGER DEFAULT 0)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS ttt_stats
-                 (user_id INTEGER PRIMARY KEY, wins INTEGER DEFAULT 0, losses INTEGER DEFAULT 0, draws INTEGER DEFAULT 0)''')
-    
-    try:
-        c.execute("ALTER TABLE users ADD COLUMN photo TEXT")
-    except:
-        pass
-    try:
-        c.execute("ALTER TABLE users ADD COLUMN bio TEXT")
-    except:
-        pass
 
-    conn.commit()
-    conn.close()
-
-init_db()
 
 def is_registered(user_id):
     conn = get_db()
