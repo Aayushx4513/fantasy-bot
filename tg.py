@@ -4239,14 +4239,32 @@ async def allbets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(full_msg)
     await db.close()
 
+# ============ HISTORY ==========
 async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    user = await get_user(user_id)
+    
+    db = await get_db()
+    user = await db.fetchrow("SELECT won, total, points FROM users WHERE user_id = $1", user_id)
+    await db.close()
+    
+    if not user:
+        await update.message.reply_text('❌ User not found!')
+        return
+    
     win_rate = int(user['won'] / user['total'] * 100) if user['total'] > 0 else 0
-    await update.message.reply_text(f'📜 BET HISTORY\n\n✅ Won: {user["won"]}\n❌ Lost: {user["total"] - user["won"]}\n📊 Win Rate: {win_rate}%\n\n🏆 Fantasy Points: {user["points"]}')
+    lost = user['total'] - user['won']
+    
+    msg = f"📜 BET HISTORY\n\n"
+    msg += f"✅ Won: {user['won']}\n"
+    msg += f"❌ Lost: {lost}\n"
+    msg += f"📊 Win Rate: {win_rate}%\n\n"
+    msg += f"🏆 Fantasy Points: {user['points']}"
+    
+    await update.message.reply_text(msg)
+
 ```
 # ============ MAIN ==========
 async def main():
