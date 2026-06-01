@@ -447,6 +447,32 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await db.close()
 
+# ============ SETPRICE COMMAND (ADMIN) ==========
+async def setprice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text('❌ Admin only!')
+        return
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text('❌ /setprice <player_id> <new_price>')
+        return
+    try:
+        player_id = int(args[0])
+        new_price = int(args[1])
+    except:
+        await update.message.reply_text('❌ Invalid input!')
+        return
+    db = await get_db()
+    player = await db.fetchrow("SELECT name FROM shop WHERE id = $1", player_id)
+    if not player:
+        await update.message.reply_text(f'❌ Player ID {player_id} not found!')
+        await db.close()
+        return
+    await db.execute("UPDATE shop SET price = $1 WHERE id = $2", new_price, player_id)
+    await db.close()
+    await update.message.reply_text(f"✅ PRICE UPDATED!\n\n{player['name']}\n💰 New Price: {new_price:,} 💰")
+
+
 # ============ PROFILE ==========
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
