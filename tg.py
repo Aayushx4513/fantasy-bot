@@ -1707,6 +1707,15 @@ async def reset_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     global lottery_active, lottery_tickets, lottery_total_tickets, lottery_participants, lottery_winner
     
+    # 🔥 YEH ADD KARO — DATABASE CLEAR
+    db = await get_db()
+    await db.execute("DELETE FROM lottery_tickets")
+    await db.execute("DELETE FROM lottery_participants")
+    await db.execute("UPDATE lottery_data SET value = 'false' WHERE key = 'active'")
+    await db.execute("UPDATE lottery_data SET value = '0' WHERE key = 'total_tickets'")
+    await db.close()
+    
+    # Global variables clear
     lottery_active = False
     lottery_tickets = {}
     lottery_total_tickets = 0
