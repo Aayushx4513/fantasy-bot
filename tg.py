@@ -13,7 +13,7 @@ import asyncio
 import asyncpg
 
 # ============ TOKEN & ADMINS ============
-TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAFeTdmp0KFr1r3iw1lpBhVMnVlQ24DC6YE")
+TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAGwwBfePTiCN-AoFDxyg9mCG6A9kYWM8FY")
 ADMIN_IDS = [7687078555, 1315564307]
 
 # ============ DATABASE URL ============
