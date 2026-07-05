@@ -17,7 +17,8 @@ TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAGwwBfePTiCN-AoFDxyg9mCG6A9kYWM
 ADMIN_IDS = [7687078555, 1315564307]
 
 # ============ DATABASE URL ============
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:aayush0806q@db.qvdodaowbwkdxvlsvyyo.supabase.co:5432/postgres?sslmode=require")
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres.qvdodaowbwkdxvlsvyyo:aayush0806q@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres")
+
 
 # ============ FLASK ============
 flask_app = Flask(__name__)
