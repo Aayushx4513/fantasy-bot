@@ -11,6 +11,7 @@ import json
 import time
 import asyncio
 import asyncpg
+import string
 
 # ============ TOKEN & ADMINS ============
 TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAGwwBfePTiCN-AoFDxyg9mCG6A9kYWM8FY")
@@ -331,7 +332,6 @@ async def get_balance(user_id):
     return balance if balance else 0
 
 # ============ LOTTERY GLOBALS ==========
-import string
 
 lottery_active = False
 lottery_tickets = {}
@@ -354,8 +354,8 @@ CARD_VALUES = {
 SUITS = ['â™ ï¸', 'â™¥ï¸', 'â™£ï¸', 'â™¦ï¸']
 
 def get_random_card():
-    value = rand.choice(list(CARD_VALUES.keys()))
-    suit = rand.choice(SUITS)
+    value = random.choice(list(CARD_VALUES.keys()))
+    suit = random.choice(SUITS)
     return {'value': value, 'suit': suit, 'rank': CARD_VALUES[value]}
 
 def get_multiplier_increase(diff):
@@ -1654,9 +1654,11 @@ async def draw_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
     prize_pool = lottery_total_tickets * 20000
     
     db = await get_db()
+    db = await get_db()
     winner_name = await db.fetchval("SELECT name FROM users WHERE user_id = $1", winner_id)
-    current_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", winner_id)
-    await db.execute("UPDATE users SET balance = $1 WHERE user_id = $2", current_bal + prize_pool, winner_id)
+    # Use += to avoid race condition (atomic increment, not fetch-then-set)
+    await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", prize_pool, winner_id)
+    new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", winner_id)
     
     try:
         await context.bot.send_message(
@@ -1664,7 +1666,7 @@ async def draw_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"ðŸŽ‰ YOU WON THE LOTTERY! ðŸŽ‰\n\n"
             f"ðŸ† Ticket: {winner_ticket}\n"
             f"ðŸ’° Prize: {prize_pool:,}\n"
-            f"ðŸ’³ New balance: {current_bal + prize_pool:,}"
+            f"New balance: {new_bal:,}"
         )
     except:
         pass
@@ -1876,23 +1878,23 @@ async def hilo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game = hilo_games[user_id]
     
     if data == f"hilo_cashout_{user_id}":
+        # Block cashout before any guess is made (multiplier = 1.0 means no guess yet)
+        if game['multiplier'] <= 1.0:
+            await query.answer("Make at least one guess before cashing out!", show_alert=True)
+            return
         win_amount = int(game['bet'] * game['multiplier'])
-        
-        if win_amount > 0:
-            db = await get_db()
-            balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-            await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", win_amount, user_id)
+        db = await get_db()
+        await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", win_amount, user_id)
         
         log_str = "".join([f"|{c['suit']}{c['value']}" for c in game['logs']])
-        
-        msg = f"ðŸ“ˆ HiLo Game ðŸ“‰\n\n"
-        msg += f"Bet amount: {game['bet']:,} ðŸ’°\n"
+        msg = f"HiLo Game\n\n"
+        msg += f"Bet amount: {game['bet']:,}\n"
         msg += f"Final Multiplier: {game['multiplier']:.3f}x\n"
-        msg += f"You won: {win_amount:,} ðŸ’°\n\n"
+        msg += f"You won: {win_amount:,}\n\n"
         msg += f"Logs: {log_str}|"
-        
         await query.edit_message_text(msg)
         del hilo_games[user_id]
+        return
         return
     
     guess = "high" if "high" in data else "low"
