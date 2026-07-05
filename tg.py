@@ -4899,149 +4899,43 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Admin only!")
         return
-    
     msg = update.message
     db = await get_db()
-    
-    # Fetch all users and groups
     users = [row['user_id'] for row in await db.fetch("SELECT user_id FROM users")]
     groups = [row['group_id'] for row in await db.fetch("SELECT group_id FROM groups")]
     await db.close()
-    
-    total_targets = len(users) + len(groups)
     sent = 0
-    failed = 0
-    
-    # Initial message
-    status_msg = await update.message.reply_text(
-        f"📢 **BROADCAST STARTED!**\n\n"
-        f"👤 Users: {len(users)}\n"
-        f"👥 Groups: {len(groups)}\n"
-        f"📡 Total: {total_targets}\n\n"
-        f"⏳ Sending: 0/{total_targets} (0%)\n"
-        f"✅ Sent: 0\n"
-        f"❌ Failed: 0"
-    )
-    
-    # Check if photo or text
     if msg.reply_to_message and msg.reply_to_message.photo:
         photo = msg.reply_to_message.photo[-1].file_id
         caption = msg.reply_to_message.caption or ""
-        
-        # Send to users
-        for i, uid in enumerate(users, 1):
+        for uid in users:
             try:
                 await context.bot.send_photo(uid, photo, caption=caption)
                 sent += 1
             except:
-                failed += 1
-            
-            # Update status every 10 messages
-            if i % 10 == 0 or i == len(users):
-                try:
-                    await status_msg.edit_text(
-                        f"📢 **BROADCAST STARTED!**\n\n"
-                        f"👤 Users: {len(users)}\n"
-                        f"👥 Groups: {len(groups)}\n"
-                        f"📡 Total: {total_targets}\n\n"
-                        f"⏳ Sending: {i}/{total_targets} ({int(i/total_targets*100)}%)\n"
-                        f"✅ Sent: {sent}\n"
-                        f"❌ Failed: {failed}"
-                    )
-                except:
-                    pass
-        
-        # Send to groups
-        for i, gid in enumerate(groups, 1):
+                pass
+        for gid in groups:
             try:
                 await context.bot.send_photo(gid, photo, caption=caption)
                 sent += 1
             except:
-                failed += 1
-            
-            current = len(users) + i
-            if i % 10 == 0 or i == len(groups):
-                try:
-                    await status_msg.edit_text(
-                        f"📢 **BROADCAST STARTED!**\n\n"
-                        f"👤 Users: {len(users)}\n"
-                        f"👥 Groups: {len(groups)}\n"
-                        f"📡 Total: {total_targets}\n\n"
-                        f"⏳ Sending: {current}/{total_targets} ({int(current/total_targets*100)}%)\n"
-                        f"✅ Sent: {sent}\n"
-                        f"❌ Failed: {failed}"
-                    )
-                except:
-                    pass
-        
-        await status_msg.edit_text(
-            f"✅ **BROADCAST COMPLETED!** 🎉\n\n"
-            f"👤 Users: {len(users)}\n"
-            f"👥 Groups: {len(groups)}\n"
-            f"📡 Total Targets: {total_targets}\n\n"
-            f"✅ Sent: {sent}\n"
-            f"❌ Failed: {failed}\n"
-            f"📊 Success Rate: {int(sent/total_targets*100)}%"
-        )
+                pass
+        await update.message.reply_text(f"📸 BROADCAST SENT! Total: {sent}")
         return
-    
-    # Text broadcast
     content = msg.reply_to_message.text if msg.reply_to_message else " ".join(context.args)
-    
-    # Send to users
-    for i, uid in enumerate(users, 1):
+    for uid in users:
         try:
             await context.bot.send_message(uid, content)
             sent += 1
         except:
-            failed += 1
-        
-        if i % 10 == 0 or i == len(users):
-            try:
-                await status_msg.edit_text(
-                    f"📢 **BROADCAST STARTED!**\n\n"
-                    f"👤 Users: {len(users)}\n"
-                    f"👥 Groups: {len(groups)}\n"
-                    f"📡 Total: {total_targets}\n\n"
-                    f"⏳ Sending: {i}/{total_targets} ({int(i/total_targets*100)}%)\n"
-                    f"✅ Sent: {sent}\n"
-                    f"❌ Failed: {failed}"
-                )
-            except:
-                pass
-    
-    # Send to groups
-    for i, gid in enumerate(groups, 1):
+            pass
+    for gid in groups:
         try:
             await context.bot.send_message(gid, content)
             sent += 1
         except:
-            failed += 1
-        
-        current = len(users) + i
-        if i % 10 == 0 or i == len(groups):
-            try:
-                await status_msg.edit_text(
-                    f"📢 **BROADCAST STARTED!**\n\n"
-                    f"👤 Users: {len(users)}\n"
-                    f"👥 Groups: {len(groups)}\n"
-                    f"📡 Total: {total_targets}\n\n"
-                    f"⏳ Sending: {current}/{total_targets} ({int(current/total_targets*100)}%)\n"
-                    f"✅ Sent: {sent}\n"
-                    f"❌ Failed: {failed}"
-                )
-            except:
-                pass
-    
-    await status_msg.edit_text(
-        f"✅ **BROADCAST COMPLETED!** 🎉\n\n"
-        f"👤 Users: {len(users)}\n"
-        f"👥 Groups: {len(groups)}\n"
-        f"📡 Total Targets: {total_targets}\n\n"
-        f"✅ Sent: {sent}\n"
-        f"❌ Failed: {failed}\n"
-        f"📊 Success Rate: {int(sent/total_targets*100)}%"
-    )
+            pass
+    await update.message.reply_text(f"📢 BROADCAST SENT! Total: {sent}")
 
 async def broadcast_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
