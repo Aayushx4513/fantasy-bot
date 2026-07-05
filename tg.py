@@ -4216,63 +4216,77 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
+        return  # ❌ SIRF CHUP RAHEGA, KUCH NAHI BOLEGA
+    
     if not update.message.reply_to_message:
-        await update.message.reply_text('❌ Reply to user with /add AMOUNT')
-        return
+        return  # ❌ SIRF CHUP RAHEGA
+    
     args = context.args
     if len(args) < 1:
-        await update.message.reply_text('❌ /add AMOUNT')
-        return
+        return  # ❌ SIRF CHUP RAHEGA
+    
     try:
         amount = int(args[0])
     except:
-        await update.message.reply_text('❌ Invalid amount')
         return
+    
     target = update.message.reply_to_message.from_user
+    
     db = await get_db()
     old = await db.fetchrow("SELECT balance, name FROM users WHERE user_id = $1", target.id)
     if not old:
         await update.message.reply_text('❌ User not found!')
         await db.close()
         return
+    
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", amount, target.id)
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", target.id)
     await db.close()
-    await update.message.reply_text(f"✅ ADDED {amount:,} to {old['name']}\n💰 Balance: {old['balance']:,} → {new_bal:,} 💰")
+    
+    await update.message.reply_text(
+        f"✅ ADDED {amount:,} to {old['name']}\n"
+        f"💰 Balance: {old['balance']:,} → {new_bal:,} 💰"
+    )
 
 async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
+        return  # ❌ SIRF CHUP RAHEGA
+    
     if not update.message.reply_to_message:
-        await update.message.reply_text('❌ Reply to user with /remove AMOUNT')
-        return
+        return  # ❌ SIRF CHUP RAHEGA
+    
     args = context.args
     if len(args) < 1:
-        await update.message.reply_text('❌ /remove AMOUNT')
-        return
+        return  # ❌ SIRF CHUP RAHEGA
+    
     try:
         amount = int(args[0])
     except:
-        await update.message.reply_text('❌ Invalid amount')
         return
+    
     target = update.message.reply_to_message.from_user
+    
     db = await get_db()
     old = await db.fetchrow("SELECT balance, name FROM users WHERE user_id = $1", target.id)
     if not old:
         await update.message.reply_text('❌ User not found!')
         await db.close()
         return
+    
     if old['balance'] < amount:
         await update.message.reply_text(f'❌ Insufficient! Balance: {old["balance"]:,} 💰')
         await db.close()
         return
+    
     await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", amount, target.id)
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", target.id)
     await db.close()
-    await update.message.reply_text(f"❌ REMOVED {amount:,} from {old['name']}\n💰 Balance: {old['balance']:,} → {new_bal:,} 💰")
+    
+    await update.message.reply_text(
+        f"❌ REMOVED {amount:,} from {old['name']}\n"
+        f"💰 Balance: {old['balance']:,} → {new_bal:,} 💰"
+    )
+
 
 # ============ HALL OF FAME ==========
 async def hof(update: Update, context: ContextTypes.DEFAULT_TYPE):
