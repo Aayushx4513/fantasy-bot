@@ -19,7 +19,6 @@ ADMIN_IDS = [7687078555, 1315564307]
 # ============ DATABASE URL ============
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres.qvdodaowbwkdxvlsvyyo:aayush0806q@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres")
 
-
 # ============ FLASK ============
 flask_app = Flask(__name__)
 
@@ -589,7 +588,6 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if last:
         if last == today:
             await update.message.reply_text("⚠️ Already claimed today!\nCome back tomorrow.")
-            await db.close()
             return
 
     if chat_type in ['group', 'supergroup'] and chat_id == CL_GROUP_ID:
@@ -599,11 +597,10 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reward = 500
         extra_note = f"\n\n💡 Tip: Use /claim in CL Zone Group to get 1000 credits!"
 
-    await db.execute("INSERT INTO claim (user_id, last_claim) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_claim = $2", user_id, today.isoformat())
+    await db.execute("INSERT INTO claim (user_id, last_claim) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_claim = $2", user_id, today)
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", reward, user_id)
     
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    await db.close()
 
     await update.message.reply_text(
         f"✅ Claimed Daily Rewards!\n\n💰 +{reward} credits\n📅 {today_str}\n💳 New balance: {new_bal:,}{extra_note}\n\n🔄 Next claim: tomorrow",
