@@ -30,14 +30,19 @@ def run_flask():
     port = int(os.environ.get("PORT", 8081))  # 🔥 8080 → 8081
     flask_app.run(host="0.0.0.0", port=port)
 
-# ============ GLOBAL CONNECTION ============
-db_conn = None
+# ============ GLOBAL CONNECTION POOL ============
+db_pool = None
 
 async def get_db():
-    global db_conn
-    if db_conn is None or db_conn.is_closed():
-        db_conn = await asyncpg.connect(DATABASE_URL, statement_cache_size=0)
-    return db_conn
+    global db_pool
+    if db_pool is None or db_pool._closed:
+        db_pool = await asyncpg.create_pool(
+            DATABASE_URL,
+            statement_cache_size=0,
+            min_size=1,
+            max_size=5
+        )
+    return db_pool
 
 # ============ DATABASE INIT ============
 async def init_db():
