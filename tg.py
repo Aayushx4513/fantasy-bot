@@ -1582,15 +1582,15 @@ async def mytickets_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def lottery_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
-        await update.message.reply_text('âŒ Send /start first!')
+        await update.message.reply_text('❌ Send /start first!')
         return
     
     user_tickets = lottery_tickets.get(user_id, [])
     prize_pool = lottery_total_tickets * 20000
     win_chance = (len(user_tickets) / lottery_total_tickets * 100) if lottery_total_tickets > 0 else 0
-    status_text = "ðŸŸ¢ ACTIVE" if lottery_active else "ðŸ”´ NOT ACTIVE"
+    status_text = "🟢 ACTIVE" if lottery_active else "🔴 NOT ACTIVE"
     
-    msg = f"ðŸŽ° LOTTERY INFO\n\n"
+    msg = f"🎰 LOTTERY INFO\n\n"
     msg += f"Status: {status_text}\n"
     msg += f"Total tickets: {lottery_total_tickets}\n"
     msg += f"Participants: {len(lottery_participants)}\n"
@@ -1653,7 +1653,6 @@ async def draw_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lottery_winner = winner_id
     prize_pool = lottery_total_tickets * 20000
     
-    db = await get_db()
     db = await get_db()
     winner_name = await db.fetchval("SELECT name FROM users WHERE user_id = $1", winner_id)
     # Use += to avoid race condition (atomic increment, not fetch-then-set)
@@ -1887,14 +1886,13 @@ async def hilo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", win_amount, user_id)
         
         log_str = "".join([f"|{c['suit']}{c['value']}" for c in game['logs']])
-        msg = f"HiLo Game\n\n"
-        msg += f"Bet amount: {game['bet']:,}\n"
+        msg = f"📈 HiLo Game 📉\n\n"
+        msg += f"Bet amount: {game['bet']:,} 💰\n"
         msg += f"Final Multiplier: {game['multiplier']:.3f}x\n"
-        msg += f"You won: {win_amount:,}\n\n"
+        msg += f"You won: {win_amount:,} 💰\n\n"
         msg += f"Logs: {log_str}|"
         await query.edit_message_text(msg)
         del hilo_games[user_id]
-        return
         return
     
     guess = "high" if "high" in data else "low"
