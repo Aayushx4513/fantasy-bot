@@ -36,7 +36,10 @@ db_conn = None
 async def get_db():
     global db_conn
     if db_conn is None or db_conn.is_closed():
-        db_conn = await asyncpg.connect(DATABASE_URL)
+        db_conn = await asyncpg.connect(
+            DATABASE_URL,
+            statement_cache_size=0  # 🔥 YEH ADD KARO
+        )
     return db_conn
 
 # ============ DATABASE INIT ============
