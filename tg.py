@@ -1025,6 +1025,7 @@ async def flip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"😞 {result.upper()}! You lost {amount:,} 💰\n💰 New balance: {new_bal:,} 💰")
 
 # ============ HELP COMMAND ==========
+# ============ HELP COMMAND ==========
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
@@ -1037,6 +1038,7 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👤 PROFILE\n"
         "• /start - Start bot\n"
         "• /profile - Your stats & collection\n"
+        "• /balance - Check wallet balance\n"
         "• /leaderboard - Top 10 Richest users\n"
         "• /setbio <text> - Set bio\n"
         "• /rmbio - Remove bio\n"
@@ -1060,7 +1062,8 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /top_fantasy - Fantasy points ranking\n\n"
         
         "🏆 ACHIEVEMENTS\n"
-        "• /achievements - Your badges\n\n"
+        "• /achievements - Your badges\n"
+        "• /hof - Hall of Fame\n\n"
         
         "🛒 SHOP\n"
         "• /shop - Buy players\n"
@@ -1104,7 +1107,9 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /ng <number> - Make a guess\n"
         "• /claimcode <code> - Claim rewards\n"
         "• /activecodes - Active codes\n"
-        "• /numpuz - Number puzzle\n\n"
+        "• /numpuz - Number puzzle\n"
+        "• /tower - Tower climb game\n"
+        "• /afk - Set AFK status\n\n"
         
         "🎁 REFERRAL\n"
         "• /refer - Get your link (1k per refer)\n\n"
@@ -1114,7 +1119,6 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     await update.message.reply_text(msg)
-
 # ============ LEADERBOARD ==========
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
