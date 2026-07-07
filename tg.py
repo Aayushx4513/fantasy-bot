@@ -1261,79 +1261,20 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sender_new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", sender.id)
     await db.close()
     
-    # 🔥 GET PROFILE PHOTOS
-    sender_photos = await context.bot.get_user_profile_photos(sender.id, limit=1)
-    receiver_photos = await context.bot.get_user_profile_photos(receiver.id, limit=1)
+    sender_username = f"@{sender.username}" if sender.username else sender.first_name
+    receiver_username = f"@{receiver.username}" if receiver.username else receiver.first_name
     
-    sender_photo = sender_photos.photos[0][-1].file_id if sender_photos.total_count > 0 else None
-    receiver_photo = receiver_photos.photos[0][-1].file_id if receiver_photos.total_count > 0 else None
+    msg = (
+        f"💝 **TIP SENT!**\n\n"
+        f"**FROM:** {sender_username}\n"
+        f"**TO:** {receiver_username}\n"
+        f"💰 Amount: {amount:,}\n"
+        f"💸 Fee (5%): {fee:,}\n"
+        f"📥 Received: {receiver_amount:,}\n\n"
+        f"📊 Your balance: {sender_new_bal:,} 💰"
+    )
     
-    sender_name = f"@{sender.username}" if sender.username else sender.first_name
-    receiver_name = f"@{receiver.username}" if receiver.username else receiver.first_name
-    
-    # 🔥 SEND WITH PHOTO TEMPLATE
-    if sender_photo and receiver_photo:
-        from PIL import Image, ImageDraw, ImageFont
-        from io import BytesIO
-        import requests
-        
-        # Download photos
-        sender_pic = requests.get(f"https://api.telegram.org/file/bot{TOKEN}/{sender_photo}")
-        receiver_pic = requests.get(f"https://api.telegram.org/file/bot{TOKEN}/{receiver_photo}")
-        
-        # Create template
-        img = Image.new('RGB', (800, 500), color='#1a1a2e')
-        draw = ImageDraw.Draw(img)
-        
-        # Add title
-        draw.text((300, 20), "💝 TIP SENT!", fill='white', font=ImageFont.truetype("arial.ttf", 30))
-        
-        # Add "FROM" and "TO" labels
-        draw.text((100, 100), "FROM:", fill='#00ff88', font=ImageFont.truetype("arial.ttf", 20))
-        draw.text((450, 100), "TO:", fill='#ff6b6b', font=ImageFont.truetype("arial.ttf", 20))
-        
-        # Paste sender photo
-        sender_img = Image.open(BytesIO(sender_pic.content)).resize((150, 150))
-        img.paste(sender_img, (60, 140))
-        
-        # Paste receiver photo
-        receiver_img = Image.open(BytesIO(receiver_pic.content)).resize((150, 150))
-        img.paste(receiver_img, (400, 140))
-        
-        # Add names
-        draw.text((80, 310), sender_name, fill='white', font=ImageFont.truetype("arial.ttf", 16))
-        draw.text((420, 310), receiver_name, fill='white', font=ImageFont.truetype("arial.ttf", 16))
-        
-        # Add arrow
-        draw.text((240, 200), "➡️", fill='yellow', font=ImageFont.truetype("arial.ttf", 40))
-        
-        # Add amount details
-        draw.text((100, 370), f"💰 Amount: {amount:,}", fill='white', font=ImageFont.truetype("arial.ttf", 16))
-        draw.text((100, 395), f"💸 Fee (5%): {fee:,}", fill='white', font=ImageFont.truetype("arial.ttf", 16))
-        draw.text((100, 420), f"📥 Received: {receiver_amount:,}", fill='white', font=ImageFont.truetype("arial.ttf", 16))
-        
-        # Add balance
-        draw.text((100, 455), f"📊 Your balance: {sender_new_bal:,} 💰", fill='#00ff88', font=ImageFont.truetype("arial.ttf", 16))
-        
-        # Save to bytes
-        img_byte_arr = BytesIO()
-        img.save(img_byte_arr, format='PNG')
-        img_byte_arr.seek(0)
-        
-        await update.message.reply_photo(photo=img_byte_arr)
-        
-    else:
-        # Fallback: text message
-        await update.message.reply_text(
-            f"💝 **TIP SENT!**\n\n"
-            f"**FROM:** {sender_name}\n"
-            f"**TO:** {receiver_name}\n"
-            f"💰 Amount: {amount:,}\n"
-            f"💸 Fee (5%): {fee:,}\n"
-            f"📥 Received: {receiver_amount:,}\n\n"
-            f"📊 Your balance: {sender_new_bal:,} 💰",
-            parse_mode="Markdown"
-        )
+    await update.message.reply_text(msg, parse_mode="Markdown")
 
 # ============ ACHIEVEMENTS ==========
 async def achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
