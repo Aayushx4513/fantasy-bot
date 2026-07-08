@@ -6050,6 +6050,161 @@ async def check_afk(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await db.close()
 
+# ============ WORD SEEK GAME ==========
+import random
+import re
+
+# ---------- LOAD WORDS FROM FILE ----------
+def load_words_from_file():
+    try:
+        with open("words.txt", "r") as f:
+            all_words = f.read().splitlines()
+        
+        # Filter by length
+        words_3 = [w.lower() for w in all_words if len(w) == 3]
+        words_4 = [w.lower() for w in all_words if len(w) == 4]
+        words_5 = [w.lower() for w in all_words if len(w) == 5]
+        
+        return words_3, words_4, words_5
+    except:
+        # Fallback words if file not found
+        return (
+            ["cat", "dog", "run", "sun", "big", "red", "hat", "ice", "fly", "cow"],
+            ["make", "lion", "ants", "pine", "toss", "duck", "sick", "word", "game", "code"],
+            ["apple", "brain", "crane", "dance", "eagle", "flame", "grape", "heart"]
+        )
+
+WORDS_3, WORDS_4, WORDS_5 = load_words_from_file()
+
+def get_valid_words(length):
+    if length == 3: return WORDS_3
+    elif length == 4: return WORDS_4
+    elif length == 5: return WORDS_5
+    return []
+
+
+# ---------- GAME STATE ----------
+wordseek_games = {}
+
+def wordseek_check(word, guess):
+    result = []
+    for i, letter in enumerate(guess):
+        if letter == word[i]:
+            result.append("🟩")
+        elif letter in word:
+            result.append("🟨")
+        else:
+            result.append("🟥")
+    return result
+
+
+# ---------- START GAME ----------
+async def start_word_game(update: Update, context: ContextTypes.DEFAULT_TYPE, length: int):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    
+    words = get_valid_words(length)
+    if len(words) < 10:
+        await update.message.reply_text(f"❌ Not enough {length}-letter words! Download words.txt")
+        return
+    
+    word = random.choice(words)
+    wordseek_games[chat_id] = {
+        'word': word,
+        'guesses': [],
+        'length': length,
+        'user_id': user_id
+    }
+    
+    await update.message.reply_text(
+        f"🧩 **{length}-Letter Word Seek**\n\n"
+        f"Guess the {length}-letter word!\n"
+        f"Type any {length}-letter word.\n\n"
+        f"🟥 = Wrong letter\n"
+        f"🟨 = Right letter, wrong place\n"
+        f"🟩 = Right letter, right place\n\n"
+        f"📝 You have 30 guesses!"
+    )
+
+
+async def word3(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await start_word_game(update, context, 3)
+
+async def word4(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await start_word_game(update, context, 4)
+
+async def word5(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await start_word_game(update, context, 5)
+
+
+# ---------- GUESS HANDLER ----------
+async def wordseek_guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    guess = update.message.text.lower().strip()
+    
+    if chat_id not in wordseek_games:
+        return
+    
+    game = wordseek_games[chat_id]
+    
+    if user_id != game['user_id']:
+        await update.message.reply_text("❌ This game is not yours!")
+        return
+    
+    length = game['length']
+    word = game['word']
+    
+    if len(guess) != length:
+        await update.message.reply_text(f"❌ Must be a {length}-letter word!")
+        return
+    
+    # Check if word exists in dictionary
+    valid_words = get_valid_words(length)
+    if guess not in valid_words:
+        await update.message.reply_text(f"❌ '{guess}' is not a valid {length}-letter word.")
+        return
+    
+    # Check if already guessed
+    for g, _ in game['guesses']:
+        if g == guess:
+            await update.message.reply_text("⚠️ You already guessed that word!")
+            return
+    
+    result = wordseek_check(word, guess)
+    game['guesses'].append((guess, result))
+    
+    msg = f"🧩 {length}-Letter Mode · {len(game['guesses'])}/30\n\n"
+    for g, r in game['guesses']:
+        msg += f"{''.join(r)} {g.upper()}\n"
+    
+    if guess == word:
+        msg += f"\n🎉 **CONGRATS!** You guessed it in {len(game['guesses'])} tries! 🎉"
+        del wordseek_games[chat_id]
+    elif len(game['guesses']) >= 30:
+        msg += f"\n💀 **GAME OVER!** The word was: **{word.upper()}**"
+        del wordseek_games[chat_id]
+    else:
+        msg += f"\n📝 Next guess:"
+    
+    await update.message.reply_text(msg)
+
+
+# ---------- STATS ----------
+wordle_leaderboard = {}
+
+async def wordle_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    stats = wordle_leaderboard.get(user_id, {'played': 0, 'won': 0, 'streak': 0})
+    
+    await update.message.reply_text(
+        f"📊 **YOUR WORDLE STATS**\n\n"
+        f"🎮 Played: {stats['played']}\n"
+        f"✅ Won: {stats['won']}\n"
+        f"📈 Win Rate: {int(stats['won']/stats['played']*100) if stats['played'] > 0 else 0}%\n"
+        f"🔥 Streak: {stats['streak']}"
+    )
+
 
 # ============ MAIN ==========
 async def main():
@@ -6088,6 +6243,11 @@ async def main():
     app.add_handler(CallbackQueryHandler(tower_callback, pattern="^tower_"))
     app.add_handler(CommandHandler("afk", afk))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_afk))
+    app.add_handler(CommandHandler("word3", word3))
+    app.add_handler(CommandHandler("word4", word4))
+    app.add_handler(CommandHandler("word5", word5))
+    app.add_handler(CommandHandler("wordle_stats", wordle_stats))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, wordseek_guess))
 
     # Shop commands
     app.add_handler(CommandHandler("shop", shop))
