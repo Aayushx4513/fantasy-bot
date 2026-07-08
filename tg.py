@@ -5528,8 +5528,18 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('❌ User not found!')
         return
     
-    win_rate = int(user['won'] / user['total'] * 100) if user['total'] > 0 else 0
+    # 🔥 FIX 1: Lost positive karo
     lost = user['total'] - user['won']
+    if lost < 0:
+        lost = 0
+    
+    # 🔥 FIX 2: Win rate max 100%
+    if user['total'] > 0:
+        win_rate = int((user['won'] / user['total']) * 100)
+        if win_rate > 100:
+            win_rate = 100
+    else:
+        win_rate = 0
     
     msg = f"📜 BET HISTORY\n\n"
     msg += f"✅ Won: {user['won']}\n"
@@ -5538,6 +5548,7 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += f"🏆 Fantasy Points: {user['points']}"
     
     await update.message.reply_text(msg)
+
 
 async def add_women_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
