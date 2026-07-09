@@ -2424,128 +2424,127 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         del mines_owner[game_id]
         return
 
-# ============ REGULAR TILE CLICK ============
-game_id = int(parts[1])
-position = int(parts[2])
+    # ============ REGULAR TILE CLICK ============
+    game_id = int(parts[1])
+    position = int(parts[2])
 
-# 🔥 FIX: Pehle check karo game exist karta hai
-if game_id not in active_mines:
-    await query.answer("Game expired!", show_alert=True)
-    await query.edit_message_text("❌ Game expired. Use /mines to start new game.")
-    return
+    # 🔥 FIX: Pehle check karo game exist karta hai
+    if game_id not in active_mines:
+        await query.answer("Game expired!", show_alert=True)
+        await query.edit_message_text("❌ Game expired. Use /mines to start new game.")
+        return
 
-game = active_mines[game_id]
+    game = active_mines[game_id]
 
-if game['owner_id'] != user_id:
-    await query.answer("❌ Not your game!", show_alert=True)
-    return
+    if game['owner_id'] != user_id:
+        await query.answer("❌ Not your game!", show_alert=True)
+        return
 
-# 🔥 FIX: Agar game already over hai toh block karo
-if game.get('game_over', False):
-    await query.answer("Game already ended!", show_alert=True)
-    return
+    # 🔥 FIX: Agar game already over hai toh block karo
+    if game.get('game_over', False):
+        await query.answer("Game already ended!", show_alert=True)
+        return
 
-if position in game['revealed']:
-    await query.answer("Already revealed!", show_alert=True)
-    return
+    if position in game['revealed']:
+        await query.answer("Already revealed!", show_alert=True)
+        return
 
-game['revealed'].append(position)
+    game['revealed'].append(position)
 
-# ============ BOMB HIT ============
-if position in game['bombs']:
-    # Reveal all bombs
+    # ============ BOMB HIT ============
+    if position in game['bombs']:
+        # Reveal all bombs
+        keyboard = []
+        for i in range(5):
+            row = []
+            for j in range(5):
+                pos = i * 5 + j
+                if pos in game['bombs']:
+                    row.append(InlineKeyboardButton("💣", callback_data=f"mine_{game_id}_{pos}"))
+                elif pos in game['revealed']:
+                    row.append(InlineKeyboardButton("💎", callback_data=f"mine_{game_id}_{pos}"))
+                else:
+                    row.append(InlineKeyboardButton("❓", callback_data=f"mine_{game_id}_{pos}"))
+            keyboard.append(row)
+
+        await query.edit_message_text(
+            f"💣 BOOM! GAME OVER!\n\n"
+            f"💰 Bet: {game['bet']:,}\n"
+            f"💣 You hit a bomb!\n\n"
+            f"Use /mines to play again!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        game['game_over'] = True
+        return
+
+    # ============ SAFE TILE ============
+    safe_count = len([t for t in game['revealed'] if t not in game['bombs']])
+    progression = game['progression']
+
+    if safe_count <= len(progression):
+        multiplier = progression[safe_count - 1] if safe_count > 0 else 1.0
+    else:
+        multiplier = progression[-1]
+
+    cashout = int(game['bet'] * multiplier)
+
+    # Update keyboard with cashout button
     keyboard = []
     for i in range(5):
         row = []
         for j in range(5):
             pos = i * 5 + j
-            if pos in game['bombs']:
-                row.append(InlineKeyboardButton("💣", callback_data=f"mine_{game_id}_{pos}"))
-            elif pos in game['revealed']:
+            if pos in game['revealed']:
                 row.append(InlineKeyboardButton("💎", callback_data=f"mine_{game_id}_{pos}"))
             else:
                 row.append(InlineKeyboardButton("❓", callback_data=f"mine_{game_id}_{pos}"))
         keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("💰 CASHOUT", callback_data=f"mine_cashout_{game_id}")])
 
+    total_safe = 25 - game['bomb_count']
+
+    # ============ PERFECT WIN ============
+    if safe_count >= total_safe:
+        db = await get_db()
+        current_balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
+        new_balance = current_balance + cashout
+        await db.execute("UPDATE users SET balance = $1 WHERE user_id = $2", new_balance, user_id)
+        await db.close()
+
+        # Reveal all as 💎
+        keyboard = []
+        for i in range(5):
+            row = []
+            for j in range(5):
+                pos = i * 5 + j
+                if pos in game['bombs']:
+                    row.append(InlineKeyboardButton("💣", callback_data=f"mine_{game_id}_{pos}"))
+                else:
+                    row.append(InlineKeyboardButton("💎", callback_data=f"mine_{game_id}_{pos}"))
+            keyboard.append(row)
+
+        await query.edit_message_text(
+            f"🎉 PERFECT WIN! 🎉\n\n"
+            f"💰 Bet: {game['bet']:,}\n"
+            f"📈 Multiplier: {multiplier:.2f}x\n"
+            f"💎 Won: {cashout:,}\n\n"
+            f"All safe tiles revealed!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        del active_mines[game_id]
+        del mines_owner[game_id]
+        return
+
+    # ============ CONTINUE GAME ============
     await query.edit_message_text(
-        f"💣 BOOM! GAME OVER!\n\n"
-        f"💰 Bet: {game['bet']:,}\n"
-        f"💣 You hit a bomb!\n\n"
-        f"Use /mines to play again!",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    game['game_over'] = True
-    return
-
-# ============ SAFE TILE ============
-safe_count = len([t for t in game['revealed'] if t not in game['bombs']])
-progression = game['progression']
-
-if safe_count <= len(progression):
-    multiplier = progression[safe_count - 1] if safe_count > 0 else 1.0
-else:
-    multiplier = progression[-1]
-
-cashout = int(game['bet'] * multiplier)
-
-# Update keyboard with cashout button
-keyboard = []
-for i in range(5):
-    row = []
-    for j in range(5):
-        pos = i * 5 + j
-        if pos in game['revealed']:
-            row.append(InlineKeyboardButton("💎", callback_data=f"mine_{game_id}_{pos}"))
-        else:
-            row.append(InlineKeyboardButton("❓", callback_data=f"mine_{game_id}_{pos}"))
-    keyboard.append(row)
-keyboard.append([InlineKeyboardButton("💰 CASHOUT", callback_data=f"mine_cashout_{game_id}")])
-
-total_safe = 25 - game['bomb_count']
-
-# ============ PERFECT WIN ============
-if safe_count >= total_safe:
-    db = await get_db()
-    current_balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    new_balance = current_balance + cashout
-    await db.execute("UPDATE users SET balance = $1 WHERE user_id = $2", new_balance, user_id)
-    await db.close()
-
-    # Reveal all as 💎
-    keyboard = []
-    for i in range(5):
-        row = []
-        for j in range(5):
-            pos = i * 5 + j
-            if pos in game['bombs']:
-                row.append(InlineKeyboardButton("💣", callback_data=f"mine_{game_id}_{pos}"))
-            else:
-                row.append(InlineKeyboardButton("💎", callback_data=f"mine_{game_id}_{pos}"))
-        keyboard.append(row)
-
-    await query.edit_message_text(
-        f"🎉 PERFECT WIN! 🎉\n\n"
+        f"💣 MINES\n\n"
         f"💰 Bet: {game['bet']:,}\n"
         f"📈 Multiplier: {multiplier:.2f}x\n"
-        f"💎 Won: {cashout:,}\n\n"
-        f"All safe tiles revealed!",
+        f"💎 Cashout: {cashout:,}\n\n"
+        f"✅ Safe tiles: {safe_count}/{total_safe}\n"
+        f"Click a tile or CASHOUT!",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-    del active_mines[game_id]
-    del mines_owner[game_id]
-    return
-
-# ============ CONTINUE GAME ============
-await query.edit_message_text(
-    f"💣 MINES\n\n"
-    f"💰 Bet: {game['bet']:,}\n"
-    f"📈 Multiplier: {multiplier:.2f}x\n"
-    f"💎 Cashout: {cashout:,}\n\n"
-    f"✅ Safe tiles: {safe_count}/{total_safe}\n"
-    f"Click a tile or CASHOUT!",
-    reply_markup=InlineKeyboardMarkup(keyboard)
-)
-
 
 # ============ CLCRICKET GAME ==========
 cricket_games = {}
