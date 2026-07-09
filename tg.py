@@ -2380,39 +2380,46 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # ============ CASHOUT ============
     if data == "mine_cashout":
-        if 'mines_game' not in context.user_data or not context.user_data['mines_game']['active']:
-            await query.answer("No active game!", show_alert=True)
+        if 'mines_game' not in context.user_data:
+            await query.answer("❌ No active game!", show_alert=True)
             return
         
         game = context.user_data['mines_game']
         
-        if not game['revealed']:
-            await query.answer("Reveal at least one tile first!", show_alert=True)
+        if not game.get('active', False):
+            await query.answer("❌ Game already ended!", show_alert=True)
             return
         
-        # 🔥 FIX: Pehle inactive karo, delete baad mein
+        if not game.get('revealed'):
+            await query.answer("❌ Reveal at least one tile first!", show_alert=True)
+            return
+        
+        # Game ko inactive karo
         game['active'] = False
         profit = int(game['bet'] * game['multiplier'])
         update_balance(user_id, profit)
-        
-        # 🔥 Game ko delete karo
-        del context.user_data['mines_game']
         
         await query.edit_message_text(
             f"💰 **CASHOUT SUCCESSFUL!**\n\n"
             f"✅ You won **{profit:,}** coins!"
         )
+        
+        # Game delete karo
+        del context.user_data['mines_game']
         return
     
     # ============ TILE CLICK ============
+    if not data.startswith("mine_"):
+        return
+    
     if 'mines_game' not in context.user_data:
-        await query.answer("Game already ended!", show_alert=True)
+        await query.answer("❌ Game already ended!", show_alert=True)
         return
     
     game = context.user_data['mines_game']
     
-    if not game['active']:
-        await query.answer("Game already ended!", show_alert=True)
+    if not game.get('active', False):
+        await query.answer("❌ Game already ended!", show_alert=True)
         return
     
     try:
@@ -2420,8 +2427,8 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         return
     
-    if tile_index in game['revealed']:
-        await query.answer("Already revealed!", show_alert=True)
+    if tile_index in game.get('revealed', []):
+        await query.answer("❌ Already revealed!", show_alert=True)
         return
     
     game['revealed'].append(tile_index)
@@ -2429,12 +2436,13 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ============ BOMB HIT ============
     if tile_index in game['bombs']:
         game['active'] = False
-        del context.user_data['mines_game']
         
         await query.edit_message_text(
             f"💥 **BOOM!**\n\n"
             f"You hit a bomb and lost **{game['bet']:,}** coins!"
         )
+        
+        del context.user_data['mines_game']
         return
     
     # ============ SAFE TILE ============
