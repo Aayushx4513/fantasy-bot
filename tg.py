@@ -2370,6 +2370,7 @@ async def mines(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Click tiles to reveal safe spots. Don't hit a bomb!",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
 async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -2389,12 +2390,12 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("Reveal at least one tile first!", show_alert=True)
             return
         
-        # 🔥 FIX 1: Game ko pehle inactive aur delete karo
+        # 🔥 FIX: Pehle inactive karo, delete baad mein
         game['active'] = False
         profit = int(game['bet'] * game['multiplier'])
         update_balance(user_id, profit)
         
-        # 🔥 FIX 2: Game data hatao
+        # 🔥 Game ko delete karo
         del context.user_data['mines_game']
         
         await query.edit_message_text(
@@ -2404,14 +2405,12 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     # ============ TILE CLICK ============
-    # 🔥 FIX 3: Agar game exist nahi karta toh return
     if 'mines_game' not in context.user_data:
         await query.answer("Game already ended!", show_alert=True)
         return
     
     game = context.user_data['mines_game']
     
-    # 🔥 FIX 4: Agar game inactive hai toh return
     if not game['active']:
         await query.answer("Game already ended!", show_alert=True)
         return
