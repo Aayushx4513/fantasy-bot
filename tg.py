@@ -6054,7 +6054,6 @@ async def main():
     app.add_handler(CommandHandler("add", add))
     app.add_handler(CommandHandler("removew", removew))
     app.add_handler(CommandHandler("removeb", removeb))
-    app.add_handler(CommandHandler("remove", remove))
     app.add_handler(CommandHandler("setprice", setprice))
     app.add_handler(CommandHandler("achieve", achieve))
     app.add_handler(CommandHandler("rmachieve", rmachieve))
