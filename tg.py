@@ -4063,16 +4063,17 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💰 Balance: {old['balance']:,} → {new_bal:,} 💰"
     )
 
-async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ============ REMOVE FROM WALLET ONLY ==========
+async def removew(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
-        return  # ❌ SIRF CHUP RAHEGA
+        return
     
     if not update.message.reply_to_message:
-        return  # ❌ SIRF CHUP RAHEGA
+        return
     
     args = context.args
     if len(args) < 1:
-        return  # ❌ SIRF CHUP RAHEGA
+        return
     
     try:
         amount = int(args[0])
@@ -4080,28 +4081,78 @@ async def remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     target = update.message.reply_to_message.from_user
+    target_id = target.id
     
     db = await get_db()
-    old = await db.fetchrow("SELECT balance, name FROM users WHERE user_id = $1", target.id)
-    if not old:
+    
+    user = await db.fetchrow("SELECT balance FROM users WHERE user_id = $1", target_id)
+    if not user:
         await update.message.reply_text('❌ User not found!')
         await db.close()
         return
     
-    if old['balance'] < amount:
-        await update.message.reply_text(f'❌ Insufficient! Balance: {old["balance"]:,} 💰')
+    wallet_bal = user['balance']
+    
+    if wallet_bal < amount:
+        await update.message.reply_text(f'❌ Insufficient wallet balance! Have: {wallet_bal:,}')
         await db.close()
         return
     
-    await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", amount, target.id)
-    new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", target.id)
+    await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", amount, target_id)
+    new_wallet = wallet_bal - amount
+    
     await db.close()
     
     await update.message.reply_text(
-        f"❌ REMOVED {amount:,} from {old['name']}\n"
-        f"💰 Balance: {old['balance']:,} → {new_bal:,} 💰"
+        f"❌ REMOVED {amount:,} from {target.first_name}'s WALLET\n\n"
+        f"💰 Wallet: {wallet_bal:,} → {new_wallet:,}"
     )
 
+
+# ============ REMOVE FROM BANK ONLY ==========
+async def removeb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+    
+    if not update.message.reply_to_message:
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        return
+    
+    try:
+        amount = int(args[0])
+    except:
+        return
+    
+    target = update.message.reply_to_message.from_user
+    target_id = target.id
+    
+    db = await get_db()
+    
+    bank = await db.fetchrow("SELECT balance FROM bank WHERE user_id = $1", target_id)
+    if not bank:
+        await update.message.reply_text('❌ No bank account found!')
+        await db.close()
+        return
+    
+    bank_bal = bank['balance']
+    
+    if bank_bal < amount:
+        await update.message.reply_text(f'❌ Insufficient bank balance! Have: {bank_bal:,}')
+        await db.close()
+        return
+    
+    await db.execute("UPDATE bank SET balance = balance - $1 WHERE user_id = $2", amount, target_id)
+    new_bank = bank_bal - amount
+    
+    await db.close()
+    
+    await update.message.reply_text(
+        f"❌ REMOVED {amount:,} from {target.first_name}'s BANK\n\n"
+        f"🏦 Bank: {bank_bal:,} → {new_bank:,}"
+    )
 
 # ============ HALL OF FAME ==========
 async def hof(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6001,6 +6052,8 @@ async def main():
     app.add_handler(CommandHandler("lockmatch", lockmatch))
     app.add_handler(CommandHandler("result", result))
     app.add_handler(CommandHandler("add", add))
+    app.add_handler(CommandHandler("removew", removew))
+    app.add_handler(CommandHandler("removeb", removeb))
     app.add_handler(CommandHandler("remove", remove))
     app.add_handler(CommandHandler("setprice", setprice))
     app.add_handler(CommandHandler("achieve", achieve))
