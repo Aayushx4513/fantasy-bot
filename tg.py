@@ -3952,74 +3952,83 @@ async def lockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ============ RESULT ==========
+# ============ RESULT ==========
 async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text('❌ Admin only!')
         return
-    
+
     args = context.args
     if len(args) < 4:
         await update.message.reply_text('❌ /result TEAM1 vs TEAM2 WINNER\nExample: /result India vs Afghanistan India')
         return
-    
+
     team1 = args[0]
     team2 = args[2]
     winner = args[3]
-    
+
     db = await get_db()
-    
+
     match = await db.fetchrow("""
-        SELECT id, team1, team2 FROM matches 
+        SELECT id, team1, team2 FROM matches
         WHERE LOWER(team1) = LOWER($1) AND LOWER(team2) = LOWER($2)
     """, team1, team2)
-    
+
     if not match:
         await update.message.reply_text(f'❌ Match {team1} vs {team2} not found!')
         await db.close()
         return
-    
+
     if winner.upper() not in [match['team1'].upper(), match['team2'].upper()]:
         await update.message.reply_text(f'❌ Winner must be {match["team1"]} or {match["team2"]}!')
         await db.close()
         return
-    
+
     bets = await db.fetch("SELECT user_id, amount, team FROM bets WHERE match_id = $1", match['id'])
-    
+
     winners_count = 0
     losers_count = 0
     total_paid = 0
-    
+    processed_users = set()  # 🔥 DUPLICATE BETS FIX
+
     for bet in bets:
         user_id = bet['user_id']
+        
+        # 🔥 SKIP IF ALREADY PROCESSED
+        if user_id in processed_users:
+            continue
+        processed_users.add(user_id)
+        
         amount = bet['amount']
         bet_team = bet['team']
-        
+
         user = await db.fetchrow("SELECT balance, won, total, points FROM users WHERE user_id = $1", user_id)
-        
+
         if bet_team.upper() == winner.upper():
+            # 🔥 WINNER
             win_amount = amount * 2
             new_balance = user['balance'] + win_amount
             new_won = user['won'] + 1
             new_total = user['total'] + 1
             new_points = user['points'] + 10
             await db.execute("""
-                UPDATE users SET balance = $1, won = $2, total = $3, points = $4 
+                UPDATE users SET balance = $1, won = $2, total = $3, points = $4
                 WHERE user_id = $5
             """, new_balance, new_won, new_total, new_points, user_id)
             total_paid += win_amount
             winners_count += 1
         else:
-            # 🔥 LOSER: SIRF TOTAL BADHAO, BALANCE PEHLE SE DEDUCT HO CHUKA HAI
+            # 🔥 LOSER
             new_total = user['total'] + 1
             new_points = user['points'] - 5
             await db.execute("UPDATE users SET total = $1, points = $2 WHERE user_id = $3", new_total, new_points, user_id)
             losers_count += 1
-    
+
     await db.execute("DELETE FROM bets WHERE match_id = $1", match['id'])
     await db.execute("DELETE FROM matches WHERE id = $1", match['id'])
-    
+
     await db.close()
-    
+
     await update.message.reply_text(
         f"📢 MATCH RESULT!\n\n"
         f"🏏 {match['team1']} vs {match['team2']}\n"
@@ -4028,7 +4037,6 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"❌ LOSERS (-5 pts): {losers_count} users\n\n"
         f"💰 TOTAL PAYOUT: {total_paid:,} 💰"
     )
-
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         return  # ❌ SIRF CHUP RAHEGA, KUCH NAHI BOLEGA
