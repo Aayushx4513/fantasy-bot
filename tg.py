@@ -1213,6 +1213,22 @@ async def settip(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============ TIP ==========
 async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    chat_type = update.effective_chat.type
+    
+    # 🔥 ONLY CL ZONE GROUP
+    ALLOWED_GROUP_ID = -1001661258033
+    GROUP_LINK = "https://t.me/+eTD1m8Cjc_wyOTNl"
+    
+    if chat_type != 'supergroup' or chat_id != ALLOWED_GROUP_ID:
+        await update.message.reply_text(
+            f"🚫 **Access Denied!**\n\n"
+            f"The /tip command can only be used in the Official Group Chat.\n\n"
+            f"👉 [CL ZONE GROUP]({GROUP_LINK})",
+            disable_web_page_preview=True,
+            parse_mode='Markdown'
+        )
+        return
     
     if not await is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
@@ -1264,17 +1280,16 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sender_username = f"@{sender.username}" if sender.username else sender.first_name
     receiver_username = f"@{receiver.username}" if receiver.username else receiver.first_name
     
-    msg = (
+    await update.message.reply_text(
         f"💝 **TIP SENT!**\n\n"
         f"**FROM:** {sender_username}\n"
         f"**TO:** {receiver_username}\n"
         f"💰 Amount: {amount:,}\n"
         f"💸 Fee (5%): {fee:,}\n"
         f"📥 Received: {receiver_amount:,}\n\n"
-        f"📊 Your balance: {sender_new_bal:,} 💰"
+        f"📊 Your balance: {sender_new_bal:,} 💰",
+        parse_mode="Markdown"
     )
-    
-    await update.message.reply_text(msg, parse_mode="Markdown")
 
 # ============ ACHIEVEMENTS ==========
 async def achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
