@@ -2699,48 +2699,48 @@ class CricketGame:
         self.player2_wickets_taken = 0
 
     def get_deliveries(self):
-    if self.mode == "1-3":
-        return {
-            "1": {"name": "1", "out_on": 1},
-            "2": {"name": "2", "out_on": 2},
-            "3": {"name": "3", "out_on": 3}
-        }
-    elif self.mode == "1-5":
-        return {
-            "0": {"name": "0", "out_on": 0},
-            "1": {"name": "1", "out_on": 1},
-            "2": {"name": "2", "out_on": 2},
-            "3": {"name": "3", "out_on": 3},
-            "4": {"name": "4", "out_on": 4},
-            "6": {"name": "6", "out_on": 6}
-        }
-    elif self.mode == "1-9":
-        return {
-            "1": {"name": "1", "out_on": 1},
-            "2": {"name": "2", "out_on": 2},
-            "3": {"name": "3", "out_on": 3},
-            "4": {"name": "4", "out_on": 4},
-            "5": {"name": "5", "out_on": 5},
-            "6": {"name": "6", "out_on": 6},
-            "7": {"name": "7", "out_on": 7},
-            "8": {"name": "8", "out_on": 8},
-            "9": {"name": "9", "out_on": 9}
-        }
-    else:
-        return {
-            "1": {"name": "1", "out_on": 1},
-            "2": {"name": "2", "out_on": 2},
-            "3": {"name": "3", "out_on": 3},
-            "4": {"name": "4", "out_on": 4},
-            "5": {"name": "5", "out_on": 5},
-            "6": {"name": "6", "out_on": 6}
-        }
+        if self.mode == "1-3":
+            return {
+                "1": {"name": "1", "out_on": 1},
+                "2": {"name": "2", "out_on": 2},
+                "3": {"name": "3", "out_on": 3}
+            }
+        elif self.mode == "1-5":
+            return {
+                "0": {"name": "0", "out_on": 0},
+                "1": {"name": "1", "out_on": 1},
+                "2": {"name": "2", "out_on": 2},
+                "3": {"name": "3", "out_on": 3},
+                "4": {"name": "4", "out_on": 4},
+                "6": {"name": "6", "out_on": 6}
+            }
+        elif self.mode == "1-9":
+            return {
+                "1": {"name": "1", "out_on": 1},
+                "2": {"name": "2", "out_on": 2},
+                "3": {"name": "3", "out_on": 3},
+                "4": {"name": "4", "out_on": 4},
+                "5": {"name": "5", "out_on": 5},
+                "6": {"name": "6", "out_on": 6},
+                "7": {"name": "7", "out_on": 7},
+                "8": {"name": "8", "out_on": 8},
+                "9": {"name": "9", "out_on": 9}
+            }
+        else:
+            return {
+                "1": {"name": "1", "out_on": 1},
+                "2": {"name": "2", "out_on": 2},
+                "3": {"name": "3", "out_on": 3},
+                "4": {"name": "4", "out_on": 4},
+                "5": {"name": "5", "out_on": 5},
+                "6": {"name": "6", "out_on": 6}
+            }
 
     def get_bat_numbers(self):
         if self.mode == "1-3":
             return [1, 2, 3]
         elif self.mode == "1-5":
-            return [0, 1, 2, 3, 4, 6]  # 🔥 FIXED
+            return [0, 1, 2, 3, 4, 6]
         elif self.mode == "1-9":
             return [1, 2, 3, 4, 5, 6, 7, 8, 9]
         else:
