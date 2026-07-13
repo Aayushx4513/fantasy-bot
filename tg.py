@@ -2737,14 +2737,15 @@ class CricketGame:
             }
 
     def get_bat_numbers(self):
-        if self.mode == "1-3":
-            return [1, 2, 3]
-        elif self.mode == "1-5":
-            return [1, 2, 3, 4, 5, 6]
-        elif self.mode == "1-9":
-            return [1, 2, 3, 4, 5, 6, 7, 8, 9]
-        else:
-            return [1, 2, 3, 4, 5, 6]
+    if self.mode == "1-3":
+        return [1, 2, 3]
+    elif self.mode == "1-5":
+        return [0, 1, 2, 3, 4, 6]
+    elif self.mode == "1-9":
+        return [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    else:
+        return [1, 2, 3, 4, 5, 6]
+
 
     def check_out(self, delivery_key, shot):
         return self.get_deliveries()[delivery_key]["out_on"] == shot
@@ -4665,6 +4666,96 @@ async def addplayer4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.close()
     await update.message.reply_text(f"✅ PLAYER ADDED TO SHOP4!\n\n{name}\n💰 Price: {price:,} 💰")
 
+# ============ REMOVE PLAYER FROM SHOP2 ==========
+async def removeplayer2(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text('❌ /removeplayer2 <player_id>')
+        return
+    
+    try:
+        player_id = int(args[0])
+    except:
+        await update.message.reply_text('❌ Invalid ID!')
+        return
+    
+    db = await get_db()
+    player = await db.fetchrow("SELECT name FROM shop2 WHERE id = $1", player_id)
+    
+    if not player:
+        await update.message.reply_text(f'❌ Player ID {player_id} not found in Shop2!')
+        await db.close()
+        return
+    
+    await db.execute("DELETE FROM shop2 WHERE id = $1", player_id)
+    await db.close()
+    
+    await update.message.reply_text(f"✅ REMOVED from Shop2!\n\n🏏 {player['name']}\n🆔 ID: {player_id}")
+
+
+# ============ REMOVE PLAYER FROM SHOP3 ==========
+async def removeplayer3(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text('❌ /removeplayer3 <player_id>')
+        return
+    
+    try:
+        player_id = int(args[0])
+    except:
+        await update.message.reply_text('❌ Invalid ID!')
+        return
+    
+    db = await get_db()
+    player = await db.fetchrow("SELECT name FROM shop3 WHERE id = $1", player_id)
+    
+    if not player:
+        await update.message.reply_text(f'❌ Player ID {player_id} not found in Shop3!')
+        await db.close()
+        return
+    
+    await db.execute("DELETE FROM shop3 WHERE id = $1", player_id)
+    await db.close()
+    
+    await update.message.reply_text(f"✅ REMOVED from Shop3!\n\n🏏 {player['name']}\n🆔 ID: {player_id}")
+
+
+# ============ REMOVE PLAYER FROM SHOP4 ==========
+async def removeplayer4(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+    
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text('❌ /removeplayer4 <player_id>')
+        return
+    
+    try:
+        player_id = int(args[0])
+    except:
+        await update.message.reply_text('❌ Invalid ID!')
+        return
+    
+    db = await get_db()
+    player = await db.fetchrow("SELECT name FROM shop4 WHERE id = $1", player_id)
+    
+    if not player:
+        await update.message.reply_text(f'❌ Player ID {player_id} not found in Shop4!')
+        await db.close()
+        return
+    
+    await db.execute("DELETE FROM shop4 WHERE id = $1", player_id)
+    await db.close()
+    
+    await update.message.reply_text(f"✅ REMOVED from Shop4!\n\n🏏 {player['name']}\n🆔 ID: {player_id}")
+
+
 # ============ CLAIM CODES ==========
 async def createcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
@@ -6139,6 +6230,9 @@ async def main():
     app.add_handler(CommandHandler("deposit", deposit))
     app.add_handler(CommandHandler("withdraw", withdraw))
     app.add_handler(CommandHandler("claim_interest", claim_interest))
+    app.add_handler(CommandHandler("removeplayer2", removeplayer2))
+    app.add_handler(CommandHandler("removeplayer3", removeplayer3))
+    app.add_handler(CommandHandler("removeplayer4", removeplayer4))
 
     # Admin Cricket
     app.add_handler(CommandHandler("addmatch", addmatch))
