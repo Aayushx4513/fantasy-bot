@@ -1483,6 +1483,17 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
     
+    # 🔥 CHECK IF ALREADY OWNED
+    owned = await db.fetchval("""
+        SELECT user_id FROM user_players 
+        WHERE user_id = $1 AND player_id = $2 AND type = 'mens'
+    """, user_id, player_id)
+    
+    if owned:
+        await update.message.reply_text(f'❌ You already own {player["name"]}!')
+        await db.close()
+        return
+    
     balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     
     if balance < player['price']:
@@ -1490,19 +1501,33 @@ async def buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
     
-    owned = await db.fetchval("SELECT user_id FROM user_players WHERE user_id = $1 AND player_id = $2 AND type = 'mens'", user_id, player_id)
-    if owned:
-        await update.message.reply_text(f'❌ You already own {player["name"]}!')
-        await db.close()
-        return
-    
-    await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", player['price'], user_id)
-    await db.execute("INSERT INTO user_players (user_id, player_id, type) VALUES ($1, $2, 'mens')", user_id, player_id)
+    # 🔥 USE TRANSACTION
+    async with db_pool.acquire() as conn:
+        async with conn.transaction():
+            # Re-check balance
+            current_bal = await conn.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
+            if current_bal < player['price']:
+                await update.message.reply_text("Insufficient balance!")
+                return
+            
+            # Re-check ownership
+            already = await conn.fetchval("""
+                SELECT user_id FROM user_players 
+                WHERE user_id = $1 AND player_id = $2 AND type = 'mens'
+            """, user_id, player_id)
+            
+            if already:
+                await update.message.reply_text(f'❌ You already own {player["name"]}!')
+                return
+            
+            await conn.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", player['price'], user_id)
+            await conn.execute("INSERT INTO user_players (user_id, player_id, type) VALUES ($1, $2, 'mens')", user_id, player_id)
     
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     await db.close()
     
     await update.message.reply_text(f"✅ PURCHASED!\n\n🏏 {player['name']}\n💰 Price: {player['price']:,} 💰\n📊 New balance: {new_bal:,} 💰")
+
 
 # ============ BUY WOMEN ==========
 async def buyw(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6129,6 +6154,42 @@ async def check_afk(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await db.close()
 
+# ============ REMOVE DUPLICATE PLAYERS ==========
+async def fix_duplicates(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+    
+    db = await get_db()
+    
+    # 🔥 Find duplicates
+    duplicates = await db.fetch("""
+        SELECT user_id, player_id, type, COUNT(*) as count
+        FROM user_players
+        GROUP BY user_id, player_id, type
+        HAVING COUNT(*) > 1
+    """)
+    
+    if not duplicates:
+        await update.message.reply_text("✅ No duplicate players found!")
+        await db.close()
+        return
+    
+    removed = 0
+    for dup in duplicates:
+        # Keep only one, delete others
+        await db.execute("""
+            DELETE FROM user_players 
+            WHERE user_id = $1 AND player_id = $2 AND type = $3
+            OFFSET 1
+        """, dup['user_id'], dup['player_id'], dup['type'])
+        removed += dup['count'] - 1
+    
+    await db.close()
+    
+    await update.message.reply_text(
+        f"✅ FIXED DUPLICATES!\n\n"
+        f"🗑️ Removed: {removed} duplicate entries"
+    )
 
 
 # ============ MAIN ==========
@@ -6167,7 +6228,7 @@ async def main():
     app.add_handler(CallbackQueryHandler(tower_callback, pattern="^tower_"))
     app.add_handler(CommandHandler("afk", afk))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_afk))
-
+    app.add_handler(CommandHandler("fix_duplicates", fix_duplicates))
     # Shop commands
     app.add_handler(CommandHandler("shop", shop))
     app.add_handler(CommandHandler("buy", buy))
