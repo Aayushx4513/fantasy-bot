@@ -2737,15 +2737,14 @@ class CricketGame:
             }
 
     def get_bat_numbers(self):
-    if self.mode == "1-3":
-        return [1, 2, 3]
-    elif self.mode == "1-5":
-        return [0, 1, 2, 3, 4, 6]
-    elif self.mode == "1-9":
-        return [1, 2, 3, 4, 5, 6, 7, 8, 9]
-    else:
-        return [1, 2, 3, 4, 5, 6]
-
+        if self.mode == "1-3":
+            return [1, 2, 3]
+        elif self.mode == "1-5":
+            return [0, 1, 2, 3, 4, 6]  # 🔥 FIXED
+        elif self.mode == "1-9":
+            return [1, 2, 3, 4, 5, 6, 7, 8, 9]
+        else:
+            return [1, 2, 3, 4, 5, 6]
 
     def check_out(self, delivery_key, shot):
         return self.get_deliveries()[delivery_key]["out_on"] == shot
