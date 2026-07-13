@@ -6161,7 +6161,7 @@ async def fix_duplicates(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     db = await get_db()
     
-    # 🔥 Find duplicates
+    # 🔥 Find duplicates with COUNT
     duplicates = await db.fetch("""
         SELECT user_id, player_id, type, COUNT(*) as count
         FROM user_players
@@ -6176,13 +6176,22 @@ async def fix_duplicates(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     removed = 0
     for dup in duplicates:
-        # Keep only one, delete others
+        user_id = dup['user_id']
+        player_id = dup['player_id']
+        ptype = dup['type']
+        count = dup['count']
+        
+        # 🔥 Keep only 1, delete rest using CTID
         await db.execute("""
             DELETE FROM user_players 
-            WHERE user_id = $1 AND player_id = $2 AND type = $3
-            OFFSET 1
-        """, dup['user_id'], dup['player_id'], dup['type'])
-        removed += dup['count'] - 1
+            WHERE ctid IN (
+                SELECT ctid FROM user_players 
+                WHERE user_id = $1 AND player_id = $2 AND type = $3
+                LIMIT $4 OFFSET 1
+            )
+        """, user_id, player_id, ptype, count - 1)
+        
+        removed += count - 1
     
     await db.close()
     
