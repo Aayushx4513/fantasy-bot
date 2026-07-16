@@ -1194,7 +1194,6 @@ async def top_fantasy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 TIP_PHOTO_ID = "AgACAgUAAx0CYwTJMQABBM5salNE0WU0OqkDEXUaiPHmUxs73ecAArMSaxtUJ3FVQyIXvksscnMBAAMCAAN3AAM7BA"
 
 async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 🔥 FIX: effective_message use karo
     msg = update.effective_message
     if not msg:
         return
@@ -1203,17 +1202,13 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     chat_type = update.effective_chat.type
     
-    # 🔥 ONLY CL ZONE GROUP
     ALLOWED_GROUP_ID = -1001661258033
     GROUP_LINK = "https://t.me/+eTD1m8Cjc_wyOTNl"
     
     if chat_type != 'supergroup' or chat_id != ALLOWED_GROUP_ID:
         await msg.reply_text(
-            f"🚫 **Access Denied!**\n\n"
-            f"The /tip command can only be used in the Official Group Chat.\n\n"
-            f"👉 [CL ZONE GROUP]({GROUP_LINK})",
-            disable_web_page_preview=True,
-            parse_mode='Markdown'
+            f"🚫 Access Denied!\n\nThe /tip command can only be used in the Official Group Chat.\n\n👉 {GROUP_LINK}",
+            disable_web_page_preview=True
         )
         return
     
@@ -1260,7 +1255,6 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
     
-    # 🔥 5% FEE
     fee = int(amount * 0.05)
     receiver_amount = amount - fee
     
@@ -1272,25 +1266,25 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sender_name = f"@{sender.username}" if sender.username else sender.first_name
     receiver_name = f"@{receiver.username}" if receiver.username else receiver.first_name
     
+    # 🔥 NO MARKDOWN — SIRF TEXT
     caption = (
-        f"💝 **TIP SENT!**\n\n"
-        f"**FROM:** {sender_name}\n"
-        f"**TO:** {receiver_name}\n"
+        f"💝 TIP SENT!\n\n"
+        f"FROM: {sender_name}\n"
+        f"TO: {receiver_name}\n"
         f"💰 Amount: {amount:,}\n"
         f"💸 Fee (5%): {fee:,}\n"
         f"📥 Received: {receiver_amount:,}\n\n"
         f"📊 Your balance: {sender_new_bal:,} 💰"
     )
     
-    # 🔥 PHOTO KE SAATH BHEJO
     if TIP_PHOTO_ID:
         await msg.reply_photo(
             photo=TIP_PHOTO_ID,
-            caption=caption,
-            parse_mode="Markdown"
+            caption=caption
+            # 🔥 NO parse_mode
         )
     else:
-        await msg.reply_text(caption, parse_mode="Markdown")
+        await msg.reply_text(caption)
 
 # ============ ACHIEVEMENTS ==========
 async def achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
