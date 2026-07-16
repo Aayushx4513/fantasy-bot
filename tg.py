@@ -1191,6 +1191,13 @@ async def top_fantasy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ============ TIP COMMAND ==========
 # ============ TIP ==========
+import re
+
+def escape_markdown(text):
+    """Escape markdown special characters"""
+    special_chars = r'([_*\[\]()~`>#+\-=|{}.!])'
+    return re.sub(special_chars, r'\\\1', text)
+
 TIP_PHOTO_ID = "AgACAgUAAx0CYwTJMQABBM5salNE0WU0OqkDEXUaiPHmUxs73ecAArMSaxtUJ3FVQyIXvksscnMBAAMCAAN3AAM7BA"
 
 async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1207,8 +1214,9 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if chat_type != 'supergroup' or chat_id != ALLOWED_GROUP_ID:
         await msg.reply_text(
-            f"🚫 Access Denied!\n\nThe /tip command can only be used in the Official Group Chat.\n\n👉 {GROUP_LINK}",
-            disable_web_page_preview=True
+            f"🚫 **Access Denied!**\n\nThe /tip command can only be used in the Official Group Chat.\n\n👉 [CL ZONE GROUP]({GROUP_LINK})",
+            disable_web_page_preview=True,
+            parse_mode='Markdown'
         )
         return
     
@@ -1263,14 +1271,14 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sender_new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", sender.id)
     await db.close()
     
-    sender_name = f"@{sender.username}" if sender.username else sender.first_name
-    receiver_name = f"@{receiver.username}" if receiver.username else receiver.first_name
+    # 🔥 ESCAPE NAMES
+    sender_name = escape_markdown(f"@{sender.username}" if sender.username else sender.first_name)
+    receiver_name = escape_markdown(f"@{receiver.username}" if receiver.username else receiver.first_name)
     
-    # 🔥 NO MARKDOWN — SIRF TEXT
     caption = (
-        f"💝 TIP SENT!\n\n"
-        f"FROM: {sender_name}\n"
-        f"TO: {receiver_name}\n"
+        f"💝 **TIP SENT!**\n\n"
+        f"**FROM:** {sender_name}\n"
+        f"**TO:** {receiver_name}\n"
         f"💰 Amount: {amount:,}\n"
         f"💸 Fee (5%): {fee:,}\n"
         f"📥 Received: {receiver_amount:,}\n\n"
@@ -1280,11 +1288,11 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if TIP_PHOTO_ID:
         await msg.reply_photo(
             photo=TIP_PHOTO_ID,
-            caption=caption
-            # 🔥 NO parse_mode
+            caption=caption,
+            parse_mode="Markdown"
         )
     else:
-        await msg.reply_text(caption)
+        await msg.reply_text(caption, parse_mode="Markdown")
 
 # ============ ACHIEVEMENTS ==========
 async def achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5163,6 +5171,13 @@ async def matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.close()
 
 # ============ BET ==========
+import re
+
+def escape_markdown(text):
+    """Escape markdown special characters"""
+    special_chars = r'([_*\[\]()~`>#+\-=|{}.!])'
+    return re.sub(special_chars, r'\\\1', text)
+
 async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -5192,7 +5207,6 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     db = await get_db()
     
-    # Search match (case insensitive)
     match = await db.fetchrow("""
         SELECT id, team1, team2, locked 
         FROM matches 
@@ -5209,7 +5223,6 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
     
-    # Check max 2 bets per match
     bet_count = await db.fetchval("""
         SELECT COUNT(*) FROM bets 
         WHERE user_id = $1 AND match_id = $2
@@ -5227,7 +5240,6 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
     
-    # Place bet
     bet_team = match['team1'] if match['team1'].lower() == team.lower() else match['team2']
     
     await db.execute("""
@@ -5235,22 +5247,27 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         VALUES ($1, $2, $3, $4)
     """, user_id, match['id'], bet_team, amount)
     
-    # 🔥 SIRF BALANCE DEDUCT KARO, TOTAL MAT BADHAO
     await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", amount, user_id)
     
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     await db.close()
     
+    # 🔥 ESCAPE NAMES
+    team1_escaped = escape_markdown(match['team1'])
+    team2_escaped = escape_markdown(match['team2'])
+    bet_team_escaped = escape_markdown(bet_team)
+    
+    # 🔥 BOLD TEXT KE SAATH OUTPUT
     await update.message.reply_text(
-        f"✅ BET PLACED! (PENDING)\n\n"
-        f"🏏 {match['team1']} vs {match['team2']}\n"
-        f"🎯 {bet_team}\n"
-        f"💰 {amount:,} 💰\n\n"
-        f"📊 Status: ⏳ PENDING\n"
+        f"✅ **BET PLACED!** (PENDING)\n\n"
+        f"🏏 **{team1_escaped}** vs **{team2_escaped}**\n"
+        f"🎯 **{bet_team_escaped}**\n"
+        f"💰 **{amount:,}** 💰\n\n"
+        f"📊 Status: ⏳ **PENDING**\n"
         f"💡 Result will be announced after match ends!\n\n"
-        f"📊 Current balance: {new_bal:,} 💰"
+        f"📊 Current balance: **{new_bal:,}** 💰",
+        parse_mode="Markdown"
     )
-
 async def mybets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
