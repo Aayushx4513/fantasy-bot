@@ -530,7 +530,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [
             [InlineKeyboardButton("📢 UPDATES", url="https://t.me/clbotofficial")],
             [InlineKeyboardButton("👥 MAIN GROUP", url="https://t.me/+eTD1m8Cjc_wyOTNl")]
-        ]
+         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await update.message.reply_text(
@@ -578,30 +578,30 @@ async def setprice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
-        await update.message.reply_text("❌ Send /start first!")
+        await update.message.reply_text("❌ *Send /start first!*", parse_mode="Markdown")
         return
-    
+
     user = update.effective_user
     name = user.first_name if user.first_name else (user.username or "User")
-    
+
     db = await get_db()
     data = await db.fetchrow("SELECT balance, points, won, total, photo, bio FROM users WHERE user_id = $1", user_id)
-    
+
     if not data:
         await db.close()
-        await update.message.reply_text("❌ Profile not found!")
+        await update.message.reply_text("❌ *Profile not found!*", parse_mode="Markdown")
         return
-    
+
     bank_bal = await db.fetchval("SELECT balance FROM bank WHERE user_id = $1", user_id) or 0
-    
+
     wallet_bal, points, won, total, photo, bio = data
     total_wealth = wallet_bal + bank_bal
-    
+
     # 🔥 FIX: Agar won > total ho toh total = won kar do
     if won > total:
         await db.execute("UPDATE users SET total = $1 WHERE user_id = $2", won, user_id)
         total = won
-    
+
     # Win rate calculate
     if total > 0:
         win_rate = int((won / total) * 100)
@@ -609,53 +609,67 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
             win_rate = 100
     else:
         win_rate = 0
-    
+
     await db.close()
-    
-    profile_text = f"👤 PROFILE\n\n"
-    profile_text += f"Name: {name}\n"
-    if bio:
-        profile_text += f"Bio: {bio}\n"
-    profile_text += f"\n💰 Wallet: {wallet_bal:,}\n"
-    profile_text += f"🏦 Bank: {bank_bal:,}\n"
-    profile_text += f"💎 Total: {total_wealth:,}\n\n"
-    profile_text += f"🏆 Points: {points}\n"
-    profile_text += f"📊 Bets: {won}/{total}\n"
-    profile_text += f"📈 Win Rate: {win_rate}%"
-    
+
+    # 🔥 DEFAULT BIO
+    DEFAULT_BIO = "I Play With CL Bot!"
+
+    # Escape name for Markdown
+    name_escaped = escape_markdown(name)
+    bio_escaped = escape_markdown(bio) if bio else DEFAULT_BIO
+
+    profile_text = f"👤 *PROFILE*\n\n"
+    profile_text += f"*Name:* {name_escaped}\n"
+    profile_text += f"*Bio:* {bio_escaped}\n"
+    profile_text += f"\n💰 *Wallet:* {wallet_bal:,}\n"
+    profile_text += f"🏦 *Bank:* {bank_bal:,}\n"
+    profile_text += f"💎 *Total:* {total_wealth:,}\n\n"
+    profile_text += f"🏆 *Points:* {points}\n"
+    profile_text += f"📊 *Bets:* {won}/{total}\n"
+    profile_text += f"📈 *Win Rate:* {win_rate}%"
+
     if photo:
-        await update.message.reply_photo(photo=photo, caption=profile_text)
+        await update.message.reply_photo(photo=photo, caption=profile_text, parse_mode="Markdown")
     else:
-        await update.message.reply_text(profile_text)
+        await update.message.reply_text(profile_text, parse_mode="Markdown")
 
 # ============ BIO & PFP ==========
 async def setbio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
+        await update.message.reply_text('❌ *Send /start first!*', parse_mode="Markdown")
         return
+    
     args = context.args
     if len(args) < 1:
-        await update.message.reply_text("Usage: /setbio <your bio>")
+        await update.message.reply_text("❌ *Usage:* /setbio <your bio>", parse_mode="Markdown")
         return
+    
     bio = " ".join(args)
     if len(bio) > 100:
-        await update.message.reply_text("❌ Bio too long!")
+        await update.message.reply_text("❌ *Bio too long!*", parse_mode="Markdown")
         return
+    
     db = await get_db()
     await db.execute("UPDATE users SET bio = $1 WHERE user_id = $2", bio, user_id)
     await db.close()
-    await update.message.reply_text(f"✅ Bio updated!\n\n{bio}")
+    
+    bio_escaped = escape_markdown(bio)
+    await update.message.reply_text(f"✅ *Bio updated!*\n\n{bio_escaped}", parse_mode="Markdown")
 
 async def rmbio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
+        await update.message.reply_text('❌ *Send /start first!*', parse_mode="Markdown")
         return
+    
     db = await get_db()
-    await db.execute("UPDATE users SET bio = NULL WHERE user_id = $1", user_id)
+    # 🔥 Default bio set karo
+    await db.execute("UPDATE users SET bio = 'I Play With CL Bot!' WHERE user_id = $1", user_id)
     await db.close()
-    await update.message.reply_text("✅ Bio removed!")
+    
+    await update.message.reply_text("✅ *Bio reset to default!*\n\n*I Play With CL Bot!*", parse_mode="Markdown")
 
 async def setpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
