@@ -5170,7 +5170,41 @@ async def matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
     await db.close()
 
-# ============ BET ==========
+# ============ MYBETS ==========
+async def mybets(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not await is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    db = await get_db()
+    
+    bets_data = await db.fetch("""
+        SELECT b.id, b.team, b.amount, m.team1, m.team2, m.date, m.locked
+        FROM bets b 
+        JOIN matches m ON b.match_id = m.id 
+        WHERE b.user_id = $1
+        ORDER BY m.date DESC
+    """, user_id)
+    
+    await db.close()
+    
+    if not bets_data:
+        await update.message.reply_text('📭 No bets placed yet!')
+        return
+    
+    msg = f"🎯 MY BETS ({len(bets_data)})\n\n"
+    for i, bet in enumerate(bets_data, 1):
+        status = "🔒 LOCKED" if bet['locked'] == 1 else "🔓 OPEN"
+        msg += f"{i}️⃣ {bet['team1']} vs {bet['team2']}\n"
+        msg += f"   🎯 {bet['team']} | 💰 {bet['amount']:,}\n"
+        msg += f"   📅 {bet['date']} | {status}\n\n"
+    
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += "💡 /cancel <number> to cancel bet (only if match is OPEN)"
+    
+    await update.message.reply_text(msg)
+
 async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
