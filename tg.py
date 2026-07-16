@@ -577,9 +577,9 @@ import re
 # ============ ESCAPE FUNCTION ==========
 def escape_markdown(text):
     """Escape markdown special characters only"""
-    special_chars = r'([_*\[\]()~`>#+\-=|{}])'  # 🔥 . HATAO
+    # 🔥 . HATAO, SIRF SPECIAL CHARACTERS RAKHO
+    special_chars = r'([_*\[\]()~`>#+\-=|{}])'
     return re.sub(special_chars, r'\\\1', text)
-
 
 # ============ PROFILE ==========
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
