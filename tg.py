@@ -3995,7 +3995,6 @@ async def lockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ============ RESULT ==========
-# ============ RESULT ==========
 async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text('❌ Admin only!')
@@ -4032,23 +4031,16 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     winners_count = 0
     losers_count = 0
     total_paid = 0
-    processed_users = set()  # 🔥 DUPLICATE BETS FIX
 
+    # 🔥 HAR BET COUNT KARO (NO SKIP!)
     for bet in bets:
         user_id = bet['user_id']
-        
-        # 🔥 SKIP IF ALREADY PROCESSED
-        if user_id in processed_users:
-            continue
-        processed_users.add(user_id)
-        
         amount = bet['amount']
         bet_team = bet['team']
 
         user = await db.fetchrow("SELECT balance, won, total, points FROM users WHERE user_id = $1", user_id)
 
         if bet_team.upper() == winner.upper():
-            # 🔥 WINNER
             win_amount = amount * 2
             new_balance = user['balance'] + win_amount
             new_won = user['won'] + 1
@@ -4061,7 +4053,6 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
             total_paid += win_amount
             winners_count += 1
         else:
-            # 🔥 LOSER
             new_total = user['total'] + 1
             new_points = user['points'] - 5
             await db.execute("UPDATE users SET total = $1, points = $2 WHERE user_id = $3", new_total, new_points, user_id)
@@ -4080,6 +4071,7 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"❌ LOSERS (-5 pts): {losers_count} users\n\n"
         f"💰 TOTAL PAYOUT: {total_paid:,} 💰"
     )
+
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         return  # ❌ SIRF CHUP RAHEGA, KUCH NAHI BOLEGA
