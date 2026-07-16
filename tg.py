@@ -572,14 +572,12 @@ async def setprice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.close()
     await update.message.reply_text(f"✅ PRICE UPDATED!\n\n{player['name']}\n💰 New Price: {new_price:,} 💰")
 
-
-# ============ PROFILE ==========
 import re
 
 # ============ ESCAPE FUNCTION ==========
 def escape_markdown(text):
-    """Escape markdown special characters"""
-    special_chars = r'([_*\[\]()~`>#+\-=|{}.])'
+    """Escape markdown special characters only"""
+    special_chars = r'([_*\[\]()~`>#+\-=|{}])'  # 🔥 . HATAO
     return re.sub(special_chars, r'\\\1', text)
 
 
@@ -606,12 +604,10 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     wallet_bal, points, won, total, photo, bio = data
     total_wealth = wallet_bal + bank_bal
 
-    # 🔥 FIX: Agar won > total ho toh total = won kar do
     if won > total:
         await db.execute("UPDATE users SET total = $1 WHERE user_id = $2", won, user_id)
         total = won
 
-    # Win rate calculate
     if total > 0:
         win_rate = int((won / total) * 100)
         if win_rate > 100:
@@ -621,10 +617,9 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await db.close()
 
-    # 🔥 DEFAULT BIO
     DEFAULT_BIO = "I Play With CL Bot!"
 
-    # 🔥 ESCAPE NAMES
+    # 🔥 ESCAPE NAMES (DOT ESCAPE NAHI HOGA)
     name_escaped = escape_markdown(name)
     bio_escaped = escape_markdown(bio) if bio else DEFAULT_BIO
 
@@ -677,11 +672,11 @@ async def rmbio(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     db = await get_db()
-    # 🔥 Default bio set karo
     await db.execute("UPDATE users SET bio = 'I Play With CL Bot!' WHERE user_id = $1", user_id)
     await db.close()
     
     await update.message.reply_text("✅ *Bio reset to default!*\n\n*I Play With CL Bot!*", parse_mode="Markdown")
+
 
 async def setpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
