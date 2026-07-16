@@ -1191,90 +1191,14 @@ async def top_fantasy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ============ TIP COMMAND ==========
 # ============ TIP ==========
-async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-    chat_type = update.effective_chat.type
-    
-    # 🔥 ONLY CL ZONE GROUP
-    ALLOWED_GROUP_ID = -1001661258033
-    GROUP_LINK = "https://t.me/+eTD1m8Cjc_wyOTNl"
-    
-    if chat_type != 'supergroup' or chat_id != ALLOWED_GROUP_ID:
-        await update.message.reply_text(
-            f"🚫 **Access Denied!**\n\n"
-            f"The /tip command can only be used in the Official Group Chat.\n\n"
-            f"👉 [CL ZONE GROUP]({GROUP_LINK})",
-            disable_web_page_preview=True,
-            parse_mode='Markdown'
-        )
-        return
-    
-    if not await is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    if not update.message.reply_to_message:
-        await update.message.reply_text('❌ Reply to user with /tip AMOUNT')
-        return
-    
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text('❌ /tip AMOUNT\nExample: /tip 500')
-        return
-    
-    try:
-        amount = int(args[0])
-    except:
-        await update.message.reply_text('❌ Invalid amount')
-        return
-    
-    if amount <= 0:
-        await update.message.reply_text('❌ Amount must be greater than 0!')
-        return
-    
-    sender = update.effective_user
-    receiver = update.message.reply_to_message.from_user
-    
-    if sender.id == receiver.id:
-        await update.message.reply_text('❌ Cannot tip yourself!')
-        return
-    
-    db = await get_db()
-    sender_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", sender.id)
-    
-    if sender_bal < amount:
-        await update.message.reply_text(f'❌ Need {amount:,}, have {sender_bal:,}')
-        await db.close()
-        return
-    
-    # 🔥 5% FEE
-    fee = int(amount * 0.05)
-    receiver_amount = amount - fee
-    
-    await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", amount, sender.id)
-    await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", receiver_amount, receiver.id)
-    sender_new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", sender.id)
-    await db.close()
-    
-    sender_username = f"@{sender.username}" if sender.username else sender.first_name
-    receiver_username = f"@{receiver.username}" if receiver.username else receiver.first_name
-    
-    await update.message.reply_text(
-        f"💝 **TIP SENT!**\n\n"
-        f"**FROM:** {sender_username}\n"
-        f"**TO:** {receiver_username}\n"
-        f"💰 Amount: {amount:,}\n"
-        f"💸 Fee (5%): {fee:,}\n"
-        f"📥 Received: {receiver_amount:,}\n\n"
-        f"📊 Your balance: {sender_new_bal:,} 💰",
-        parse_mode="Markdown"
-    )
-
-# ============ TIP ==========
 TIP_PHOTO_ID = "AgACAgUAAx0CYwTJMQABBM5salNE0WU0OqkDEXUaiPHmUxs73ecAArMSaxtUJ3FVQyIXvksscnMBAAMCAAN3AAM7BA"
 
 async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # 🔥 FIX: effective_message use karo
+    msg = update.effective_message
+    if not msg:
+        return
+    
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     chat_type = update.effective_chat.type
@@ -1284,7 +1208,7 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     GROUP_LINK = "https://t.me/+eTD1m8Cjc_wyOTNl"
     
     if chat_type != 'supergroup' or chat_id != ALLOWED_GROUP_ID:
-        await update.message.reply_text(
+        await msg.reply_text(
             f"🚫 **Access Denied!**\n\n"
             f"The /tip command can only be used in the Official Group Chat.\n\n"
             f"👉 [CL ZONE GROUP]({GROUP_LINK})",
@@ -1294,40 +1218,45 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if not await is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
+        await msg.reply_text('❌ Send /start first!')
         return
     
-    if not update.message.reply_to_message:
-        await update.message.reply_text('❌ Reply to user with /tip AMOUNT')
+    if not msg.reply_to_message:
+        await msg.reply_text('❌ Reply to user with /tip AMOUNT')
         return
     
     args = context.args
     if len(args) < 1:
-        await update.message.reply_text('❌ /tip AMOUNT\nExample: /tip 500')
+        await msg.reply_text('❌ /tip AMOUNT\nExample: /tip 500')
         return
     
     try:
         amount = int(args[0])
     except:
-        await update.message.reply_text('❌ Invalid amount')
+        await msg.reply_text('❌ Invalid amount')
         return
     
     if amount <= 0:
-        await update.message.reply_text('❌ Amount must be greater than 0!')
+        await msg.reply_text('❌ Amount must be greater than 0!')
         return
     
     sender = update.effective_user
-    receiver = update.message.reply_to_message.from_user
+    receiver = msg.reply_to_message.from_user
     
     if sender.id == receiver.id:
-        await update.message.reply_text('❌ Cannot tip yourself!')
+        await msg.reply_text('❌ Cannot tip yourself!')
         return
     
     db = await get_db()
     sender_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", sender.id)
     
+    if sender_bal is None:
+        await msg.reply_text("❌ You are not registered! Send /start first.")
+        await db.close()
+        return
+    
     if sender_bal < amount:
-        await update.message.reply_text(f'❌ Need {amount:,}, have {sender_bal:,}')
+        await msg.reply_text(f'❌ Need {amount:,}, have {sender_bal:,}')
         await db.close()
         return
     
@@ -1340,13 +1269,13 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sender_new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", sender.id)
     await db.close()
     
-    sender_username = f"@{sender.username}" if sender.username else sender.first_name
-    receiver_username = f"@{receiver.username}" if receiver.username else receiver.first_name
+    sender_name = f"@{sender.username}" if sender.username else sender.first_name
+    receiver_name = f"@{receiver.username}" if receiver.username else receiver.first_name
     
-    msg = (
+    caption = (
         f"💝 **TIP SENT!**\n\n"
-        f"**FROM:** {sender_username}\n"
-        f"**TO:** {receiver_username}\n"
+        f"**FROM:** {sender_name}\n"
+        f"**TO:** {receiver_name}\n"
         f"💰 Amount: {amount:,}\n"
         f"💸 Fee (5%): {fee:,}\n"
         f"📥 Received: {receiver_amount:,}\n\n"
@@ -1355,13 +1284,13 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # 🔥 PHOTO KE SAATH BHEJO
     if TIP_PHOTO_ID:
-        await update.message.reply_photo(
+        await msg.reply_photo(
             photo=TIP_PHOTO_ID,
-            caption=msg,
+            caption=caption,
             parse_mode="Markdown"
         )
     else:
-        await update.message.reply_text(msg, parse_mode="Markdown")
+        await msg.reply_text(caption, parse_mode="Markdown")
 
 # ============ ACHIEVEMENTS ==========
 async def achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
