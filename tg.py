@@ -574,6 +574,15 @@ async def setprice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============ PROFILE ==========
+import re
+
+# ============ ESCAPE FUNCTION ==========
+def escape_markdown(text):
+    """Escape markdown special characters"""
+    special_chars = r'([_*\[\]()~`>#+\-=|{}.])'
+    return re.sub(special_chars, r'\\\1', text)
+
+
 # ============ PROFILE ==========
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -615,7 +624,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 🔥 DEFAULT BIO
     DEFAULT_BIO = "I Play With CL Bot!"
 
-    # Escape name for Markdown
+    # 🔥 ESCAPE NAMES
     name_escaped = escape_markdown(name)
     bio_escaped = escape_markdown(bio) if bio else DEFAULT_BIO
 
@@ -634,7 +643,8 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(profile_text, parse_mode="Markdown")
 
-# ============ BIO & PFP ==========
+
+# ============ SETBIO ==========
 async def setbio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
@@ -658,6 +668,8 @@ async def setbio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bio_escaped = escape_markdown(bio)
     await update.message.reply_text(f"✅ *Bio updated!*\n\n{bio_escaped}", parse_mode="Markdown")
 
+
+# ============ RMBIO ==========
 async def rmbio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
@@ -1208,8 +1220,8 @@ async def top_fantasy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 import re
 
 def escape_markdown(text):
-    """Escape markdown special characters"""
-    special_chars = r'([_*\[\]()~`>#+\-=|{}.!])'
+    """Escape markdown special characters (except !)"""
+    special_chars = r'([_*\[\]()~`>#+\-=|{}.])'
     return re.sub(special_chars, r'\\\1', text)
 
 TIP_PHOTO_ID = "AgACAgUAAx0CYwTJMQABBM5salNE0WU0OqkDEXUaiPHmUxs73ecAArMSaxtUJ3FVQyIXvksscnMBAAMCAAN3AAM7BA"
