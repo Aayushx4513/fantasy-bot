@@ -1210,18 +1210,32 @@ async def top_fantasy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 
-# ============ TIP COMMAND ==========
+# ============ SETTIP (ADMIN) ==========
+tip_template_id = None
+
+async def settip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global tip_template_id
+    
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    if not update.message.reply_to_message:
+        await update.message.reply_text("❌ Reply to a photo with /settip")
+        return
+    
+    if not update.message.reply_to_message.photo:
+        await update.message.reply_text("❌ Reply to a PHOTO!")
+        return
+    
+    tip_template_id = update.message.reply_to_message.photo[-1].file_id
+    await update.message.reply_text("✅ TIP TEMPLATE PHOTO SET!")
+
+
 # ============ TIP ==========
-import re
-
-def escape_markdown(text):
-    """Escape markdown special characters (except !)"""
-    special_chars = r'([_*\[\]()~`>#+\-=|{}.])'
-    return re.sub(special_chars, r'\\\1', text)
-
-TIP_PHOTO_ID = "AgACAgUAAx0CYwTJMQABBM5salNE0WU0OqkDEXUaiPHmUxs73ecAArMSaxtUJ3FVQyIXvksscnMBAAMCAAN3AAM7BA"
-
 async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global tip_template_id
+    
     msg = update.effective_message
     if not msg:
         return
@@ -1292,9 +1306,8 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sender_new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", sender.id)
     await db.close()
     
-    # 🔥 ESCAPE NAMES
-    sender_name = escape_markdown(f"@{sender.username}" if sender.username else sender.first_name)
-    receiver_name = escape_markdown(f"@{receiver.username}" if receiver.username else receiver.first_name)
+    sender_name = f"@{sender.username}" if sender.username else sender.first_name
+    receiver_name = f"@{receiver.username}" if receiver.username else receiver.first_name
     
     caption = (
         f"💝 **TIP SENT!**\n\n"
@@ -1306,9 +1319,10 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📊 Your balance: {sender_new_bal:,} 💰"
     )
     
-    if TIP_PHOTO_ID:
+    # 🔥 PHOTO TEMPLATE (AGAR SET HAI TOH)
+    if tip_template_id:
         await msg.reply_photo(
-            photo=TIP_PHOTO_ID,
+            photo=tip_template_id,
             caption=caption,
             parse_mode="Markdown"
         )
@@ -6173,6 +6187,7 @@ async def main():
     app.add_handler(CommandHandler("leaderboard", leaderboard))
     app.add_handler(CommandHandler("top_fantasy", top_fantasy))
     app.add_handler(CommandHandler("history", history))
+    app.add_handler(CommandHandler("settip", settip))
     app.add_handler(CommandHandler("tip", tip))
     app.add_handler(CommandHandler("achievements", achievements))
     app.add_handler(CommandHandler("numguess", numguess))
