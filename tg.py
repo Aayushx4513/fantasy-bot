@@ -3026,7 +3026,8 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     game.current_over_shots.append(str(bat_number))
 
     msg += f"📊 Score: {game.score}/{game.wickets}\n"
-    msg += f"🎯 Shots: {'-'.join(game.current_over_shots)}\n\n"
+    msg += f"📝 This Over: {', '.join(game.current_over_shots)}\n\n"
+
 
     if game.balls % 6 == 0:
         game.current_over_shots = []
