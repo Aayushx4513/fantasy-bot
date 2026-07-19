@@ -2994,7 +2994,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         innings_tag = f"TARGET : {game.target}"
 
-    over_text = f"🏏 Over {game.get_overs()} ({innings_tag})" if not (game.innings == 2 and game.score >= game.target) else f"🏏 Over {game.get_overs()} (MATCH ENDED)"
+    over_text = f"🏏 Over {game.get_overs()} ({innings_tag})" if not (game.innings == 2 and game.score >= game.target) else f"🏏 Over {game.get_overs()}"
 
     msg = f"{over_text}\n\n"
     msg += f"{batsman_name} played: {bat_number}  | {bowler_name} bowled: {bowl_number}\n\n"
@@ -3021,16 +3021,17 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             game.player2_match_runs += runs
             await update_cricket_stats_realtime(game.player2_id, game.player2_name, runs, 0, game.player2_match_runs)
 
-        if not hasattr(game, "current_over_shots"):
-            game.current_over_shots = []
+    if not hasattr(game, "current_over_shots"):
+        game.current_over_shots = []
 
     game.current_over_shots.append(str(bat_number))
 
     msg += f"📊 Score: {game.score}/{game.wickets}\n"
     msg += f"🎯 Shots: {''.join(game.current_over_shots)}\n\n"
 
-        if game.balls % 6 == 0:
-            game.current_over_shots = []
+    if game.balls % 6 == 0:
+        game.current_over_shots = []
+
 
     # ============ FIRST INNINGS END ============
     if game.innings == 1 and (game.wickets >= 1 or game.balls >= 60):
