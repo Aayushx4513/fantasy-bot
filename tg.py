@@ -3090,11 +3090,11 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             margin = game.player2_match_runs - game.player1_match_runs
 
-        # 🔥 SUMMARY
+       # 🔥 SUMMARY
         summary = f"🏆 MATCH RESULT\n"
         summary += f"━━━━━━━━━━━━━━━━\n"
-        summary += f"{game.player1_name} — {game.player1_match_runs}/1 ({game.get_overs()} ov) | 4s:{game.player1_match_runs//4} 6s:{game.player1_match_runs//6}\n"
-        summary += f"{game.player2_name} — {game.player2_match_runs}/0 ({game.get_overs()} ov) | 4s:{game.player2_match_runs//4} 6s:{game.player2_match_runs//6}\n"
+        summary += f"{game.player1_name} — {game.player1_match_runs}/1 ({game.get_overs()} ov)\n"
+        summary += f"{game.player2_name} — {game.player2_match_runs}/0 ({game.get_overs()} ov)\n"
         summary += f"━━━━━━━━━━━━━━━━\n"
         summary += f"🏆 {winner_name} won by {abs(margin)} run{'s' if abs(margin) != 1 else ''}!\n"
 
