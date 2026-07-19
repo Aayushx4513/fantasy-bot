@@ -3052,7 +3052,13 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     game.current_over_shots.append(str(bat_number))
 
     msg += f"📊 Score: {game.score}/{game.wickets}\n"
-    msg += f"🎯 Shots: {'-'.join(game.current_over_shots)}\n\n"
+    
+    # 🔥 SHOTS DISPLAY - "6, 5, 4, 3, 5, 5" format
+    if game.current_over_shots:
+        shots_display = ', '.join(game.current_over_shots)
+        msg += f"🎯 This Over: {shots_display}\n\n"
+    else:
+        msg += f"\n"
 
     if game.balls % 6 == 0:
         game.current_over_shots = []
@@ -3068,11 +3074,15 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         game.balls = 0
         game.waiting_for = "bat"
         
-        # 🔥 SWAP BATSMAN AND BOWLER
-        old_batsman = game.current_batsman
+        # 🔥 SECOND INNINGS KE LIYE NAYA BATSMAN SET KARO
         old_bowler = game.current_bowler
+        old_batsman = game.current_batsman
+        
         game.current_batsman = old_bowler
-        game.current_bowler = old_batsman
+        if old_bowler == game.player1_id:
+            game.current_bowler = game.player2_id
+        else:
+            game.current_bowler = game.player1_id
 
         batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
         bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
