@@ -6206,6 +6206,44 @@ async def fix_duplicates(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🗑️ Removed: {removed} duplicate entries"
     )
 
+async def fix_achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fix all achievement duplicates - Admin only"""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text('❌ Admin only!')
+        return
+    
+    db = await get_db()
+    
+    # 1️⃣ DELETE ALL DUPLICATES (Keep only 1 per user)
+    await db.execute("""
+        DELETE FROM achievements a
+        USING achievements b
+        WHERE a.user_id = b.user_id 
+        AND a.achievement = b.achievement
+        AND a.ctid > b.ctid
+    """)
+    
+    # 2️⃣ ADD UNIQUE CONSTRAINT (Prevent future duplicates)
+    try:
+        await db.execute("""
+            ALTER TABLE achievements 
+            ADD CONSTRAINT unique_user_achievement 
+            UNIQUE (user_id, achievement)
+        """)
+    except:
+        pass  # Already exists
+    
+    # 3️⃣ GET FINAL COUNT
+    count = await db.fetchval("SELECT COUNT(*) FROM achievements")
+    await db.close()
+    
+    await update.message.reply_text(
+        f"✅ ACHIEVEMENTS FIXED!\n\n"
+        f"📊 Total achievements: {count}\n"
+        f"🔒 Duplicate protection added!\n\n"
+        f"💡 Now /achievements will show correctly."
+    )
+
 
 # ============ MAIN ==========
 async def main():
@@ -6236,6 +6274,7 @@ async def main():
     app.add_handler(CommandHandler("history", history))
     app.add_handler(CommandHandler("settip", settip))
     app.add_handler(CommandHandler("tip", tip))
+    app.add_handler(CommandHandler("fix_achievements", fix_achievements))
     app.add_handler(CommandHandler("achievements", achievements))
     app.add_handler(CommandHandler("numguess", numguess))
     app.add_handler(CommandHandler("ng", ng))
