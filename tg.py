@@ -2753,6 +2753,7 @@ class CricketGame:
         rem_balls = balls % 6
         return f"{overs}.{rem_balls}"
 
+
 async def clcricket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
