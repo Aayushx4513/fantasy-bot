@@ -3027,7 +3027,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     game.current_over_shots.append(str(bat_number))
 
     msg += f"📊 Score: {game.score}/{game.wickets}\n"
-    msg += f"🎯 Shots: {''.join(game.current_over_shots)}\n\n"
+    msg += f"🎯 Shots: {'-'.join(game.current_over_shots)}\n\n"
 
     if game.balls % 6 == 0:
         game.current_over_shots = []
@@ -3036,6 +3036,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     # ============ FIRST INNINGS END ============
     if game.innings == 1 and (game.wickets >= 1 or game.balls >= 60):
         game.innings = 2
+        game.current_over_shots = []
         game.target = game.score + 1
         innings_score = game.score
         game.score = 0
