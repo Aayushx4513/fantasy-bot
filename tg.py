@@ -2952,7 +2952,6 @@ async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_
     reply_markup=InlineKeyboardMarkup(keyboard)
 )
 
-
 async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -3090,7 +3089,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             margin = game.player2_match_runs - game.player1_match_runs
 
-       # 🔥 SUMMARY
+        # 🔥 SUMMARY
         summary = f"🏆 MATCH RESULT\n"
         summary += f"━━━━━━━━━━━━━━━━\n"
         summary += f"{game.player1_name} — {game.player1_match_runs}/1 ({game.get_overs()} ov)\n"
@@ -3115,18 +3114,27 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
         if game.bet > 0:
             db = await get_db()
-            await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", game.bet * 2, winner_id)
+            await db.execute(
+                "UPDATE users SET balance = balance + $1 WHERE user_id = $2",
+                game.bet * 2,
+                winner_id
+            )
             await db.close()
 
-        runs_left = game.target - game.score - 1
+        runs_left = abs(game.player1_match_runs - game.player2_match_runs)
 
         # 🔥 SUMMARY
         summary = f"🏆 MATCH RESULT\n"
         summary += f"━━━━━━━━━━━━━━━━\n"
-        summary += f"{game.player1_name} — {game.player1_match_runs}/1 ({game.get_overs()} ov) | 4s:{game.player1_match_runs//4} 6s:{game.player1_match_runs//6}\n"
-        summary += f"{game.player2_name} — {game.player2_match_runs}/1 ({game.get_overs()} ov) | 4s:{game.player2_match_runs//4} 6s:{game.player2_match_runs//6}\n"
+        summary += f"{game.player1_name} — {game.player1_match_runs}/1 ({game.get_overs()} ov)\n"
+        summary += f"{game.player2_name} — {game.player2_match_runs}/1 ({game.get_overs()} ov)\n"
         summary += f"━━━━━━━━━━━━━━━━\n"
-        summary += f"🏆 {winner_name} won by {runs_left} Runs!\n"
+
+        if game.player1_match_runs == game.player2_match_runs:
+            summary += "🤝 It's a Draw!\n"
+        else:
+            summary += f"🏆 {winner_name} won by {runs_left} run{'s' if runs_left != 1 else ''}!\n"
+
         if game.bet > 0:
             summary += f"💰 Prize: {game.bet * 2:,}"
 
@@ -3151,6 +3159,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     msg += f"🎮 {batsman_name} choose your shot :-"
 
     await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+
 
 async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
