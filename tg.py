@@ -3053,7 +3053,6 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     msg += f"📊 Score: {game.score}/{game.wickets}\n"
     
-    # 🔥 SHOTS DISPLAY - "6, 5, 4, 3, 5, 5" format
     if game.current_over_shots:
         shots_display = ', '.join(game.current_over_shots)
         msg += f"🎯 This Over: {shots_display}\n\n"
@@ -3069,15 +3068,15 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         game.current_over_shots = []
         game.target = game.score + 1
         innings_score = game.score
+        first_innings_wickets = game.wickets  # 🔥 SAVE FIRST INNINGS WICKETS
         game.score = 0
-        game.wickets = 0
+        game.wickets = 0  # Reset for second innings
         game.balls = 0
         game.waiting_for = "bat"
         
-        # 🔥 SECOND INNINGS KE LIYE NAYA BATSMAN SET KARO
+        # Swap batsman and bowler for second innings
         old_bowler = game.current_bowler
         old_batsman = game.current_batsman
-        
         game.current_batsman = old_bowler
         if old_bowler == game.player1_id:
             game.current_bowler = game.player2_id
@@ -3089,7 +3088,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
         msg = f"🏏 Over {overs_display} (FIRST INNINGS ENDED)\n\n"
         msg += f"{batsman_name} played: {bat_number}  | {bowler_name} bowled: {bowl_number}\n\n"
-        msg += f"📊 Score: {innings_score}/1\n"
+        msg += f"📊 Score: {innings_score}/{first_innings_wickets}\n"
         msg += f"🎯 Target: {game.target} runs\n\n"
         msg += f"🔄 Innings Changed\n\n"
         msg += f"🏏 {batsman_name}, choose your shot."
@@ -3133,12 +3132,20 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         player1_overs = game.get_overs(1)
         player2_overs = game.get_overs(2)
 
+        # 🔥 CORRECT WICKET COUNT
+        if game.player1_id == winner_id:  # Player1 chased
+            p1_wickets = game.wickets  # Second innings wickets (Player1 ke)
+            p2_wickets = game.player2_wickets_taken  # First innings wickets (Player2 ne liye)
+        else:  # Player2 chased
+            p2_wickets = game.wickets  # Second innings wickets (Player2 ke)
+            p1_wickets = game.player1_wickets_taken  # First innings wickets (Player1 ne liye)
+
         summary = f"🏆 MATCH RESULT\n"
         summary += f"━━━━━━━━━━━━━━━━\n"
-        summary += f"{game.player1_name} — {game.player1_match_runs}/1 ({player1_overs} ov)\n"
-        summary += f"{game.player2_name} — {game.player2_match_runs}/0 ({player2_overs} ov)\n"
+        summary += f"{game.player1_name} — {game.player1_match_runs}/{p1_wickets} ({player1_overs} ov)\n"
+        summary += f"{game.player2_name} — {game.player2_match_runs}/{p2_wickets} ({player2_overs} ov)\n"
         summary += f"━━━━━━━━━━━━━━━━\n"
-        summary += f"🏆 {winner_name} won by {abs(margin)} run{'s' if abs(margin) != 1 else ''}!\n"
+        summary += f"🏆 {winner_name} won by {abs(margin)} runs!\n"
 
         if game.bet > 0:
             summary += f"💰 Prize: {game.bet * 2:,}"
@@ -3168,16 +3175,24 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         player1_overs = game.get_overs(1)
         player2_overs = game.get_overs(2)
 
+        # 🔥 CORRECT WICKET COUNT
+        if game.player1_id == winner_id:  # Player1 won (bowled out player2)
+            p1_wickets = game.player1_wickets_taken  # Player1 ne wickets liye
+            p2_wickets = game.wickets  # Player2 out hua
+        else:  # Player2 won
+            p2_wickets = game.player2_wickets_taken
+            p1_wickets = game.wickets
+
         summary = f"🏆 MATCH RESULT\n"
         summary += f"━━━━━━━━━━━━━━━━\n"
-        summary += f"{game.player1_name} — {game.player1_match_runs}/1 ({player1_overs} ov)\n"
-        summary += f"{game.player2_name} — {game.player2_match_runs}/1 ({player2_overs} ov)\n"
+        summary += f"{game.player1_name} — {game.player1_match_runs}/{p1_wickets} ({player1_overs} ov)\n"
+        summary += f"{game.player2_name} — {game.player2_match_runs}/{p2_wickets} ({player2_overs} ov)\n"
         summary += f"━━━━━━━━━━━━━━━━\n"
 
         if game.player1_match_runs == game.player2_match_runs:
             summary += "🤝 It's a Draw!\n"
         else:
-            summary += f"🏆 {winner_name} won by {runs_left} run{'s' if runs_left != 1 else ''}!\n"
+            summary += f"🏆 {winner_name} won by {runs_left} runs!\n"
 
         if game.bet > 0:
             summary += f"💰 Prize: {game.bet * 2:,}"
