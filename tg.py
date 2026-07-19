@@ -3068,20 +3068,17 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         game.current_over_shots = []
         game.target = game.score + 1
         innings_score = game.score
-        first_innings_wickets = game.wickets  # 🔥 SAVE FIRST INNINGS WICKETS
+        first_innings_wickets = game.wickets
         game.score = 0
-        game.wickets = 0  # Reset for second innings
+        game.wickets = 0
         game.balls = 0
         game.waiting_for = "bat"
         
-        # Swap batsman and bowler for second innings
-        old_bowler = game.current_bowler
+        # 🔥 SIMPLE SWAP - Batsman <-> Bowler
         old_batsman = game.current_batsman
+        old_bowler = game.current_bowler
         game.current_batsman = old_bowler
-        if old_bowler == game.player1_id:
-            game.current_bowler = game.player2_id
-        else:
-            game.current_bowler = game.player1_id
+        game.current_bowler = old_batsman
 
         batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
         bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
@@ -3132,13 +3129,12 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         player1_overs = game.get_overs(1)
         player2_overs = game.get_overs(2)
 
-        # 🔥 CORRECT WICKET COUNT
-        if game.player1_id == winner_id:  # Player1 chased
-            p1_wickets = game.wickets  # Second innings wickets (Player1 ke)
-            p2_wickets = game.player2_wickets_taken  # First innings wickets (Player2 ne liye)
-        else:  # Player2 chased
-            p2_wickets = game.wickets  # Second innings wickets (Player2 ke)
-            p1_wickets = game.player1_wickets_taken  # First innings wickets (Player1 ne liye)
+        if game.player1_id == winner_id:
+            p1_wickets = game.wickets
+            p2_wickets = game.player2_wickets_taken
+        else:
+            p2_wickets = game.wickets
+            p1_wickets = game.player1_wickets_taken
 
         summary = f"🏆 MATCH RESULT\n"
         summary += f"━━━━━━━━━━━━━━━━\n"
@@ -3175,11 +3171,10 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         player1_overs = game.get_overs(1)
         player2_overs = game.get_overs(2)
 
-        # 🔥 CORRECT WICKET COUNT
-        if game.player1_id == winner_id:  # Player1 won (bowled out player2)
-            p1_wickets = game.player1_wickets_taken  # Player1 ne wickets liye
-            p2_wickets = game.wickets  # Player2 out hua
-        else:  # Player2 won
+        if game.player1_id == winner_id:
+            p1_wickets = game.player1_wickets_taken
+            p2_wickets = game.wickets
+        else:
             p2_wickets = game.player2_wickets_taken
             p1_wickets = game.wickets
 
@@ -3242,14 +3237,12 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.answer("Wait for your turn!", show_alert=True)
         return
 
-    # 🔥 Store batter's shot, then switch to bowler
     game.pending_bat_number = shot
     game.waiting_for = "bowl"
 
     batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
     bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
 
-    # 🔥 Show bowl buttons to bowler
     deliveries = game.get_deliveries()
     keyboard = []
     row = []
@@ -3261,14 +3254,16 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     if row:
         keyboard.append(row)
 
-    # 🔥 INNINGS TAG
+    # 🔥 FIX: INNINGS WISE OVERS
     if game.innings == 1:
         innings_tag = "FIRST INNINGS"
+        overs_display = game.get_overs(1)
     else:
         innings_tag = f"TARGET : {game.target}"
+        overs_display = game.get_overs(2)
 
     await query.edit_message_text(
-        f"🏏 Over {game.get_overs()} ({innings_tag})\n\n"
+        f"🏏 Over {overs_display} ({innings_tag})\n\n"
         f"🏏 Batter: {batsman_name}\n"
         f"🧤 Bowler: {bowler_name}\n\n"
         f"✅ {batsman_name} has selected a number.\n\n"
