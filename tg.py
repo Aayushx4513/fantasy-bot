@@ -3021,8 +3021,16 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             game.player2_match_runs += runs
             await update_cricket_stats_realtime(game.player2_id, game.player2_name, runs, 0, game.player2_match_runs)
 
+        if not hasattr(game, "current_over_shots"):
+            game.current_over_shots = []
+
+    game.current_over_shots.append(str(bat_number))
+
     msg += f"📊 Score: {game.score}/{game.wickets}\n"
-    msg += f"This Over: {game.score}\n\n"
+    msg += f"🎯 Shots: {''.join(game.current_over_shots)}\n\n"
+
+        if game.balls % 6 == 0:
+            game.current_over_shots = []
 
     # ============ FIRST INNINGS END ============
     if game.innings == 1 and (game.wickets >= 1 or game.balls >= 60):
