@@ -2688,6 +2688,8 @@ class CricketGame:
         self.player2_match_runs = 0
         self.player1_wickets_taken = 0
         self.player2_wickets_taken = 0
+        self.innings1_balls = 0
+        self.innings2_balls = 0
 
     def get_deliveries(self):
         if self.mode == "1-3":
@@ -2740,10 +2742,16 @@ class CricketGame:
     def check_out(self, delivery_key, shot):
         return self.get_deliveries()[delivery_key]["out_on"] == shot
 
-    def get_overs(self):
-        overs = self.balls // 6
-        balls = self.balls % 6
-        return f"{overs}.{balls}"
+    def get_overs(self, innings=None):
+        if innings == 1:
+            balls = self.innings1_balls
+        elif innings == 2:
+            balls = self.innings2_balls
+        else:
+            balls = self.balls
+        overs = balls // 6
+        rem_balls = balls % 6
+        return f"{overs}.{rem_balls}"
 
 async def clcricket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
