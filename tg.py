@@ -1,4 +1,4 @@
-from flask import Flask
+tsfrom flask import Flask
 import pytz
 from telegram.ext import MessageHandler, filters
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
@@ -2899,7 +2899,7 @@ async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_
     choice = parts[3]
 
     if game_id not in cricket_games:
-        await query.edit_message_text("❌ Game expired! Please start a new game with /CLcricket")
+        await query.edit_message_text("❌ Game expired!")
         return
 
     game = cricket_games[game_id]
@@ -2908,27 +2908,37 @@ async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_
         await query.answer("Only toss winner can choose Bat or Bowl!", show_alert=True)
         return
 
-    # 🔥 SAHI LOGIC
+    # 🔥 SET BATSMAN AND BOWLER
     if choice == "bat":
         game.current_batsman = game.toss_winner
-        game.current_bowler = game.player2_id if game.toss_winner == game.player1_id else game.player1_id
-    else:
-        game.current_batsman = game.player2_id if game.toss_winner == game.player1_id else game.player1_id
+        if game.toss_winner == game.player1_id:
+            game.current_bowler = game.player2_id
+        else:
+            game.current_bowler = game.player1_id
+    else:  # bowl
         game.current_bowler = game.toss_winner
+        if game.toss_winner == game.player1_id:
+            game.current_batsman = game.player2_id
+        else:
+            game.current_batsman = game.player1_id
 
     game.score = 0
     game.wickets = 0
     game.balls = 0
     game.target = None
-    game.waiting_for = "bat"  # Batter first
+    game.waiting_for = "bat"
     game.pending_delivery = None
     game.innings = 1
+    game.player1_match_runs = 0
+    game.player2_match_runs = 0
+    game.player1_wickets_taken = 0
+    game.player2_wickets_taken = 0
+    game.innings1_balls = 0
+    game.innings2_balls = 0
 
-    if not hasattr(game, 'get_deliveries'):
-        await query.edit_message_text("❌ Game error: missing deliveries. Please restart game.")
-        return
+    batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
+    bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
 
-    # 🔥 BATTER KE BUTTONS (1-6)
     bat_numbers = game.get_bat_numbers()
     keyboard = []
     row = []
@@ -2940,17 +2950,14 @@ async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_
     if row:
         keyboard.append(row)
 
-    batsman = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
-    bowler = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
-
     await query.edit_message_text(
-    f"🏏 Match Started!\n"
-    f"📋 {game.mode.upper()} MODE\n\n"
-    f"👤 Batter: {batsman}\n"
-    f"🧤 Bowler: {bowler}\n\n"
-    f"🏏 {batsman}, choose your shot.",
-    reply_markup=InlineKeyboardMarkup(keyboard)
-)
+        f"🏏 Match Started!\n"
+        f"📋 {game.mode.upper()} MODE\n\n"
+        f"👤 Batter: {batsman_name}\n"
+        f"🧤 Bowler: {bowler_name}\n\n"
+        f"🏏 {batsman_name}, choose your shot.",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -2979,6 +2986,11 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     game.pending_bat_number = None
     game.balls += 1
 
+    if game.innings == 1:
+        game.innings1_balls += 1
+    else:
+        game.innings2_balls += 1
+
     deliveries = game.get_deliveries()
     bowl_number = deliveries[delivery_key]["out_on"]
 
@@ -2987,15 +2999,14 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     is_out = (bat_number == bowl_number)
 
-    # 🔥 BUILD MESSAGE
     if game.innings == 1:
         innings_tag = "FIRST INNINGS"
+        overs_display = game.get_overs(1)
     else:
         innings_tag = f"TARGET : {game.target}"
+        overs_display = game.get_overs(2)
 
-    over_text = f"🏏 Over {game.get_overs()} ({innings_tag})" if not (game.innings == 2 and game.score >= game.target) else f"🏏 Over {game.get_overs()}"
-
-    msg = f"{over_text}\n\n"
+    msg = f"🏏 Over {overs_display} ({innings_tag})\n\n"
     msg += f"{batsman_name} played: {bat_number}  | {bowler_name} bowled: {bowl_number}\n\n"
 
     if is_out:
@@ -3026,8 +3037,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     game.current_over_shots.append(str(bat_number))
 
     msg += f"📊 Score: {game.score}/{game.wickets}\n"
-    msg += f"📝 This Over: {', '.join(game.current_over_shots)}\n\n"
-
+    msg += f"🎯 Shots: {'-'.join(game.current_over_shots)}\n\n"
 
     if game.balls % 6 == 0:
         game.current_over_shots = []
@@ -3042,11 +3052,17 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         game.wickets = 0
         game.balls = 0
         game.waiting_for = "bat"
-        game.current_batsman, game.current_bowler = game.current_bowler, game.current_batsman
+        
+        # 🔥 SWAP BATSMAN AND BOWLER
+        old_batsman = game.current_batsman
+        old_bowler = game.current_bowler
+        game.current_batsman = old_bowler
+        game.current_bowler = old_batsman
 
         batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
+        bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
 
-        msg = f"🏏 Over {game.get_overs()} (FIRST INNINGS ENDED)\n\n"
+        msg = f"🏏 Over {overs_display} (FIRST INNINGS ENDED)\n\n"
         msg += f"{batsman_name} played: {bat_number}  | {bowler_name} bowled: {bowl_number}\n\n"
         msg += f"📊 Score: {innings_score}/1\n"
         msg += f"🎯 Target: {game.target} runs\n\n"
@@ -3084,17 +3100,18 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             )
             await db.close()
 
-        # Runs margin only
         if winner_id == game.player1_id:
             margin = game.player1_match_runs - game.player2_match_runs
         else:
             margin = game.player2_match_runs - game.player1_match_runs
 
-        # 🔥 SUMMARY
+        player1_overs = game.get_overs(1)
+        player2_overs = game.get_overs(2)
+
         summary = f"🏆 MATCH RESULT\n"
         summary += f"━━━━━━━━━━━━━━━━\n"
-        summary += f"{game.player1_name} — {game.player1_match_runs}/1 ({game.get_overs()} ov)\n"
-        summary += f"{game.player2_name} — {game.player2_match_runs}/0 ({game.get_overs()} ov)\n"
+        summary += f"{game.player1_name} — {game.player1_match_runs}/1 ({player1_overs} ov)\n"
+        summary += f"{game.player2_name} — {game.player2_match_runs}/0 ({player2_overs} ov)\n"
         summary += f"━━━━━━━━━━━━━━━━\n"
         summary += f"🏆 {winner_name} won by {abs(margin)} run{'s' if abs(margin) != 1 else ''}!\n"
 
@@ -3123,12 +3140,13 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             await db.close()
 
         runs_left = abs(game.player1_match_runs - game.player2_match_runs)
+        player1_overs = game.get_overs(1)
+        player2_overs = game.get_overs(2)
 
-        # 🔥 SUMMARY
         summary = f"🏆 MATCH RESULT\n"
         summary += f"━━━━━━━━━━━━━━━━\n"
-        summary += f"{game.player1_name} — {game.player1_match_runs}/1 ({game.get_overs()} ov)\n"
-        summary += f"{game.player2_name} — {game.player2_match_runs}/1 ({game.get_overs()} ov)\n"
+        summary += f"{game.player1_name} — {game.player1_match_runs}/1 ({player1_overs} ov)\n"
+        summary += f"{game.player2_name} — {game.player2_match_runs}/1 ({player2_overs} ov)\n"
         summary += f"━━━━━━━━━━━━━━━━\n"
 
         if game.player1_match_runs == game.player2_match_runs:
@@ -3160,7 +3178,6 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     msg += f"🎮 {batsman_name} choose your shot :-"
 
     await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
-
 
 async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
