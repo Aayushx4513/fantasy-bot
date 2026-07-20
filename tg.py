@@ -3064,6 +3064,12 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     # ============ FIRST INNINGS END ============
     if game.innings == 1 and (game.wickets >= 1 or game.balls >= 60):
+        # 🔥 SAVE FIRST INNINGS BATSMAN & BOWLER BEFORE SWAP
+        first_batsman = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
+        first_bowler = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
+        first_batsman_id = game.current_batsman
+        first_bowler_id = game.current_bowler
+        
         game.innings = 2
         game.current_over_shots = []
         game.target = game.score + 1
@@ -3074,7 +3080,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         game.balls = 0
         game.waiting_for = "bat"
         
-        # 🔥 SIMPLE SWAP - Batsman <-> Bowler
+        # Swap for second innings
         old_batsman = game.current_batsman
         old_bowler = game.current_bowler
         game.current_batsman = old_bowler
@@ -3083,8 +3089,9 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
         bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
 
+        # 🔥 USE FIRST INNINGS BATSMAN/BOWLER FOR DISPLAY
         msg = f"🏏 Over {overs_display} (FIRST INNINGS ENDED)\n\n"
-        msg += f"{batsman_name} played: {bat_number}  | {bowler_name} bowled: {bowl_number}\n\n"
+        msg += f"{first_batsman} played: {bat_number}  | {first_bowler} bowled: {bowl_number}\n\n"
         msg += f"📊 Score: {innings_score}/{first_innings_wickets}\n"
         msg += f"🎯 Target: {game.target} runs\n\n"
         msg += f"🔄 Innings Changed\n\n"
