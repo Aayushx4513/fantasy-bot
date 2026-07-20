@@ -5429,35 +5429,45 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # 🔥 FIX: CHECK KARO update.message HAI YA NAHI
+    if update.message is None:
+        return
+    
     user_id = update.effective_user.id
     if not await is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
+    
     args = context.args
     if len(args) < 1:
         await update.message.reply_text('❌ /cancel <bet_number>')
         return
+    
     try:
         bet_number = int(args[0])
     except:
         await update.message.reply_text('❌ Invalid number')
         return
+    
     db = await get_db()
     bets_data = await db.fetch("""
         SELECT b.id, b.amount, m.team1, m.team2, m.locked
-        FROM bets b JOIN matches m ON b.match_id = m.id 
+        FROM bets b JOIN matches m ON b.match_id = m.id
         WHERE b.user_id = $1 AND m.locked = 0
     """, user_id)
+    
     if bet_number < 1 or bet_number > len(bets_data):
         await update.message.reply_text(f'❌ Choose 1-{len(bets_data)}')
         await db.close()
         return
+    
     bet_to_cancel = bets_data[bet_number - 1]
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", bet_to_cancel['amount'], user_id)
     await db.execute("DELETE FROM bets WHERE id = $1", bet_to_cancel['id'])
     await db.execute("UPDATE users SET total = total - 1 WHERE user_id = $1", user_id)
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     await db.close()
+    
     await update.message.reply_text(f"✅ BET CANCELLED!\n\n🏏 {bet_to_cancel['team1']} vs {bet_to_cancel['team2']}\n💰 Refund: {bet_to_cancel['amount']:,} 💰\n📊 New balance: {new_bal:,} 💰")
 
 # ============ ALLBETS WITH BUTTONS ============
