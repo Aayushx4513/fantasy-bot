@@ -83,15 +83,7 @@ async def init_db():
         )
     ''')
     
-    # AFK table
-    await db.execute('''
-        CREATE TABLE IF NOT EXISTS afk (
-            user_id BIGINT PRIMARY KEY,
-            reason TEXT,
-            since TIMESTAMP
-        )
-    ''')
-
+    
     await db.execute('''
         CREATE TABLE IF NOT EXISTS user_cooldown (
             user_id BIGINT PRIMARY KEY,
@@ -6095,139 +6087,7 @@ async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-# ============ AFK SYSTEM ==========
 
-async def afk(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Set AFK status - /afk <reason>"""
-    user_id = update.effective_user.id
-    
-    args = context.args
-    reason = ' '.join(args) if args else None
-    
-    db = await get_db()
-    
-    if reason:
-        await db.execute("""
-            INSERT INTO afk (user_id, reason, since) 
-            VALUES ($1, $2, NOW()) 
-            ON CONFLICT (user_id) DO UPDATE SET reason = $2, since = NOW()
-        """, user_id, reason)
-        await db.close()
-        await update.message.reply_text(f"✅ You are now AFK!\n📝 Reason: {reason}")
-    else:
-        await db.execute("""
-            INSERT INTO afk (user_id, reason, since) 
-            VALUES ($1, NULL, NOW()) 
-            ON CONFLICT (user_id) DO UPDATE SET reason = NULL, since = NOW()
-        """, user_id)
-        await db.close()
-        await update.message.reply_text("✅ You are now AFK!")
-
-
-async def check_afk(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Check AFK status (auto-remove on message)"""
-    if not update.message or not update.message.from_user:
-        return
-    
-    user_id = update.effective_user.id
-    db = await get_db()
-    
-    # 🔥 USER NE MESSAGE BHEJA → AFK REMOVE
-    afk_data = await db.fetchrow("SELECT reason, since FROM afk WHERE user_id = $1", user_id)
-    
-    if afk_data:
-        since = afk_data['since']
-        diff = datetime.now() - since
-        seconds = diff.seconds
-        minutes = seconds // 60
-        hours = minutes // 60
-        
-        if hours > 0:
-            time_str = f"{hours}h {minutes % 60}m"
-        elif minutes > 0:
-            time_str = f"{minutes}m {seconds % 60}s"
-        else:
-            time_str = f"{seconds}s"
-        
-        reason = afk_data['reason']
-        
-        await db.execute("DELETE FROM afk WHERE user_id = $1", user_id)
-        
-        if reason:
-            await update.message.reply_text(
-                f"✅ Welcome back! You were AFK for {time_str}.\n"
-                f"📝 Reason: {reason}"
-            )
-        else:
-            await update.message.reply_text(
-                f"✅ Welcome back! You were AFK for {time_str}."
-            )
-    
-    # 🔥 REPLY DETECTION (Kisi ne AFK user ke message ko reply kiya)
-    if update.message.reply_to_message:
-        replied_user = update.message.reply_to_message.from_user
-        if replied_user:
-            afk = await db.fetchrow("SELECT reason, since FROM afk WHERE user_id = $1", replied_user.id)
-            if afk:
-                since = afk['since']
-                diff = datetime.now() - since
-                seconds = diff.seconds
-                minutes = seconds // 60
-                if minutes > 0:
-                    time_str = f"{minutes}m {seconds % 60}s"
-                else:
-                    time_str = f"{seconds}s"
-                
-                reason = afk['reason']
-                name = replied_user.first_name or replied_user.username or "User"
-                
-                if reason:
-                    await update.message.reply_text(
-                        f"🚫 {name} has been AFK since {time_str}.\n"
-                        f"📝 Reason: {reason}"
-                    )
-                else:
-                    await update.message.reply_text(
-                        f"🚫 {name} has been AFK since {time_str}."
-                    )
-                await db.close()
-                return
-    
-    # 🔥 TAG DETECTION (@username)
-    if update.message.entities:
-        for entity in update.message.entities:
-            if entity.type == "mention":
-                username = update.message.text[entity.offset:entity.offset + entity.length]
-                username = username.replace('@', '')
-                
-                user = await db.fetchrow("SELECT user_id FROM users WHERE name ILIKE $1", username)
-                if user:
-                    afk = await db.fetchrow("SELECT reason, since FROM afk WHERE user_id = $1", user['user_id'])
-                    if afk:
-                        since = afk['since']
-                        diff = datetime.now() - since
-                        seconds = diff.seconds
-                        minutes = seconds // 60
-                        if minutes > 0:
-                            time_str = f"{minutes}m {seconds % 60}s"
-                        else:
-                            time_str = f"{seconds}s"
-                        
-                        reason = afk['reason']
-                        
-                        if reason:
-                            await update.message.reply_text(
-                                f"🚫 @{username} has been AFK since {time_str}.\n"
-                                f"📝 Reason: {reason}"
-                            )
-                        else:
-                            await update.message.reply_text(
-                                f"🚫 @{username} has been AFK since {time_str}."
-                            )
-                        await db.close()
-                        return
-    
-    await db.close()
 
 # ============ REMOVE DUPLICATE PLAYERS ==========
 async def fix_duplicates(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6350,8 +6210,6 @@ async def main():
     app.add_handler(CommandHandler("ngstop", ngstop))
     app.add_handler(CommandHandler("tower", tower))
     app.add_handler(CallbackQueryHandler(tower_callback, pattern="^tower_"))
-    app.add_handler(CommandHandler("afk", afk))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_afk))
     app.add_handler(CommandHandler("fix_duplicates", fix_duplicates))
     # Shop commands
     app.add_handler(CommandHandler("shop", shop))
