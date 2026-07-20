@@ -6177,8 +6177,14 @@ async def fix_achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============ MAIN ==========
 async def main():
     await init_db()
-    
+
     app = Application.builder().token(TOKEN).build()
+
+    # 🔥 ERROR HANDLER - SAB IGNORE (YE 2 LINE DAALO)
+    async def error_handler(update, context):
+        pass
+    
+    app.add_error_handler(error_handler)
 
     # User commands
     app.add_handler(CommandHandler("start", start))
