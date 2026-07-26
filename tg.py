@@ -5133,50 +5133,45 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "stats_runs":
         top = await db.fetch("SELECT name, runs FROM cricket_stats ORDER BY runs DESC LIMIT 5")
         msg = "🏏 MOST RUNS LEADERBOARD\n\n"
-        medals = ["👑", "🥈", "🥉", "", ""]
+        medals = ["1.", "2.", "3.", "4.", "5."]
         for i, t in enumerate(top):
-            medal = medals[i] if i < 3 else f"{i+1}."
-            msg += f"{medal} {t['name']} - {t['runs']} runs\n"
+            msg += f"{medals[i]} {t['name']} - {t['runs']} runs\n"
         keyboard = [[InlineKeyboardButton("◀️ BACK TO MENU", callback_data="stats_back")]]
         await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data == "stats_wickets":
         top = await db.fetch("SELECT name, wickets FROM cricket_stats ORDER BY wickets DESC LIMIT 5")
         msg = "🎯 MOST WICKETS LEADERBOARD\n\n"
-        medals = ["👑", "🥈", "🥉", "", ""]
+        medals = ["1.", "2.", "3.", "4.", "5."]
         for i, t in enumerate(top):
-            medal = medals[i] if i < 3 else f"{i+1}."
-            msg += f"{medal} {t['name']} - {t['wickets']} wickets\n"
+            msg += f"{medals[i]} {t['name']} - {t['wickets']} wickets\n"
         keyboard = [[InlineKeyboardButton("◀️ BACK TO MENU", callback_data="stats_back")]]
         await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data == "stats_highest":
         top = await db.fetch("SELECT name, highest_score FROM cricket_stats ORDER BY highest_score DESC LIMIT 5")
         msg = "⭐ HIGHEST SCORE LEADERBOARD\n\n"
-        medals = ["👑", "🥈", "🥉", "", ""]
+        medals = ["1.", "2.", "3.", "4.", "5."]
         for i, t in enumerate(top):
-            medal = medals[i] if i < 3 else f"{i+1}."
-            msg += f"{medal} {t['name']} - {t['highest_score']} runs\n"
+            msg += f"{medals[i]} {t['name']} - {t['highest_score']} runs\n"
         keyboard = [[InlineKeyboardButton("◀️ BACK TO MENU", callback_data="stats_back")]]
         await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data == "stats_wins":
         top = await db.fetch("SELECT name, wins FROM cricket_stats ORDER BY wins DESC LIMIT 5")
         msg = "✅ MOST WINS LEADERBOARD\n\n"
-        medals = ["👑", "🥈", "🥉", "", ""]
+        medals = ["1.", "2.", "3.", "4.", "5."]
         for i, t in enumerate(top):
-            medal = medals[i] if i < 3 else f"{i+1}."
-            msg += f"{medal} {t['name']} - {t['wins']} wins\n"
+            msg += f"{medals[i]} {t['name']} - {t['wins']} wins\n"
         keyboard = [[InlineKeyboardButton("◀️ BACK TO MENU", callback_data="stats_back")]]
         await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data == "stats_losses":
         top = await db.fetch("SELECT name, losses FROM cricket_stats ORDER BY losses DESC LIMIT 5")
         msg = "❌ MOST LOSSES LEADERBOARD\n\n"
-        medals = ["👑", "🥈", "🥉", "", ""]
+        medals = ["1.", "2.", "3.", "4.", "5."]
         for i, t in enumerate(top):
-            medal = medals[i] if i < 3 else f"{i+1}."
-            msg += f"{medal} {t['name']} - {t['losses']} losses\n"
+            msg += f"{medals[i]} {t['name']} - {t['losses']} losses\n"
         keyboard = [[InlineKeyboardButton("◀️ BACK TO MENU", callback_data="stats_back")]]
         await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -5188,17 +5183,16 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ORDER BY total_score DESC
             LIMIT 5
         """)
-        
-        msg = "🏆 OVERALL TOP 5 PLAYERS 🏆\n\n"
-        medals = ["👑", "🥈", "🥉", "4️⃣", "5️⃣"]
-        
+
+        msg = "🏆 OVERALL TOP 5 PLAYERS\n\n"
+        medals = ["1.", "2.", "3.", "4.", "5."]
+
         for i, p in enumerate(players):
             msg += f"{medals[i]} {p['name']}\n"
-            msg += f"   🏏 Runs: {p['runs']} | 🎯 Wickets: {p['wickets']} | ⭐ Highest: {p['highest_score']}\n"
-            msg += f"   ✅ Wins: {p['wins']} | ❌ Losses: {p['losses']}\n\n"
-        
+            msg += f"   Runs: *{p['runs']}*  Wickets: *{p['wickets']}*  HS: *{p['highest_score']}*  Wins: *{p['wins']}*  Losses: *{p['losses']}*\n\n"
+
         keyboard = [[InlineKeyboardButton("◀️ BACK TO MENU", callback_data="stats_back")]]
-        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
     elif data == "stats_back":
         keyboard = [
