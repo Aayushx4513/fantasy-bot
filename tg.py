@@ -2776,12 +2776,16 @@ async def clcricket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cricket_next_id += 1
     cricket_lobby[game_id] = {"creator_id": user_id, "creator_name": user_name, "bet": bet, "chat_id": chat_id}
     bet_text = f"💰 Bet: {bet} | Prize: {bet*2}" if bet > 0 else "🎮 Normal Game"
-    await update.message.reply_text(f"🏏 CRICKET GAME\n\n👑 Host: {user_name}\n{bet_text}\n\n━━━━━━━━━━━━━━━━━━━━\n⚡ Select Mode:", reply_markup=InlineKeyboardMarkup([
-        [InlineKeyboardButton("1-3 MODE", callback_data=f"cricket_mode_{game_id}_1-3")],
-        [InlineKeyboardButton("1-5 MODE", callback_data=f"cricket_mode_{game_id}_1-5")],
-        [InlineKeyboardButton("1-9 MODE", callback_data=f"cricket_mode_{game_id}_1-9")],
-        [InlineKeyboardButton("DEFAULT", callback_data=f"cricket_mode_{game_id}_default")]
-    ]))
+    
+    # 🔥 NEW MODE BUTTONS - 2x2 GRID
+    await update.message.reply_text(
+        f"🏏 CRICKET GAME\n\n👑 Host: {user_name}\n{bet_text}\n\n━━━━━━━━━━━━━━━━━━━━\n⚡ Select Mode:",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("1-3 Mode", callback_data=f"cricket_mode_{game_id}_1-3"), InlineKeyboardButton("No 5 Mode", callback_data=f"cricket_mode_{game_id}_1-5")],
+            [InlineKeyboardButton("1-9 Mode", callback_data=f"cricket_mode_{game_id}_1-9"), InlineKeyboardButton("Default Mode", callback_data=f"cricket_mode_{game_id}_default")]
+        ])
+    )
+
 
 async def cricket_mode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
