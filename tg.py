@@ -170,6 +170,17 @@ async def init_db():
     ''')
     
     await db.execute('''
+        CREATE TABLE IF NOT EXISTS duo_stats (
+            player1_id BIGINT,
+            player2_id BIGINT,
+            wins INT DEFAULT 0,
+            matches INT DEFAULT 0,
+            PRIMARY KEY (player1_id, player2_id)
+        )
+    ''')
+
+
+    await db.execute('''
         CREATE TABLE IF NOT EXISTS daily (
             user_id BIGINT PRIMARY KEY,
             last_claim DATE
@@ -6171,6 +6182,511 @@ async def fix_achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💡 Now /achievements will show correctly."
     )
 
+# Duo Cricket Globals
+duo_cricket_lobby = {}
+duo_cricket_games = {}
+duo_cricket_next_id = 1
+
+async def duo_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not await is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    db = await get_db()
+    top = await db.fetch("""
+        SELECT player1_id, player2_id, wins, matches,
+               (SELECT name FROM users WHERE user_id = player1_id) as p1_name,
+               (SELECT name FROM users WHERE user_id = player2_id) as p2_name
+        FROM duo_stats
+        ORDER BY wins DESC, matches ASC
+        LIMIT 5
+    """)
+    await db.close()
+    
+    if not top:
+        await update.message.reply_text("🏆 DUO LEADERBOARD\n\nNo duo matches played yet!")
+        return
+    
+    msg = "🏆 DUO LEADERBOARD\n\n"
+    medals = ["1. 🥇", "2. 🥈", "3. 🥉", "4.", "5."]
+    for i, t in enumerate(top):
+        team = f"{t['p1_name']} & {t['p2_name']}"
+        msg += f"{medals[i]} {team} - {t['wins']} wins ({t['matches']} matches)\n"
+    
+    await update.message.reply_text(msg)
+
+class DuoCricketGame:
+    def __init__(self, game_id, creator_id, creator_name, bet, chat_id, mode):
+        self.game_id = game_id
+        self.creator_id = creator_id
+        self.creator_name = creator_name
+        self.bet = bet
+        self.chat_id = chat_id
+        self.mode = mode
+        self.team_a_players = []
+        self.team_a_names = []
+        self.team_b_players = []
+        self.team_b_names = []
+        self.score = 0
+        self.wickets = 0
+        self.balls = 0
+        self.target = None
+        self.innings = 1
+        self.waiting_for = None
+        self.game_active = False
+        self.pending_bat_number = None
+        self.current_batsman = None
+        self.current_bowler = None
+        self.current_over_shots = []
+        self.innings1_balls = 0
+        self.innings2_balls = 0
+        self.team_a_runs = 0
+        self.team_b_runs = 0
+        self.team_a_wickets = 0
+        self.team_b_wickets = 0
+        self.player_stats = {}
+        self.winner_team = None
+
+    def get_deliveries(self):
+        if self.mode == "1-3":
+            return {"1": {"name": "1", "out_on": 1}, "2": {"name": "2", "out_on": 2}, "3": {"name": "3", "out_on": 3}}
+        elif self.mode == "1-5":
+            return {"0": {"name": "0", "out_on": 0}, "1": {"name": "1", "out_on": 1}, "2": {"name": "2", "out_on": 2}, "3": {"name": "3", "out_on": 3}, "4": {"name": "4", "out_on": 4}, "6": {"name": "6", "out_on": 6}}
+        elif self.mode == "1-9":
+            return {"1": {"name": "1", "out_on": 1}, "2": {"name": "2", "out_on": 2}, "3": {"name": "3", "out_on": 3}, "4": {"name": "4", "out_on": 4}, "5": {"name": "5", "out_on": 5}, "6": {"name": "6", "out_on": 6}, "7": {"name": "7", "out_on": 7}, "8": {"name": "8", "out_on": 8}, "9": {"name": "9", "out_on": 9}}
+        else:
+            return {"1": {"name": "1", "out_on": 1}, "2": {"name": "2", "out_on": 2}, "3": {"name": "3", "out_on": 3}, "4": {"name": "4", "out_on": 4}, "5": {"name": "5", "out_on": 5}, "6": {"name": "6", "out_on": 6}}
+
+    def get_bat_numbers(self):
+        if self.mode == "1-3":
+            return [1, 2, 3]
+        elif self.mode == "1-5":
+            return [0, 1, 2, 3, 4, 6]
+        elif self.mode == "1-9":
+            return [1, 2, 3, 4, 5, 6, 7, 8, 9]
+        else:
+            return [1, 2, 3, 4, 5, 6]
+
+    def get_overs(self, innings=None):
+        if innings == 1:
+            balls = self.innings1_balls
+        elif innings == 2:
+            balls = self.innings2_balls
+        else:
+            balls = self.balls
+        overs = balls // 6
+        rem_balls = balls % 6
+        return f"{overs}.{rem_balls}"
+
+async def duocricket(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    chat_id = update.message.chat.id
+    
+    if not await is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+    
+    args = context.args
+    bet = 0
+    if args:
+        try:
+            bet = int(args[0])
+            if bet < 100:
+                await update.message.reply_text("❌ Minimum bet is 100 credits!")
+                return
+        except:
+            await update.message.reply_text("❌ Invalid bet amount!")
+            return
+    
+    if bet > 0:
+        db = await get_db()
+        balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
+        await db.close()
+        if balance < bet:
+            await update.message.reply_text(f"❌ You need {bet:,} credits to play!")
+            return
+    
+    global duo_cricket_next_id
+    game_id = duo_cricket_next_id
+    duo_cricket_next_id += 1
+    
+    duo_cricket_lobby[game_id] = {"creator_id": user_id, "creator_name": user_name, "bet": bet, "chat_id": chat_id}
+    bet_text = f"💰 Bet: {bet} | Prize: {bet*2}" if bet > 0 else "🎮 Normal Game"
+    
+    await update.message.reply_text(
+        f"🏏 DUO CRICKET GAME\n\n👑 Host: {user_name}\n{bet_text}\n\n━━━━━━━━━━━━━━━━━━━━\n⚡ Select Mode:",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("1-3 Mode", callback_data=f"duo_mode_{game_id}_1-3"), InlineKeyboardButton("No 5 Mode", callback_data=f"duo_mode_{game_id}_1-5")],
+            [InlineKeyboardButton("1-9 Mode", callback_data=f"duo_mode_{game_id}_1-9"), InlineKeyboardButton("Default Mode", callback_data=f"duo_mode_{game_id}_default")]
+        ])
+    )
+
+async def duo_mode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    parts = data.split("_")
+    game_id = int(parts[2])
+    mode = parts[3]
+    
+    if game_id not in duo_cricket_lobby:
+        await query.edit_message_text("❌ Game expired!")
+        return
+    
+    lobby = duo_cricket_lobby[game_id]
+    if update.effective_user.id != lobby["creator_id"]:
+        await query.answer("Only host can select mode!", show_alert=True)
+        return
+    
+    lobby["mode"] = mode
+    bet_text = f"💰 Bet: {lobby['bet']} | Prize: {lobby['bet']*2}" if lobby['bet'] > 0 else "🎮 Normal Game"
+    
+    await query.edit_message_text(
+        f"🏏 DUO CRICKET\n\n👑 Host: {lobby['creator_name']}\n{bet_text}\n\n━━━━━━━━━━━━━━━━━━━━\n⚡ Join Team:",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔴 TEAM A", callback_data=f"duo_join_{game_id}_A")],
+            [InlineKeyboardButton("🔵 TEAM B", callback_data=f"duo_join_{game_id}_B")]
+        ])
+    )
+
+async def duo_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    data = query.data
+    parts = data.split("_")
+    game_id = int(parts[2])
+    team = parts[3]
+    
+    if game_id not in duo_cricket_lobby:
+        await query.edit_message_text("❌ Game expired!")
+        return
+    
+    lobby = duo_cricket_lobby[game_id]
+    
+    if user_id == lobby["creator_id"]:
+        await query.answer("Host already in game!", show_alert=True)
+        return
+    
+    if "game" not in lobby:
+        lobby["game"] = DuoCricketGame(game_id, lobby["creator_id"], lobby["creator_name"], lobby["bet"], lobby["chat_id"], lobby["mode"])
+        lobby["game"].team_a_players.append(lobby["creator_id"])
+        lobby["game"].team_a_names.append(lobby["creator_name"])
+    
+    game = lobby["game"]
+    
+    if team == "A":
+        if user_id in game.team_a_players or user_id in game.team_b_players:
+            await query.answer("Already joined!", show_alert=True)
+            return
+        if len(game.team_a_players) >= 2:
+            await query.answer("Team A full!", show_alert=True)
+            return
+        game.team_a_players.append(user_id)
+        game.team_a_names.append(user_name)
+        await query.answer(f"✅ Joined Team A! ({len(game.team_a_players)}/2)")
+    else:
+        if user_id in game.team_a_players or user_id in game.team_b_players:
+            await query.answer("Already joined!", show_alert=True)
+            return
+        if len(game.team_b_players) >= 2:
+            await query.answer("Team B full!", show_alert=True)
+            return
+        game.team_b_players.append(user_id)
+        game.team_b_names.append(user_name)
+        await query.answer(f"✅ Joined Team B! ({len(game.team_b_players)}/2)")
+    
+    msg = f"🏏 DUO CRICKET\n\n"
+    msg += f"🔴 Team A: {', '.join(game.team_a_names)} ({len(game.team_a_players)}/2)\n"
+    msg += f"🔵 Team B: {', '.join(game.team_b_names)} ({len(game.team_b_players)}/2)\n"
+    
+    if len(game.team_a_players) == 2 and len(game.team_b_players) == 2:
+        msg += f"\n✅ TEAMS READY!\n"
+        msg += f"TOSS TIME!\n{game.team_a_names[0]} (Team A) choose:"
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("HEADS", callback_data=f"duo_toss_{game_id}_heads")],
+            [InlineKeyboardButton("TAILS", callback_data=f"duo_toss_{game_id}_tails")]
+        ]))
+    else:
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔴 TEAM A", callback_data=f"duo_join_{game_id}_A")],
+            [InlineKeyboardButton("🔵 TEAM B", callback_data=f"duo_join_{game_id}_B")]
+        ]))
+
+async def duo_toss_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    parts = data.split("_")
+    game_id = int(parts[2])
+    choice = parts[3]
+    
+    if game_id not in duo_cricket_lobby:
+        await query.edit_message_text("❌ Game expired!")
+        return
+    
+    lobby = duo_cricket_lobby[game_id]
+    game = lobby["game"]
+    
+    if update.effective_user.id != game.team_a_players[0]:
+        await query.answer("Only team captain can toss!", show_alert=True)
+        return
+    
+    toss = random.choice(["heads", "tails"])
+    winner = "A" if choice == toss else "B"
+    
+    game.current_batsman = game.team_a_players[0] if winner == "A" else game.team_b_players[0]
+    game.current_bowler = game.team_b_players[0] if winner == "A" else game.team_a_players[0]
+    game.game_active = True
+    
+    team_name = "Team A" if winner == "A" else "Team B"
+    
+    await query.edit_message_text(
+        f"🪙 TOSS: {toss.upper()}! {team_name} won!\n\n"
+        f"{game.team_a_names[0] if winner == 'A' else game.team_b_names[0]} choose:",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🏏 BAT", callback_data=f"duo_choice_{game_id}_bat")],
+            [InlineKeyboardButton("🎯 BOWL", callback_data=f"duo_choice_{game_id}_bowl")]
+        ])
+    )
+
+async def duo_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    parts = data.split("_")
+    game_id = int(parts[2])
+    shot = int(parts[3])
+    
+    if game_id not in duo_cricket_games:
+        await query.edit_message_text("❌ Game expired!")
+        return
+    
+    game = duo_cricket_games[game_id]
+    user_id = update.effective_user.id
+    
+    if user_id != game.current_batsman:
+        await query.answer("Not your turn!", show_alert=True)
+        return
+    
+    game.pending_bat_number = shot
+    game.waiting_for = "bowl"
+    
+    batsman_name = game.team_a_names[0] if game.current_batsman == game.team_a_players[0] else game.team_b_names[0]
+    bowler_name = game.team_b_names[0] if game.current_bowler == game.team_b_players[0] else game.team_a_names[0]
+    
+    deliveries = game.get_deliveries()
+    keyboard = [[InlineKeyboardButton(d["name"], callback_data=f"duo_bowl_{game_id}_{key}") for key, d in deliveries.items()]]
+    
+    if game.innings == 1:
+        innings_tag = "FIRST INNINGS"
+        overs_display = game.get_overs(1)
+    else:
+        innings_tag = f"TARGET : {game.target}"
+        overs_display = game.get_overs(2)
+    
+    await query.edit_message_text(
+        f"🏏 Over {overs_display} ({innings_tag})\n\n"
+        f"{batsman_name} played: {shot}\n\n"
+        f"🧤 {bowler_name}, now you bowl!",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+async def duo_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    parts = data.split("_")
+    game_id = int(parts[2])
+    delivery_key = parts[3]
+    
+    if game_id not in duo_cricket_games:
+        await query.edit_message_text("❌ Game expired!")
+        return
+    
+    game = duo_cricket_games[game_id]
+    user_id = update.effective_user.id
+    
+    if user_id != game.current_bowler:
+        await query.answer("Not your turn!", show_alert=True)
+        return
+    
+    bat_number = game.pending_bat_number
+    game.pending_bat_number = None
+    game.balls += 1
+    
+    if game.innings == 1:
+        game.innings1_balls += 1
+    else:
+        game.innings2_balls += 1
+    
+    deliveries = game.get_deliveries()
+    bowl_number = deliveries[delivery_key]["out_on"]
+    
+    batsman_name = game.team_a_names[0] if game.current_batsman == game.team_a_players[0] else game.team_b_names[0]
+    bowler_name = game.team_b_names[0] if game.current_bowler == game.team_b_players[0] else game.team_a_names[0]
+    
+    is_out = (bat_number == bowl_number)
+    
+    if game.innings == 1:
+        innings_tag = "FIRST INNINGS"
+        overs_display = game.get_overs(1)
+    else:
+        innings_tag = f"TARGET : {game.target}"
+        overs_display = game.get_overs(2)
+    
+    msg = f"🏏 Over {overs_display} ({innings_tag})\n\n"
+    msg += f"{batsman_name} played: {bat_number} | {bowler_name} bowled: {bowl_number}\n\n"
+    
+    if is_out:
+        game.wickets += 1
+        msg += f"❌ OUT!\n\n"
+        
+        if game.current_batsman in game.team_a_players:
+            game.team_a_wickets += 1
+        else:
+            game.team_b_wickets += 1
+        
+        # Switch batsman
+        if game.current_batsman == game.team_a_players[0]:
+            game.current_batsman = game.team_a_players[1] if len(game.team_a_players) > 1 else None
+        elif game.current_batsman == game.team_a_players[1]:
+            game.current_batsman = game.team_a_players[0]
+        elif game.current_batsman == game.team_b_players[0]:
+            game.current_batsman = game.team_b_players[1] if len(game.team_b_players) > 1 else None
+        elif game.current_batsman == game.team_b_players[1]:
+            game.current_batsman = game.team_b_players[0]
+    else:
+        runs = bat_number
+        game.score += runs
+        msg += f"✅ {runs} runs!\n\n"
+        
+        if game.current_batsman in game.team_a_players:
+            game.team_a_runs += runs
+        else:
+            game.team_b_runs += runs
+        
+        if game.current_batsman not in game.player_stats:
+            game.player_stats[game.current_batsman] = {"runs": 0, "wickets": 0}
+        game.player_stats[game.current_batsman]["runs"] += runs
+    
+    game.current_over_shots.append(str(bat_number))
+    msg += f"📊 Score: {game.score}/{game.wickets} | Over: {overs_display}\n"
+    msg += f"🎯 This Over: {', '.join(game.current_over_shots)}\n\n"
+    
+    if game.balls % 6 == 0:
+        game.current_over_shots = []
+        # Switch bowler
+        if game.current_bowler == game.team_b_players[0]:
+            game.current_bowler = game.team_b_players[1] if len(game.team_b_players) > 1 else game.team_b_players[0]
+        elif game.current_bowler == game.team_b_players[1]:
+            game.current_bowler = game.team_b_players[0]
+        elif game.current_bowler == game.team_a_players[0]:
+            game.current_bowler = game.team_a_players[1] if len(game.team_a_players) > 1 else game.team_a_players[0]
+        elif game.current_bowler == game.team_a_players[1]:
+            game.current_bowler = game.team_a_players[0]
+    
+    # Check innings end
+    if game.innings == 1 and (game.wickets >= 2 or game.balls >= 36):
+        game.innings = 2
+        game.target = game.score + 1
+        game.score = 0
+        game.wickets = 0
+        game.balls = 0
+        game.waiting_for = "bat"
+        
+        game.current_batsman = game.team_b_players[0]
+        game.current_bowler = game.team_a_players[0]
+        
+        bat_numbers = game.get_bat_numbers()
+        keyboard = [[InlineKeyboardButton(str(num), callback_data=f"duo_bat_{game_id}_{num}") for num in bat_numbers]]
+        
+        await query.edit_message_text(
+            f"🏏 FIRST INNINGS ENDED\n\n"
+            f"📊 Team A: {game.team_a_runs}/2 ({game.get_overs(1)} ov)\n"
+            f"🎯 Target: {game.target} runs\n\n"
+            f"🔄 Innings Changed!\n\n"
+            f"🔵 Team B Batting\n"
+            f"Batter: {game.team_b_names[0]}\n"
+            f"Bowler: {game.team_a_names[0]}\n\n"
+            f"Choose your shot:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+    
+    if game.innings == 2 and (game.score >= game.target or game.wickets >= 2):
+        if game.score >= game.target:
+            game.winner_team = "B"
+        else:
+            game.winner_team = "A"
+        
+        db = await get_db()
+        if game.winner_team == "A":
+            p1, p2 = game.team_a_players[0], game.team_a_players[1]
+        else:
+            p1, p2 = game.team_b_players[0], game.team_b_players[1]
+        
+        await db.execute("""
+            INSERT INTO duo_stats (player1_id, player2_id, wins, matches)
+            VALUES ($1, $2, 1, 1)
+            ON CONFLICT (player1_id, player2_id)
+            DO UPDATE SET wins = duo_stats.wins + 1, matches = duo_stats.matches + 1
+        """, p1, p2)
+        
+        if game.winner_team == "A":
+            p1, p2 = game.team_b_players[0], game.team_b_players[1]
+        else:
+            p1, p2 = game.team_a_players[0], game.team_a_players[1]
+        
+        await db.execute("""
+            INSERT INTO duo_stats (player1_id, player2_id, wins, matches)
+            VALUES ($1, $2, 0, 1)
+            ON CONFLICT (player1_id, player2_id)
+            DO UPDATE SET matches = duo_stats.matches + 1
+        """, p1, p2)
+        await db.close()
+        
+        winner_team = "Team A" if game.winner_team == "A" else "Team B"
+        winner_names = game.team_a_names if game.winner_team == "A" else game.team_b_names
+        loser_names = game.team_b_names if game.winner_team == "A" else game.team_a_names
+        
+        result = f"🏆 DUO RESULT\n"
+        result += f"🔴 Team A: {game.team_a_runs}/2 ({game.get_overs(1)} ov)\n"
+        result += f"🔵 Team B: {game.team_b_runs}/2 ({game.get_overs(2)} ov)\n"
+        result += f"🏆 {winner_team} won!\n\n"
+        
+        for uid, stats in game.player_stats.items():
+            name = await db.fetchval("SELECT name FROM users WHERE user_id = $1", uid)
+            if name:
+                result += f"{name}: {stats.get('runs', 0)}r {stats.get('wickets', 0)}w\n"
+        
+        result += f"\n🎉 Champions: {' & '.join(winner_names)}!"
+        result += f"\n❌ Hard Luck: {' & '.join(loser_names)}!"
+        
+        await query.edit_message_text(result)
+        del duo_cricket_games[game_id]
+        return
+    
+    # Continue game
+    game.waiting_for = "bat"
+    bat_numbers = game.get_bat_numbers()
+    keyboard = [[InlineKeyboardButton(str(num), callback_data=f"duo_bat_{game_id}_{num}") for num in bat_numbers]]
+    
+    team_name = "Team A" if game.current_batsman in game.team_a_players else "Team B"
+    batsman_name = game.team_a_names[0] if game.current_batsman == game.team_a_players[0] else game.team_b_names[0]
+    bowler_name = game.team_b_names[0] if game.current_bowler == game.team_b_players[0] else game.team_a_names[0]
+    
+    msg += f"{team_name} Batting\n"
+    msg += f"Batter: {batsman_name}\n"
+    msg += f"Bowler: {bowler_name}\n\n"
+    msg += f"Choose your shot:"
+    
+    await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+
+
 
 # ============ MAIN ==========
 async def main():
@@ -6279,6 +6795,16 @@ async def main():
     app.add_handler(CommandHandler("removeplayer2", removeplayer2))
     app.add_handler(CommandHandler("removeplayer3", removeplayer3))
     app.add_handler(CommandHandler("removeplayer4", removeplayer4))
+    # Duo Cricket
+    app.add_handler(CommandHandler("duocricket", duocricket))
+    app.add_handler(CommandHandler("duo_leaderboard", duo_leaderboard))
+    app.add_handler(CallbackQueryHandler(duo_mode_callback, pattern="^duo_mode_"))
+    app.add_handler(CallbackQueryHandler(duo_join_callback, pattern="^duo_join_"))
+    app.add_handler(CallbackQueryHandler(duo_toss_callback, pattern="^duo_toss_"))
+    app.add_handler(CallbackQueryHandler(duo_choice_callback, pattern="^duo_choice_"))
+    app.add_handler(CallbackQueryHandler(duo_bat_callback, pattern="^duo_bat_"))
+    app.add_handler(CallbackQueryHandler(duo_bowl_callback, pattern="^duo_bowl_"))
+
 
     # Admin Cricket
     app.add_handler(CommandHandler("addmatch", addmatch))
