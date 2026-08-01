@@ -1925,9 +1925,14 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bank_bal, last_interest = row['balance'], row['last_interest']
     now = datetime.now()
 
+    # 🔥 DEBUG - RENDER LOGS MEIN DEKHO
+    print(f"DEBUG: last_interest = {last_interest}, now = {now}")
+
     if last_interest:
         last = datetime.fromisoformat(last_interest)
-        if (now - last).total_seconds() < 86400:
+        diff = (now - last).total_seconds()
+        print(f"DEBUG: diff = {diff} seconds")
+        if diff < 86400:
             await query.edit_message_text(
                 f"*⏰ Interest already claimed!*\n\n*Come back in 24 hours.*",
                 parse_mode="Markdown",
@@ -6392,7 +6397,6 @@ async def reset_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Admin only!")
         return
     
-    # 🔥 AGAR REPLY TO MESSAGE HAI TOH US USER KO RESET KARO
     if update.message.reply_to_message:
         user_id = update.message.reply_to_message.from_user.id
         user_name = update.message.reply_to_message.from_user.first_name
@@ -6409,20 +6413,19 @@ async def reset_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
     
-    # 🔥 LAST_INTEREST KO 25 HOUR PEHLE SET KARO
+    # 🔥 LAST_INTEREST KO NULL / 25 HOUR PEHLE SET KARO
     old_time = datetime.now() - timedelta(hours=25)
     await db.execute("UPDATE bank SET last_interest = $1 WHERE user_id = $2", old_time.isoformat(), user_id)
     
     await db.close()
     
     await update.message.reply_text(
-        f"*✅ INTEREST RESET!*\n\n"
-        f"*User:* {user_name}\n"
-        f"*Now you can claim interest again!*\n\n"
-        f"*⏰ Use /claim_interest to test*",
+        f"✅ INTEREST RESET!\n\n"
+        f"User: {user_name}\n"
+        f"Now you can claim interest again!\n\n"
+        f"Use /claim_interest to test",
         parse_mode="Markdown"
     )
-
 
 # ============ MAIN ==========
 async def main():
@@ -6524,7 +6527,6 @@ async def main():
     app.add_handler(CommandHandler("myteam4", myteam4))
     app.add_handler(CommandHandler("top4", top4))
     app.add_handler(CommandHandler("addplayer4", addplayer4))
-
     # Bank
     app.add_handler(CommandHandler("bank", bank))
     app.add_handler(CommandHandler("deposit", deposit))
