@@ -725,21 +725,27 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if chat_type in ['group', 'supergroup'] and chat_id == CL_GROUP_ID:
         reward = 1000
-        extra_note = "\n\n✨ BONUS: You get 1000 credits in CL Zone Group!"
+        extra_note = "\n\n💡 Tip: Use /claim in CL Zone Group to get 1000 credits!"
     else:
         reward = 500
-        extra_note = f"\n\n💡 Tip: Use /claim in CL Zone Group to get 1000 credits!"
+        extra_note = f"\n\n💡 Tip: Use /claim in [CL Zone Group](https://t.me/+eTD1m8Cjc_wyOTNl) to get 1000 credits!"
 
-    # 🔥 FIX: today direct bhej, .isoformat() mat kar
     await db.execute("INSERT INTO claim (user_id, last_claim) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_claim = $2", user_id, today)
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", reward, user_id)
 
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     await db.close()
 
+    # 🔥 DARK THEME OUTPUT
     await update.message.reply_text(
-        f"✅ Claimed Daily Rewards!\n\n💰 +{reward} credits\n📅 {today_str}\n💳 New balance: {new_bal:,}{extra_note}\n\n🔄 Next claim: tomorrow",
-        disable_web_page_preview=True
+        f"┃ Claimed Daily Rewards ┃\n\n"
+        f"➤ +{reward} credits\n"
+        f"➤ {today_str}\n"
+        f"➤ New balance: {new_bal:,}\n\n"
+        f"{extra_note}\n\n"
+        f"➦ Next claim: tomorrow",
+        disable_web_page_preview=False,
+        parse_mode="Markdown"
     )
 
 # ============ ACHIEVE COMMAND (ADMIN) ==========
