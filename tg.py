@@ -6616,9 +6616,21 @@ async def duo_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     deliveries = game.get_deliveries()
     bowl_number = deliveries[delivery_key]["out_on"]
     
-    # 🔥 NAME WITH TEAM
-    batsman_name = game.team_a_names[0] if game.current_batsman == game.team_a_players[0] else game.team_b_names[0]
-    bowler_name = game.team_b_names[0] if game.current_bowler == game.team_b_players[0] else game.team_a_names[0]
+    # 🔥 BATSMAN NAME
+    if game.current_batsman in game.team_a_players:
+        batsman_name = game.team_a_names[game.team_a_players.index(game.current_batsman)]
+        batsman_team = "🔴"
+    else:
+        batsman_name = game.team_b_names[game.team_b_players.index(game.current_batsman)]
+        batsman_team = "🔵"
+    
+    # 🔥 BOWLER NAME
+    if game.current_bowler in game.team_b_players:
+        bowler_name = game.team_b_names[game.team_b_players.index(game.current_bowler)]
+        bowler_team = "🔵"
+    else:
+        bowler_name = game.team_a_names[game.team_a_players.index(game.current_bowler)]
+        bowler_team = "🔴"
     
     is_out = (bat_number == bowl_number)
     
@@ -6630,7 +6642,7 @@ async def duo_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         overs_display = game.get_overs(2)
     
     msg = f"🏏 Over {overs_display} ({innings_tag})\n\n"
-    msg += f"🔴 {batsman_name} played: {bat_number} | 🔵 {bowler_name} bowled: {bowl_number}\n\n"
+    msg += f"{batsman_team} {batsman_name} played: {bat_number} | {bowler_team} {bowler_name} bowled: {bowl_number}\n\n"
     
     if is_out:
         game.wickets += 1
@@ -6642,18 +6654,18 @@ async def duo_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             game.team_b_wickets += 1
         
         # 🔥 BATSMAN SWITCH
-        if game.current_batsman == game.team_a_players[0]:
-            game.current_batsman = game.team_a_players[1] if len(game.team_a_players) > 1 else game.team_a_players[0]
+        if game.current_batsman in game.team_a_players:
+            if game.current_batsman == game.team_a_players[0]:
+                game.current_batsman = game.team_a_players[1] if len(game.team_a_players) > 1 else game.team_a_players[0]
+            else:
+                game.current_batsman = game.team_a_players[0]
             game.current_bowler = game.team_b_players[0]
-        elif game.current_batsman == game.team_a_players[1]:
-            game.current_batsman = game.team_a_players[0]
-            game.current_bowler = game.team_b_players[1] if len(game.team_b_players) > 1 else game.team_b_players[0]
-        elif game.current_batsman == game.team_b_players[0]:
-            game.current_batsman = game.team_b_players[1] if len(game.team_b_players) > 1 else game.team_b_players[0]
+        else:
+            if game.current_batsman == game.team_b_players[0]:
+                game.current_batsman = game.team_b_players[1] if len(game.team_b_players) > 1 else game.team_b_players[0]
+            else:
+                game.current_batsman = game.team_b_players[0]
             game.current_bowler = game.team_a_players[0]
-        elif game.current_batsman == game.team_b_players[1]:
-            game.current_batsman = game.team_b_players[0]
-            game.current_bowler = game.team_a_players[1] if len(game.team_a_players) > 1 else game.team_a_players[0]
         
         # Bowler wicket stats
         if game.current_bowler not in game.player_stats:
@@ -6779,19 +6791,24 @@ async def duo_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += f"📊 Score: {game.score}/{game.wickets} | Over: {overs_display}\n"
     msg += f"🎯 This Over: {', '.join(game.current_over_shots)}\n\n"
     
-    # OVER END - BOWLER CHANGE
+    # ============ OVER END - BOWLER CHANGE ============
     if game.balls % 6 == 0:
         game.current_over_shots = []
-        if game.current_bowler == game.team_b_players[0]:
-            game.current_bowler = game.team_b_players[1] if len(game.team_b_players) > 1 else game.team_b_players[0]
-        elif game.current_bowler == game.team_b_players[1]:
-            game.current_bowler = game.team_b_players[0]
-        elif game.current_bowler == game.team_a_players[0]:
-            game.current_bowler = game.team_a_players[1] if len(game.team_a_players) > 1 else game.team_a_players[0]
-        elif game.current_bowler == game.team_a_players[1]:
-            game.current_bowler = game.team_a_players[0]
+        
+        # 🔥 BOWLER SWITCH - SIRF TEAM B KE BICH (AGAR TEAM B BOWLING KAR RAHA HAI)
+        if game.current_bowler in game.team_b_players:
+            if game.current_bowler == game.team_b_players[0]:
+                game.current_bowler = game.team_b_players[1] if len(game.team_b_players) > 1 else game.team_b_players[0]
+            else:
+                game.current_bowler = game.team_b_players[0]
+        # AGAR TEAM A BOWLING KAR RAHI HAI
+        elif game.current_bowler in game.team_a_players:
+            if game.current_bowler == game.team_a_players[0]:
+                game.current_bowler = game.team_a_players[1] if len(game.team_a_players) > 1 else game.team_a_players[0]
+            else:
+                game.current_bowler = game.team_a_players[0]
     
-    # SECOND INNINGS WIN CHECK
+    # ============ SECOND INNINGS WIN CHECK ============
     if game.innings == 2 and game.score >= game.target:
         game.winner_team = "B"
         
@@ -6833,9 +6850,10 @@ async def duo_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         del duo_cricket_games[game_id]
         return
     
-    # CONTINUE GAME - BAT KEYBOARD
+    # ============ CONTINUE GAME ============
     game.waiting_for = "bat"
     
+    # 🔥 BAT KEYBOARD
     if game.mode == "1-3":
         bat_keyboard = [
             [InlineKeyboardButton("1", callback_data=f"duo_bat_{game_id}_1"), InlineKeyboardButton("2", callback_data=f"duo_bat_{game_id}_2"), InlineKeyboardButton("3", callback_data=f"duo_bat_{game_id}_3")]
@@ -6857,9 +6875,19 @@ async def duo_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("4", callback_data=f"duo_bat_{game_id}_4"), InlineKeyboardButton("5", callback_data=f"duo_bat_{game_id}_5"), InlineKeyboardButton("6", callback_data=f"duo_bat_{game_id}_6")]
         ]
     
-    team_name = "Team A" if game.current_batsman in game.team_a_players else "Team B"
-    batsman_name = game.team_a_names[0] if game.current_batsman == game.team_a_players[0] else game.team_b_names[0]
-    bowler_name = game.team_b_names[0] if game.current_bowler == game.team_b_players[0] else game.team_a_names[0]
+    # 🔥 BATSMAN NAME
+    if game.current_batsman in game.team_a_players:
+        team_name = "🔴 Team A"
+        batsman_name = game.team_a_names[game.team_a_players.index(game.current_batsman)]
+    else:
+        team_name = "🔵 Team B"
+        batsman_name = game.team_b_names[game.team_b_players.index(game.current_batsman)]
+    
+    # 🔥 BOWLER NAME
+    if game.current_bowler in game.team_b_players:
+        bowler_name = game.team_b_names[game.team_b_players.index(game.current_bowler)]
+    else:
+        bowler_name = game.team_a_names[game.team_a_players.index(game.current_bowler)]
     
     msg += f"{team_name} Batting\n"
     msg += f"Batter: {batsman_name}\n"
