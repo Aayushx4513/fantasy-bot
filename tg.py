@@ -1903,8 +1903,6 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    
-    # 🔥 PEHLE ANSWER KARO
     await query.answer()
     
     data = query.data
@@ -1918,7 +1916,6 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     db = await get_db()
 
-    # 🔥 FRESH DATA FETCH
     row = await db.fetchrow("SELECT balance, last_interest FROM bank WHERE user_id = $1", user_id)
     if not row:
         await query.edit_message_text("*❌ No bank account found!*", parse_mode="Markdown")
@@ -1928,7 +1925,6 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bank_bal, last_interest = row['balance'], row['last_interest']
     now = datetime.now()
 
-    # 🔥 RATE CALCULATE
     if bank_bal <= 1000000:
         rate = 0.05
     elif bank_bal <= 5000000:
@@ -1946,10 +1942,9 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         new_bank = bank_bal + interest
         await db.execute("UPDATE bank SET balance = $1, last_interest = $2 WHERE user_id = $3", new_bank, now.isoformat(), user_id)
         await db.execute("INSERT INTO interest_history (user_id, amount, type, claimed_at) VALUES ($1, $2, 'bank', $3)", user_id, interest, now.isoformat())
-        
         await db.close()
 
-        # 🔥 NEW MESSAGE - BUTTON HATAYA AUR OUTPUT DIKHAYA
+        # 🔥 FIX: BUTTONS HATAO - SIRF RESULT DIKHAO
         await query.edit_message_text(
             f"*💰 INTEREST CLAIMED!*\n\n"
             f"*Rate: {rate*100}%*\n"
@@ -1957,21 +1952,19 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"*Previous Bank Balance: {bank_bal:,} 💰*\n"
             f"*New Bank Balance: {new_bank:,} 💰*\n\n"
             f"*⏰ Next interest: 24h*",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=None  # 🔥 BUTTONS HATAO
         )
 
     elif action == "wallet":
         prev_wallet = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-        
         await db.execute("UPDATE bank SET last_interest = $1 WHERE user_id = $2", now.isoformat(), user_id)
         await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", interest, user_id)
         await db.execute("INSERT INTO interest_history (user_id, amount, type, claimed_at) VALUES ($1, $2, 'wallet', $3)", user_id, interest, now.isoformat())
-
         new_wallet = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-        
         await db.close()
 
-        # 🔥 NEW MESSAGE - BUTTON HATAYA AUR OUTPUT DIKHAYA
+        # 🔥 FIX: BUTTONS HATAO - SIRF RESULT DIKHAO
         await query.edit_message_text(
             f"*💰 INTEREST CLAIMED!*\n\n"
             f"*Rate: {rate*100}%*\n"
@@ -1979,7 +1972,8 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"*Previous Wallet Balance: {prev_wallet:,} 💰*\n"
             f"*New Wallet Balance: {new_wallet:,} 💰*\n\n"
             f"*⏰ Next interest: 24h*",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=None  # 🔥 BUTTONS HATAO
         )
 
     elif action == "history":
@@ -2012,7 +2006,7 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg += f"\n*🔥 Streak: {streak} days*"
 
         await db.close()
-        await query.edit_message_text(msg, parse_mode="Markdown")
+        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=None)  # 🔥 HISTORY MEIN BHI BUTTONS HATAO
 
 
 # ============ LOTTERY SYSTEM ==========
