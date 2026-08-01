@@ -6323,6 +6323,52 @@ async def duocricket(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
     )
 
+# ============ DUO CHOICE CALLBACK ==========
+async def duo_choice_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    parts = data.split("_")
+    game_id = int(parts[2])
+    choice = parts[3]
+    
+    if game_id not in duo_cricket_lobby:
+        await query.edit_message_text("❌ Game expired!")
+        return
+    
+    lobby = duo_cricket_lobby[game_id]
+    game = lobby["game"]
+    
+    if update.effective_user.id != game.team_a_players[0] and update.effective_user.id != game.team_b_players[0]:
+        await query.answer("Only toss winner can choose!", show_alert=True)
+        return
+    
+    if choice == "bat":
+        game.current_batsman = game.team_a_players[0]
+        game.current_bowler = game.team_b_players[0]
+    else:
+        game.current_batsman = game.team_b_players[0]
+        game.current_bowler = game.team_a_players[0]
+    
+    duo_cricket_games[game_id] = game
+    del duo_cricket_lobby[game_id]
+    
+    batsman_name = game.team_a_names[0] if game.current_batsman == game.team_a_players[0] else game.team_b_names[0]
+    bowler_name = game.team_b_names[0] if game.current_bowler == game.team_b_players[0] else game.team_a_names[0]
+    team_name = "Team A" if game.current_batsman == game.team_a_players[0] else "Team B"
+    
+    bat_numbers = game.get_bat_numbers()
+    keyboard = [[InlineKeyboardButton(str(num), callback_data=f"duo_bat_{game_id}_{num}") for num in bat_numbers]]
+    
+    await query.edit_message_text(
+        f"🏏 DUO CRICKET\n📋 {game.mode.upper()} MODE\n\n"
+        f"{team_name} Batting\n"
+        f"Batter: {batsman_name}\n"
+        f"Bowler: {bowler_name}\n\n"
+        f"Choose your shot:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
 async def duo_mode_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
