@@ -907,6 +907,7 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============ SPIN CALLBACK ==========
+# ============ SPIN CALLBACK ==========
 async def spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -914,14 +915,16 @@ async def spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     db = await get_db()
     
-    # 🔥 SPINNING EFFECT
-    spin_msg = await query.edit_message_text("🎰 SPINNING... 🎰\n⏳ Please wait...")
-    
-    # 🔥 EMOJI ROTATION
+    # 🔥 BUTTON TEXT CHANGE - SPINNING EFFECT
     emojis = ["🎰", "🎡", "🎲", "🎯", "🎪", "🔄", "🌀"]
     for emoji in emojis:
         await asyncio.sleep(0.3)
-        await spin_msg.edit_text(f"{emoji} SPINNING... {emoji}")
+        await query.edit_message_text(
+            f"🎡 SPINNING...\n\nPlease wait...",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(f"{emoji} SPINNING...", callback_data="spin_loading")]
+            ])
+        )
     
     await asyncio.sleep(0.3)
     
@@ -939,7 +942,7 @@ async def spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.close()
     
     # 🔥 FINAL RESULT
-    await spin_msg.edit_text(
+    await query.edit_message_text(
         f"✅ Claimed Daily Spin Rewards of {amount:,} Credits\n"
         f"at {today_str}\n\n"
         f"💰 New balance: {new_bal:,} 💰\n"
