@@ -699,6 +699,7 @@ async def rmpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ============ CLAIM ==========
 # ============ CLAIM ==========
+# ============ CLAIM ==========
 async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_id = update.message.chat.id
@@ -736,14 +737,13 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     await db.close()
 
-    # 🔥 DARK THEME OUTPUT
+    # 🔥 BOLD OUTPUT
     await update.message.reply_text(
-        f"┃ Claimed Daily Rewards ┃\n\n"
-        f"➤ +{reward} credits\n"
-        f"➤ {today_str}\n"
-        f"➤ New balance: {new_bal:,}\n\n"
-        f"{extra_note}\n\n"
-        f"➦ Next claim: tomorrow",
+        f"*✅ Claimed Daily Rewards!*\n\n"
+        f"*💰 +{reward} credits*\n"
+        f"*📅 {today_str}*\n"
+        f"*💳 New balance: {new_bal:,}*{extra_note}\n\n"
+        f"*🔄 Next claim: tomorrow*",
         disable_web_page_preview=False,
         parse_mode="Markdown"
     )
@@ -896,7 +896,7 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             remaining = 86400 - (datetime.now() - last_time).total_seconds()
             hours = int(remaining // 3600)
             minutes = int((remaining % 3600) // 60)
-            await update.message.reply_text(f"⏳ Already claimed! Next spin in {hours}h {minutes}m")
+            await update.message.reply_text(f"⏳ Next spin in {hours}h {minutes}m")
             await db.close()
             return
     
