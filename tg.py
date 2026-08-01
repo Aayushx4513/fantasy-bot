@@ -6577,13 +6577,13 @@ async def duo_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         innings_tag = f"TARGET : {game.target}"
         overs_display = game.get_overs(2)
     
+    # 🔥 FIX: BATTER KA SHOT MAT DIKHAO!
     await query.edit_message_text(
         f"🏏 Over {overs_display} ({innings_tag})\n\n"
-        f"{batsman_name} played: {shot}\n\n"
+        f"{batsman_name} has played.\n\n"
         f"🧤 {bowler_name}, now you bowl!",
         reply_markup=InlineKeyboardMarkup(bowl_keyboard)
     )
-
 
 async def duo_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -6616,6 +6616,7 @@ async def duo_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     deliveries = game.get_deliveries()
     bowl_number = deliveries[delivery_key]["out_on"]
     
+    # 🔥 NAME WITH TEAM
     batsman_name = game.team_a_names[0] if game.current_batsman == game.team_a_players[0] else game.team_b_names[0]
     bowler_name = game.team_b_names[0] if game.current_bowler == game.team_b_players[0] else game.team_a_names[0]
     
@@ -6629,7 +6630,7 @@ async def duo_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         overs_display = game.get_overs(2)
     
     msg = f"🏏 Over {overs_display} ({innings_tag})\n\n"
-    msg += f"{batsman_name} played: {bat_number} | {bowler_name} bowled: {bowl_number}\n\n"
+    msg += f"🔴 {batsman_name} played: {bat_number} | 🔵 {bowler_name} bowled: {bowl_number}\n\n"
     
     if is_out:
         game.wickets += 1
@@ -6640,19 +6641,126 @@ async def duo_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             game.team_b_wickets += 1
         
-        # 🔥 SWITCH BATSMAN (SOLO JESA)
+        # 🔥 BATSMAN SWITCH
         if game.current_batsman == game.team_a_players[0]:
             game.current_batsman = game.team_a_players[1] if len(game.team_a_players) > 1 else game.team_a_players[0]
-            game.current_bowler = game.team_b_players[0]  # Same bowler
+            game.current_bowler = game.team_b_players[0]
         elif game.current_batsman == game.team_a_players[1]:
             game.current_batsman = game.team_a_players[0]
-            game.current_bowler = game.team_b_players[1] if len(game.team_b_players) > 1 else game.team_b_players[0]  # Bowler change
+            game.current_bowler = game.team_b_players[1] if len(game.team_b_players) > 1 else game.team_b_players[0]
         elif game.current_batsman == game.team_b_players[0]:
             game.current_batsman = game.team_b_players[1] if len(game.team_b_players) > 1 else game.team_b_players[0]
-            game.current_bowler = game.team_a_players[0]  # Same bowler
+            game.current_bowler = game.team_a_players[0]
         elif game.current_batsman == game.team_b_players[1]:
             game.current_batsman = game.team_b_players[0]
-            game.current_bowler = game.team_a_players[1] if len(game.team_a_players) > 1 else game.team_a_players[0]  # Bowler change
+            game.current_bowler = game.team_a_players[1] if len(game.team_a_players) > 1 else game.team_a_players[0]
+        
+        # Bowler wicket stats
+        if game.current_bowler not in game.player_stats:
+            game.player_stats[game.current_bowler] = {"runs": 0, "wickets": 0}
+        game.player_stats[game.current_bowler]["wickets"] += 1
+        
+        # ALL OUT CHECK
+        if game.wickets >= 2:
+            if game.innings == 1:
+                game.innings = 2
+                game.target = game.score + 1
+                game.score = 0
+                game.wickets = 0
+                game.balls = 0
+                game.current_over_shots = []
+                
+                game.current_batsman = game.team_b_players[0]
+                game.current_bowler = game.team_a_players[0]
+                
+                # BAT KEYBOARD
+                if game.mode == "1-3":
+                    bat_keyboard = [
+                        [InlineKeyboardButton("1", callback_data=f"duo_bat_{game_id}_1"), InlineKeyboardButton("2", callback_data=f"duo_bat_{game_id}_2"), InlineKeyboardButton("3", callback_data=f"duo_bat_{game_id}_3")]
+                    ]
+                elif game.mode == "1-5":
+                    bat_keyboard = [
+                        [InlineKeyboardButton("0", callback_data=f"duo_bat_{game_id}_0"), InlineKeyboardButton("1", callback_data=f"duo_bat_{game_id}_1"), InlineKeyboardButton("2", callback_data=f"duo_bat_{game_id}_2")],
+                        [InlineKeyboardButton("3", callback_data=f"duo_bat_{game_id}_3"), InlineKeyboardButton("4", callback_data=f"duo_bat_{game_id}_4"), InlineKeyboardButton("6", callback_data=f"duo_bat_{game_id}_6")]
+                    ]
+                elif game.mode == "1-9":
+                    bat_keyboard = [
+                        [InlineKeyboardButton("1", callback_data=f"duo_bat_{game_id}_1"), InlineKeyboardButton("2", callback_data=f"duo_bat_{game_id}_2"), InlineKeyboardButton("3", callback_data=f"duo_bat_{game_id}_3")],
+                        [InlineKeyboardButton("4", callback_data=f"duo_bat_{game_id}_4"), InlineKeyboardButton("5", callback_data=f"duo_bat_{game_id}_5"), InlineKeyboardButton("6", callback_data=f"duo_bat_{game_id}_6")],
+                        [InlineKeyboardButton("7", callback_data=f"duo_bat_{game_id}_7"), InlineKeyboardButton("8", callback_data=f"duo_bat_{game_id}_8"), InlineKeyboardButton("9", callback_data=f"duo_bat_{game_id}_9")]
+                    ]
+                else:
+                    bat_keyboard = [
+                        [InlineKeyboardButton("1", callback_data=f"duo_bat_{game_id}_1"), InlineKeyboardButton("2", callback_data=f"duo_bat_{game_id}_2"), InlineKeyboardButton("3", callback_data=f"duo_bat_{game_id}_3")],
+                        [InlineKeyboardButton("4", callback_data=f"duo_bat_{game_id}_4"), InlineKeyboardButton("5", callback_data=f"duo_bat_{game_id}_5"), InlineKeyboardButton("6", callback_data=f"duo_bat_{game_id}_6")]
+                    ]
+                
+                await query.edit_message_text(
+                    f"🏏 FIRST INNINGS ENDED\n\n"
+                    f"📊 Team A: {game.team_a_runs}/2 ({game.get_overs(1)} ov)\n"
+                    f"🎯 Target: {game.target} runs\n\n"
+                    f"🔄 Innings Changed!\n\n"
+                    f"🔵 Team B Batting\n"
+                    f"Batter: {game.team_b_names[0]}\n"
+                    f"Bowler: {game.team_a_names[0]}\n\n"
+                    f"Choose your shot:",
+                    reply_markup=InlineKeyboardMarkup(bat_keyboard)
+                )
+                return
+            else:
+                # RESULT
+                if game.score >= game.target:
+                    game.winner_team = "B"
+                else:
+                    game.winner_team = "A"
+                
+                db = await get_db()
+                if game.winner_team == "A":
+                    p1, p2 = game.team_a_players[0], game.team_a_players[1]
+                else:
+                    p1, p2 = game.team_b_players[0], game.team_b_players[1]
+                
+                await db.execute("""
+                    INSERT INTO duo_stats (player1_id, player2_id, wins, matches)
+                    VALUES ($1, $2, 1, 1)
+                    ON CONFLICT (player1_id, player2_id)
+                    DO UPDATE SET wins = duo_stats.wins + 1, matches = duo_stats.matches + 1
+                """, p1, p2)
+                
+                if game.winner_team == "A":
+                    p1, p2 = game.team_b_players[0], game.team_b_players[1]
+                else:
+                    p1, p2 = game.team_a_players[0], game.team_a_players[1]
+                
+                await db.execute("""
+                    INSERT INTO duo_stats (player1_id, player2_id, wins, matches)
+                    VALUES ($1, $2, 0, 1)
+                    ON CONFLICT (player1_id, player2_id)
+                    DO UPDATE SET matches = duo_stats.matches + 1
+                """, p1, p2)
+                await db.close()
+                
+                winner_team = "Team A" if game.winner_team == "A" else "Team B"
+                winner_names = game.team_a_names if game.winner_team == "A" else game.team_b_names
+                loser_names = game.team_b_names if game.winner_team == "A" else game.team_a_names
+                
+                result = f"🏆 DUO RESULT\n"
+                result += f"🔴 Team A: {game.team_a_runs}/2 ({game.get_overs(1)} ov)\n"
+                result += f"🔵 Team B: {game.team_b_runs}/2 ({game.get_overs(2)} ov)\n"
+                result += f"🏆 {winner_team} won!\n\n"
+                
+                for uid, stats in game.player_stats.items():
+                    name = await db.fetchval("SELECT name FROM users WHERE user_id = $1", uid)
+                    if name:
+                        result += f"{name}: {stats.get('runs', 0)}r {stats.get('wickets', 0)}w\n"
+                
+                result += f"\n🎉 Champions: {' & '.join(winner_names)}!"
+                result += f"\n❌ Hard Luck: {' & '.join(loser_names)}!"
+                
+                await query.edit_message_text(result)
+                del duo_cricket_games[game_id]
+                return
+    
     else:
         runs = bat_number
         game.score += runs
@@ -6671,9 +6779,9 @@ async def duo_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += f"📊 Score: {game.score}/{game.wickets} | Over: {overs_display}\n"
     msg += f"🎯 This Over: {', '.join(game.current_over_shots)}\n\n"
     
+    # OVER END - BOWLER CHANGE
     if game.balls % 6 == 0:
         game.current_over_shots = []
-        # 🔥 SWITCH BOWLER (OVER END)
         if game.current_bowler == game.team_b_players[0]:
             game.current_bowler = game.team_b_players[1] if len(game.team_b_players) > 1 else game.team_b_players[0]
         elif game.current_bowler == game.team_b_players[1]:
@@ -6683,66 +6791,12 @@ async def duo_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif game.current_bowler == game.team_a_players[1]:
             game.current_bowler = game.team_a_players[0]
     
-    # Check innings end
-    if game.innings == 1 and (game.wickets >= 2 or game.balls >= 36):
-        game.innings = 2
-        game.target = game.score + 1
-        game.score = 0
-        game.wickets = 0
-        game.balls = 0
-        game.waiting_for = "bat"
-        
-        # 🔥 SECOND INNINGS - TEAM B BATTING
-        game.current_batsman = game.team_b_players[0]
-        game.current_bowler = game.team_a_players[0]
-        
-        # 🔥 BAT BUTTONS - 2 ROWS (SOLO JESA)
-        if game.mode == "1-3":
-            bat_keyboard = [
-                [InlineKeyboardButton("1", callback_data=f"duo_bat_{game_id}_1"), InlineKeyboardButton("2", callback_data=f"duo_bat_{game_id}_2"), InlineKeyboardButton("3", callback_data=f"duo_bat_{game_id}_3")]
-            ]
-        elif game.mode == "1-5":
-            bat_keyboard = [
-                [InlineKeyboardButton("0", callback_data=f"duo_bat_{game_id}_0"), InlineKeyboardButton("1", callback_data=f"duo_bat_{game_id}_1"), InlineKeyboardButton("2", callback_data=f"duo_bat_{game_id}_2")],
-                [InlineKeyboardButton("3", callback_data=f"duo_bat_{game_id}_3"), InlineKeyboardButton("4", callback_data=f"duo_bat_{game_id}_4"), InlineKeyboardButton("6", callback_data=f"duo_bat_{game_id}_6")]
-            ]
-        elif game.mode == "1-9":
-            bat_keyboard = [
-                [InlineKeyboardButton("1", callback_data=f"duo_bat_{game_id}_1"), InlineKeyboardButton("2", callback_data=f"duo_bat_{game_id}_2"), InlineKeyboardButton("3", callback_data=f"duo_bat_{game_id}_3")],
-                [InlineKeyboardButton("4", callback_data=f"duo_bat_{game_id}_4"), InlineKeyboardButton("5", callback_data=f"duo_bat_{game_id}_5"), InlineKeyboardButton("6", callback_data=f"duo_bat_{game_id}_6")],
-                [InlineKeyboardButton("7", callback_data=f"duo_bat_{game_id}_7"), InlineKeyboardButton("8", callback_data=f"duo_bat_{game_id}_8"), InlineKeyboardButton("9", callback_data=f"duo_bat_{game_id}_9")]
-            ]
-        else:  # default (1-6)
-            bat_keyboard = [
-                [InlineKeyboardButton("1", callback_data=f"duo_bat_{game_id}_1"), InlineKeyboardButton("2", callback_data=f"duo_bat_{game_id}_2"), InlineKeyboardButton("3", callback_data=f"duo_bat_{game_id}_3")],
-                [InlineKeyboardButton("4", callback_data=f"duo_bat_{game_id}_4"), InlineKeyboardButton("5", callback_data=f"duo_bat_{game_id}_5"), InlineKeyboardButton("6", callback_data=f"duo_bat_{game_id}_6")]
-            ]
-        
-        await query.edit_message_text(
-            f"🏏 FIRST INNINGS ENDED\n\n"
-            f"📊 Team A: {game.team_a_runs}/2 ({game.get_overs(1)} ov)\n"
-            f"🎯 Target: {game.target} runs\n\n"
-            f"🔄 Innings Changed!\n\n"
-            f"🔵 Team B Batting\n"
-            f"Batter: {game.team_b_names[0]}\n"
-            f"Bowler: {game.team_a_names[0]}\n\n"
-            f"Choose your shot:",
-            reply_markup=InlineKeyboardMarkup(bat_keyboard)
-        )
-        return
-    
-    if game.innings == 2 and (game.score >= game.target or game.wickets >= 2):
-        if game.score >= game.target:
-            game.winner_team = "B"
-        else:
-            game.winner_team = "A"
+    # SECOND INNINGS WIN CHECK
+    if game.innings == 2 and game.score >= game.target:
+        game.winner_team = "B"
         
         db = await get_db()
-        if game.winner_team == "A":
-            p1, p2 = game.team_a_players[0], game.team_a_players[1]
-        else:
-            p1, p2 = game.team_b_players[0], game.team_b_players[1]
-        
+        p1, p2 = game.team_b_players[0], game.team_b_players[1]
         await db.execute("""
             INSERT INTO duo_stats (player1_id, player2_id, wins, matches)
             VALUES ($1, $2, 1, 1)
@@ -6750,11 +6804,7 @@ async def duo_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             DO UPDATE SET wins = duo_stats.wins + 1, matches = duo_stats.matches + 1
         """, p1, p2)
         
-        if game.winner_team == "A":
-            p1, p2 = game.team_b_players[0], game.team_b_players[1]
-        else:
-            p1, p2 = game.team_a_players[0], game.team_a_players[1]
-        
+        p1, p2 = game.team_a_players[0], game.team_a_players[1]
         await db.execute("""
             INSERT INTO duo_stats (player1_id, player2_id, wins, matches)
             VALUES ($1, $2, 0, 1)
@@ -6763,14 +6813,13 @@ async def duo_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """, p1, p2)
         await db.close()
         
-        winner_team = "Team A" if game.winner_team == "A" else "Team B"
-        winner_names = game.team_a_names if game.winner_team == "A" else game.team_b_names
-        loser_names = game.team_b_names if game.winner_team == "A" else game.team_a_names
+        winner_names = game.team_b_names
+        loser_names = game.team_a_names
         
         result = f"🏆 DUO RESULT\n"
         result += f"🔴 Team A: {game.team_a_runs}/2 ({game.get_overs(1)} ov)\n"
         result += f"🔵 Team B: {game.team_b_runs}/2 ({game.get_overs(2)} ov)\n"
-        result += f"🏆 {winner_team} won!\n\n"
+        result += f"🏆 Team B won!\n\n"
         
         for uid, stats in game.player_stats.items():
             name = await db.fetchval("SELECT name FROM users WHERE user_id = $1", uid)
@@ -6784,10 +6833,9 @@ async def duo_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         del duo_cricket_games[game_id]
         return
     
-    # Continue game
+    # CONTINUE GAME - BAT KEYBOARD
     game.waiting_for = "bat"
     
-    # 🔥 BAT BUTTONS - 2 ROWS (SOLO JESA)
     if game.mode == "1-3":
         bat_keyboard = [
             [InlineKeyboardButton("1", callback_data=f"duo_bat_{game_id}_1"), InlineKeyboardButton("2", callback_data=f"duo_bat_{game_id}_2"), InlineKeyboardButton("3", callback_data=f"duo_bat_{game_id}_3")]
@@ -6803,7 +6851,7 @@ async def duo_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("4", callback_data=f"duo_bat_{game_id}_4"), InlineKeyboardButton("5", callback_data=f"duo_bat_{game_id}_5"), InlineKeyboardButton("6", callback_data=f"duo_bat_{game_id}_6")],
             [InlineKeyboardButton("7", callback_data=f"duo_bat_{game_id}_7"), InlineKeyboardButton("8", callback_data=f"duo_bat_{game_id}_8"), InlineKeyboardButton("9", callback_data=f"duo_bat_{game_id}_9")]
         ]
-    else:  # default (1-6)
+    else:
         bat_keyboard = [
             [InlineKeyboardButton("1", callback_data=f"duo_bat_{game_id}_1"), InlineKeyboardButton("2", callback_data=f"duo_bat_{game_id}_2"), InlineKeyboardButton("3", callback_data=f"duo_bat_{game_id}_3")],
             [InlineKeyboardButton("4", callback_data=f"duo_bat_{game_id}_4"), InlineKeyboardButton("5", callback_data=f"duo_bat_{game_id}_5"), InlineKeyboardButton("6", callback_data=f"duo_bat_{game_id}_6")]
