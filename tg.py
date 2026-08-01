@@ -874,6 +874,7 @@ async def codestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============ SPIN ==========
+# ============ SPIN COMMAND ==========
 async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
@@ -883,26 +884,69 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
     last = await db.fetchval("SELECT last_claim FROM spin WHERE user_id = $1", user_id)
     
-    now = datetime.now()
-    today_str = now.strftime("%m/%d/%y")
-    
     if last:
-        last_date = datetime.fromisoformat(last)
-        if last_date.date() == now.date():
-            await update.message.reply_text(f"⚠️ Already spin today!\nat {last_date.strftime('%m/%d/%y')}\n\n🎡 Next spin: tomorrow")
+        last_time = datetime.fromisoformat(last)
+        if (datetime.now() - last_time).total_seconds() < 86400:
+            remaining = 86400 - (datetime.now() - last_time).total_seconds()
+            hours = int(remaining // 3600)
+            minutes = int((remaining % 3600) // 60)
+            await update.message.reply_text(f"⏳ Already claimed! Next spin in {hours}h {minutes}m")
             await db.close()
             return
     
-    amount = random.randint(1000, 10000)
-    await db.execute("INSERT INTO spin (user_id, last_claim) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_claim = $2", user_id, now.isoformat())
-    await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", amount, user_id)
+    await db.close()
     
+    # 🔥 BUTTON KE SAATH SPIN
+    await update.message.reply_text(
+        "🎰 SPIN THE WHEEL! 🎰\n\n"
+        "Click below to spin and win daily rewards!",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎡 SPIN NOW", callback_data="spin_now")]
+        ])
+    )
+
+
+# ============ SPIN CALLBACK ==========
+async def spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = update.effective_user.id
+    db = await get_db()
+    
+    # 🔥 SPINNING EFFECT
+    spin_msg = await query.edit_message_text("🎰 SPINNING... 🎰\n⏳ Please wait...")
+    
+    # 🔥 EMOJI ROTATION
+    emojis = ["🎰", "🎡", "🎲", "🎯", "🎪", "🔄", "🌀"]
+    for emoji in emojis:
+        await asyncio.sleep(0.3)
+        await spin_msg.edit_text(f"{emoji} SPINNING... {emoji}")
+    
+    await asyncio.sleep(0.3)
+    
+    # 🔥 GENERATE REWARD
+    now = datetime.now()
+    today_str = now.strftime("%m/%d/%y")
+    amount = random.randint(1000, 10000)
+    
+    await db.execute(
+        "INSERT INTO spin (user_id, last_claim) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_claim = $2",
+        user_id, now.isoformat()
+    )
+    await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", amount, user_id)
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     await db.close()
     
-    await update.message.reply_text(f"✅ Claimed Daily Spin Rewards of {amount:,} Credits\nat {today_str}\n\n💰 New balance: {new_bal:,} 💰\n🎡 Next spin: tomorrow")
+    # 🔥 FINAL RESULT
+    await spin_msg.edit_text(
+        f"✅ Claimed Daily Spin Rewards of {amount:,} Credits\n"
+        f"at {today_str}\n\n"
+        f"💰 New balance: {new_bal:,} 💰\n"
+        f"🎡 Next spin: tomorrow"
+    )
 
-# ============ DICE ==========
+
 # ============ DICE ==========
 async def dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -6195,6 +6239,7 @@ async def main():
     app.add_handler(CommandHandler("rmpfp", rmpfp))
     app.add_handler(CommandHandler("claim", claim))
     app.add_handler(CommandHandler("spin", spin))
+    app.add_handler(CallbackQueryHandler(spin_callback, pattern="^spin_now$"))
     app.add_handler(CommandHandler("dice", dice))
     app.add_handler(CommandHandler("flip", flip))
     app.add_handler(CommandHandler("matches", matches))
