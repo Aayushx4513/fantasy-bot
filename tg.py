@@ -6226,9 +6226,47 @@ class DuoCricketGame:
         self.player_stats = {}
         self.winner_team = None
         
-        # 🔥 BATTER/BOWLER INDEX TRACK
-        self.batter_index = 0
-        self.bowler_index = 0
+        # 🔥 INDEX TRACK
+        self.batter_index = 0  # 0 = P1, 1 = P2
+        self.bowler_index = 0  # 0 = P2, 1 = P1 (ULTA!)
+
+    # 🔥 BATTER - ORDER WISE
+    def get_batter(self):
+        if self.innings == 1:
+            return self.team_a_players[self.batter_index % 2]
+        else:
+            return self.team_b_players[self.batter_index % 2]
+
+    def get_batter_name(self):
+        if self.innings == 1:
+            return self.team_a_names[self.batter_index % 2]
+        else:
+            return self.team_b_names[self.batter_index % 2]
+
+    # 🔥 BOWLER - ULTA (P2 PEHLE, PHIR P1)
+    def get_bowler(self):
+        if self.innings == 1:
+            # Team A bowling → P2 (index 1) pehle, phir P1 (index 0)
+            bowler_list = [self.team_a_players[1], self.team_a_players[0]]  # [P2, P1]
+            return bowler_list[self.bowler_index % 2]
+        else:
+            # Team B bowling → P4 (index 1) pehle, phir P3 (index 0)
+            bowler_list = [self.team_b_players[1], self.team_b_players[0]]  # [P4, P3]
+            return bowler_list[self.bowler_index % 2]
+
+    def get_bowler_name(self):
+        if self.innings == 1:
+            bowler_names = [self.team_a_names[1], self.team_a_names[0]]  # [P2, P1]
+            return bowler_names[self.bowler_index % 2]
+        else:
+            bowler_names = [self.team_b_names[1], self.team_b_names[0]]  # [P4, P3]
+            return bowler_names[self.bowler_index % 2]
+
+    def next_batter(self):
+        self.batter_index += 1
+
+    def next_bowler(self):
+        self.bowler_index += 1
 
     def get_deliveries(self):
         if self.mode == "1-3":
@@ -6261,44 +6299,106 @@ class DuoCricketGame:
         rem_balls = balls % 6
         return f"{overs}.{rem_balls}"
 
-    def get_batter(self):
-        if self.innings == 1:
-            return self.team_a_players[self.batter_index % 2]
-        else:
-            return self.team_b_players[self.batter_index % 2]
-
-    def get_batter_name(self):
-        if self.innings == 1:
-            return self.team_a_names[self.batter_index % 2]
-        else:
-            return self.team_b_names[self.batter_index % 2]
-
-    def get_bowler(self):
-        if self.innings == 1:
-            return self.team_b_players[self.bowler_index % 2]
-        else:
-            return self.team_a_players[self.bowler_index % 2]
-
-    def get_bowler_name(self):
-        if self.innings == 1:
-            return self.team_b_names[self.bowler_index % 2]
-        else:
-            return self.team_a_names[self.bowler_index % 2]
-
-    def next_batter(self):
-        self.batter_index += 1
-
-    def next_bowler(self):
-        self.bowler_index += 1
-
-    def swap_innings(self):
+    def reset_for_new_innings(self):
+        """Reset game state for second innings"""
         self.innings = 2
-        self.batter_index = 0
-        self.bowler_index = 0
         self.score = 0
         self.wickets = 0
         self.balls = 0
+        self.batter_index = 0
+        self.bowler_index = 0
         self.current_over_shots = []
+        self.pending_bat_number = None
+        self.waiting_for = None
+
+    def switch_batsman(self):
+        """Switch to next batsman after out"""
+        self.next_batter()
+        self.current_batsman = self.get_batter()
+
+    def switch_bowler_after_over(self):
+        """Switch bowler after over end"""
+        self.next_bowler()
+        self.current_bowler = self.get_bowler()
+
+    def get_team_name(self):
+        if self.innings == 1:
+            return "🔴 Team A"
+        else:
+            return "🔵 Team B"
+
+    def get_opponent_team_name(self):
+        if self.innings == 1:
+            return "🔵 Team B"
+        else:
+            return "🔴 Team A"
+
+    def get_team_runs(self):
+        if self.innings == 1:
+            return self.team_a_runs
+        else:
+            return self.team_b_runs
+
+    def get_opponent_runs(self):
+        if self.innings == 1:
+            return self.team_b_runs
+        else:
+            return self.team_a_runs
+
+    def get_team_wickets(self):
+        if self.innings == 1:
+            return self.team_a_wickets
+        else:
+            return self.team_b_wickets
+
+    def get_opponent_wickets(self):
+        if self.innings == 1:
+            return self.team_b_wickets
+        else:
+            return self.team_a_wickets
+
+    def is_all_out(self):
+        return self.wickets >= 2
+
+    def is_target_chased(self):
+        return self.innings == 2 and self.score >= self.target
+
+    def get_result_summary(self):
+        """Generate result summary"""
+        if self.winner_team == "A":
+            winner_names = " & ".join(self.team_a_names)
+            loser_names = " & ".join(self.team_b_names)
+            winner_team = "🔴 Team A"
+        elif self.winner_team == "B":
+            winner_names = " & ".join(self.team_b_names)
+            loser_names = " & ".join(self.team_a_names)
+            winner_team = "🔵 Team B"
+        else:
+            return "Match incomplete!"
+
+        summary = f"🏆 DUO RESULT\n"
+        summary += f"🔴 Team A: {self.team_a_runs}/2 ({self.get_overs(1)} ov)\n"
+        summary += f"🔵 Team B: {self.team_b_runs}/2 ({self.get_overs(2)} ov)\n"
+        summary += f"🏆 {winner_team} won!\n\n"
+
+        for uid, stats in self.player_stats.items():
+            name = None
+            for i, pid in enumerate(self.team_a_players):
+                if pid == uid:
+                    name = self.team_a_names[i]
+                    break
+            if not name:
+                for i, pid in enumerate(self.team_b_players):
+                    if pid == uid:
+                        name = self.team_b_names[i]
+                        break
+            if name:
+                summary += f"{name}: {stats.get('runs', 0)}r {stats.get('wickets', 0)}w\n"
+
+        summary += f"\n🎉 Champions: {winner_names}!"
+        summary += f"\n❌ Hard Luck: {loser_names}!"
+        
+        return summary
 
 # ============ DUO LEADERBOARD ==========
 async def duo_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
