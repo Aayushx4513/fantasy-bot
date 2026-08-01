@@ -1901,11 +1901,12 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await db.close()
 
-
-# ============ INTEREST CALLBACK ==========
 async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    
+    # 🔥 PEHLE ANSWER KARO
     await query.answer()
+    
     data = query.data
     parts = data.split("_")
     action = parts[1]
@@ -1945,7 +1946,10 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         new_bank = bank_bal + interest
         await db.execute("UPDATE bank SET balance = $1, last_interest = $2 WHERE user_id = $3", new_bank, now.isoformat(), user_id)
         await db.execute("INSERT INTO interest_history (user_id, amount, type, claimed_at) VALUES ($1, $2, 'bank', $3)", user_id, interest, now.isoformat())
+        
+        await db.close()
 
+        # 🔥 NEW MESSAGE - BUTTON HATAYA AUR OUTPUT DIKHAYA
         await query.edit_message_text(
             f"*💰 INTEREST CLAIMED!*\n\n"
             f"*Rate: {rate*100}%*\n"
@@ -1957,7 +1961,6 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif action == "wallet":
-        # 🔥 PEHLE WALLET BALANCE FETCH KARO
         prev_wallet = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
         
         await db.execute("UPDATE bank SET last_interest = $1 WHERE user_id = $2", now.isoformat(), user_id)
@@ -1965,7 +1968,10 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.execute("INSERT INTO interest_history (user_id, amount, type, claimed_at) VALUES ($1, $2, 'wallet', $3)", user_id, interest, now.isoformat())
 
         new_wallet = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
+        
+        await db.close()
 
+        # 🔥 NEW MESSAGE - BUTTON HATAYA AUR OUTPUT DIKHAYA
         await query.edit_message_text(
             f"*💰 INTEREST CLAIMED!*\n\n"
             f"*Rate: {rate*100}%*\n"
@@ -1978,7 +1984,7 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif action == "history":
         history = await db.fetch("SELECT amount, type, claimed_at FROM interest_history WHERE user_id = $1 ORDER BY claimed_at DESC LIMIT 10", user_id)
-        
+
         if not history:
             await query.edit_message_text("*📜 No interest history yet!*", parse_mode="Markdown")
             await db.close()
@@ -1989,25 +1995,26 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for h in history:
             msg += f"*📅 {h['claimed_at'][:10]}  →  +{h['amount']:,} 💰  ({h['type']})*\n"
             total += h['amount']
-        
+
         msg += f"\n*💰 Total Interest: {total:,} 💰*"
-        
+
         streak = await db.fetchval("""
             SELECT COUNT(*) FROM (
-                SELECT DISTINCT DATE(claimed_at) as d 
-                FROM interest_history 
-                WHERE user_id = $1 
-                ORDER BY d DESC 
+                SELECT DISTINCT DATE(claimed_at) as d
+                FROM interest_history
+                WHERE user_id = $1
+                ORDER BY d DESC
                 LIMIT 7
             ) t
         """, user_id)
-        
+
         if streak and streak > 0:
             msg += f"\n*🔥 Streak: {streak} days*"
 
+        await db.close()
         await query.edit_message_text(msg, parse_mode="Markdown")
 
-    await db.close()
+
 # ============ LOTTERY SYSTEM ==========
 async def lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -6377,6 +6384,42 @@ async def fix_achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔒 Duplicate protection added!\n\n"
         f"💡 Now /achievements will show correctly."
     )
+# ============ RESET INTEREST (ADMIN ONLY - REPLY WALA) ==========
+async def reset_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    
+    # 🔥 AGAR REPLY TO MESSAGE HAI TOH US USER KO RESET KARO
+    if update.message.reply_to_message:
+        user_id = update.message.reply_to_message.from_user.id
+        user_name = update.message.reply_to_message.from_user.first_name
+    else:
+        user_id = update.effective_user.id
+        user_name = update.effective_user.first_name
+    
+    db = await get_db()
+    
+    # 🔥 CHECK KARO BANK ACCOUNT HAI YA NAHI
+    row = await db.fetchrow("SELECT balance FROM bank WHERE user_id = $1", user_id)
+    if not row:
+        await update.message.reply_text("❌ No bank account found!")
+        await db.close()
+        return
+    
+    # 🔥 LAST_INTEREST KO 25 HOUR PEHLE SET KARO
+    old_time = datetime.now() - timedelta(hours=25)
+    await db.execute("UPDATE bank SET last_interest = $1 WHERE user_id = $2", old_time.isoformat(), user_id)
+    
+    await db.close()
+    
+    await update.message.reply_text(
+        f"*✅ INTEREST RESET!*\n\n"
+        f"*User:* {user_name}\n"
+        f"*Now you can claim interest again!*\n\n"
+        f"*⏰ Use /claim_interest to test*",
+        parse_mode="Markdown"
+    )
 
 
 # ============ MAIN ==========
@@ -6432,6 +6475,7 @@ async def main():
     app.add_handler(CallbackQueryHandler(shop_callback, pattern="^shop_"))
     app.add_handler(CommandHandler("add_women_players", add_women_players))
     app.add_handler(CommandHandler("balance", balance))
+    app.add_handler(CommandHandler("reset_interest", reset_interest))
     # RPS Game
     app.add_handler(CommandHandler("rps", rps))
     app.add_handler(CallbackQueryHandler(rps_join_callback, pattern="^rps_join_"))
@@ -6484,10 +6528,10 @@ async def main():
     app.add_handler(CommandHandler("deposit", deposit))
     app.add_handler(CommandHandler("withdraw", withdraw))
     app.add_handler(CommandHandler("claim_interest", claim_interest))
+    app.add_handler(CallbackQueryHandler(interest_callback, pattern="^interest_"))
     app.add_handler(CommandHandler("removeplayer2", removeplayer2))
     app.add_handler(CommandHandler("removeplayer3", removeplayer3))
     app.add_handler(CommandHandler("removeplayer4", removeplayer4))
-    app.add_handler(CallbackQueryHandler(interest_callback, pattern="^interest_"))
     # Admin Cricket
     app.add_handler(CommandHandler("addmatch", addmatch))
     app.add_handler(CommandHandler("deletematch", deletematch))
