@@ -698,8 +698,6 @@ async def rmpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text('❌ Profile photo removed!')
 
 # ============ CLAIM ==========
-# ============ CLAIM ==========
-# ============ CLAIM ==========
 async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_id = update.message.chat.id
@@ -729,6 +727,7 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         extra_note = "\n\n💡 Tip: Use /claim in CL Zone Group to get 1000 credits!"
     else:
         reward = 500
+        # 🔥 SAHI LINK - 1 HAI, L NAHI
         extra_note = f"\n\n💡 Tip: Use /claim in [CL Zone Group](https://t.me/+eTD1m8Cjc_wyOTNl) to get 1000 credits!"
 
     await db.execute("INSERT INTO claim (user_id, last_claim) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_claim = $2", user_id, today)
@@ -737,7 +736,6 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     await db.close()
 
-    # 🔥 BOLD OUTPUT
     await update.message.reply_text(
         f"*✅ Claimed Daily Rewards!*\n\n"
         f"*💰 +{reward} credits*\n"
@@ -747,6 +745,7 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         disable_web_page_preview=False,
         parse_mode="Markdown"
     )
+
 
 # ============ ACHIEVE COMMAND (ADMIN) ==========
 async def achieve(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -921,16 +920,14 @@ async def spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     db = await get_db()
     
-    # 🔥 BUTTON TEXT CHANGE - SPINNING EFFECT
+    # 🔥 SPINNING EFFECT
+    spin_msg = await query.edit_message_text("*🎰 SPINNING... 🎰*\n⏳ Please wait...", parse_mode="Markdown")
+    
+    # 🔥 EMOJI ROTATION
     emojis = ["🎰", "🎡", "🎲", "🎯", "🎪", "🔄", "🌀"]
     for emoji in emojis:
         await asyncio.sleep(0.3)
-        await query.edit_message_text(
-            f"🎡 SPINNING...\n\nPlease wait...",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton(f"{emoji} SPINNING...", callback_data="spin_loading")]
-            ])
-        )
+        await spin_msg.edit_text(f"*{emoji} SPINNING... {emoji}*", parse_mode="Markdown")
     
     await asyncio.sleep(0.3)
     
@@ -947,14 +944,14 @@ async def spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     await db.close()
     
-    # 🔥 FINAL RESULT
-    await query.edit_message_text(
-        f"✅ Claimed Daily Spin Rewards of {amount:,} Credits\n"
-        f"at {today_str}\n\n"
-        f"💰 New balance: {new_bal:,} 💰\n"
-        f"🎡 Next spin: tomorrow"
+    # 🔥 BOLD OUTPUT
+    await spin_msg.edit_text(
+        f"*✅ Claimed Daily Spin Rewards of {amount:,} Credits*\n"
+        f"*at {today_str}*\n\n"
+        f"*💰 New balance: {new_bal:,} 💰*\n"
+        f"*🎡 Next spin: tomorrow*",
+        parse_mode="Markdown"
     )
-
 
 # ============ DICE ==========
 async def dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
