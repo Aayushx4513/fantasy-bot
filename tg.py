@@ -1836,7 +1836,7 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(f"✅ WITHDRAWN!\n\nAmount: -{amount:,} 💰\nBank: {bank_bal:,} → {new_bank:,} 💰\nWallet: {new_wallet - amount:,} → {new_wallet:,} 💰")
 
-# ============ CLAIM INTEREST ==========
+# ============ CLAIM INTEREST (SIMPLE) ==========
 async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
@@ -1863,14 +1863,12 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
             hours = remaining.seconds // 3600
             mins = (remaining.seconds % 3600) // 60
             await update.message.reply_text(
-                f"*⏰ Interest not ready yet!*\n\n"
-                f"*Come back in {hours}h {mins}m*",
+                f"*⏰ Interest not ready yet!*\n\n*Come back in {hours}h {mins}m*",
                 parse_mode="Markdown"
             )
             await db.close()
             return
 
-    # TIER SYSTEM
     if bank_bal <= 1000000:
         rate = 0.05
     elif bank_bal <= 5000000:
@@ -1883,144 +1881,21 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         rate = 0.005
 
     interest = int(bank_bal * rate)
+    new_bank = bank_bal + interest
 
-    # 🔥 FIXED BUTTONS - ALAG ALAG ROW
-    keyboard = [
-        [InlineKeyboardButton("💳 DEPOSIT TO BANK", callback_data=f"interest_bank_{user_id}")],
-        [InlineKeyboardButton("👛 TO WALLET", callback_data=f"interest_wallet_{user_id}")],
-        [InlineKeyboardButton("📜 HISTORY", callback_data=f"interest_history_{user_id}")]
-    ]
+    await db.execute("UPDATE bank SET balance = $1, last_interest = $2 WHERE user_id = $3", new_bank, now.isoformat(), user_id)
+    await db.execute("INSERT INTO interest_history (user_id, amount, type, claimed_at) VALUES ($1, $2, 'bank', $3)", user_id, interest, now.isoformat())
 
-    await update.message.reply_text(
-        f"*💰 INTEREST AVAILABLE!*\n\n"
-        f"*Rate: {rate*100}%*\n"
-        f"*Interest: +{interest:,} 💰*\n\n"
-        f"*Choose an option:*",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown"
-    )
     await db.close()
 
-async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    data = query.data
-    parts = data.split("_")
-    action = parts[1]
-    user_id = int(parts[2])
-
-    if update.effective_user.id != user_id:
-        await query.answer("❌ Not your request!", show_alert=True)
-        return
-
-    db = await get_db()
-
-    row = await db.fetchrow("SELECT balance, last_interest FROM bank WHERE user_id = $1", user_id)
-    if not row:
-        await query.edit_message_text("*❌ No bank account found!*", parse_mode="Markdown")
-        await db.close()
-        return
-
-    bank_bal, last_interest = row['balance'], row['last_interest']
-    now = datetime.now()
-
-    # 🔥 DEBUG - RENDER LOGS MEIN DEKHO
-    print(f"DEBUG: last_interest = {last_interest}, now = {now}")
-
-    if last_interest:
-        last = datetime.fromisoformat(last_interest)
-        diff = (now - last).total_seconds()
-        print(f"DEBUG: diff = {diff} seconds")
-        if diff < 86400:
-            await query.edit_message_text(
-                f"*⏰ Interest already claimed!*\n\n*Come back in 24 hours.*",
-                parse_mode="Markdown",
-                reply_markup=None
-            )
-            await db.close()
-            return
-
-    if bank_bal <= 1000000:
-        rate = 0.05
-    elif bank_bal <= 5000000:
-        rate = 0.03
-    elif bank_bal <= 10000000:
-        rate = 0.015
-    elif bank_bal <= 20000000:
-        rate = 0.01
-    else:
-        rate = 0.005
-
-    interest = int(bank_bal * rate)
-
-    if action == "bank":
-        new_bank = bank_bal + interest
-        await db.execute("UPDATE bank SET balance = $1, last_interest = $2 WHERE user_id = $3", new_bank, now.isoformat(), user_id)
-        await db.execute("INSERT INTO interest_history (user_id, amount, type, claimed_at) VALUES ($1, $2, 'bank', $3)", user_id, interest, now.isoformat())
-        await db.close()
-
-        await query.edit_message_text(
-            f"*💰 INTEREST CLAIMED!*\n\n"
-            f"*Rate: {rate*100}%*\n"
-            f"*Interest: +{interest:,} 💰*\n"
-            f"*Previous Bank Balance: {bank_bal:,} 💰*\n"
-            f"*New Bank Balance: {new_bank:,} 💰*\n\n"
-            f"*⏰ Next interest: 24h*",
-            parse_mode="Markdown",
-            reply_markup=None
-        )
-
-    elif action == "wallet":
-        prev_wallet = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-        await db.execute("UPDATE bank SET last_interest = $1 WHERE user_id = $2", now.isoformat(), user_id)
-        await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", interest, user_id)
-        await db.execute("INSERT INTO interest_history (user_id, amount, type, claimed_at) VALUES ($1, $2, 'wallet', $3)", user_id, interest, now.isoformat())
-        new_wallet = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-        await db.close()
-
-        await query.edit_message_text(
-            f"*💰 INTEREST CLAIMED!*\n\n"
-            f"*Rate: {rate*100}%*\n"
-            f"*Interest: +{interest:,} 💰*\n"
-            f"*Previous Wallet Balance: {prev_wallet:,} 💰*\n"
-            f"*New Wallet Balance: {new_wallet:,} 💰*\n\n"
-            f"*⏰ Next interest: 24h*",
-            parse_mode="Markdown",
-            reply_markup=None
-        )
-
-    elif action == "history":
-        history = await db.fetch("SELECT amount, type, claimed_at FROM interest_history WHERE user_id = $1 ORDER BY claimed_at DESC LIMIT 10", user_id)
-
-        if not history:
-            await query.edit_message_text("*📜 No interest history yet!*", parse_mode="Markdown")
-            await db.close()
-            return
-
-        msg = "*📜 INTEREST HISTORY*\n\n"
-        total = 0
-        for h in history:
-            msg += f"*📅 {h['claimed_at'][:10]}  →  +{h['amount']:,} 💰  ({h['type']})*\n"
-            total += h['amount']
-
-        msg += f"\n*💰 Total Interest: {total:,} 💰*"
-
-        streak = await db.fetchval("""
-            SELECT COUNT(*) FROM (
-                SELECT DISTINCT DATE(claimed_at) as d
-                FROM interest_history
-                WHERE user_id = $1
-                ORDER BY d DESC
-                LIMIT 7
-            ) t
-        """, user_id)
-
-        if streak and streak > 0:
-            msg += f"\n*🔥 Streak: {streak} days*"
-
-        await db.close()
-        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=None)
+    await update.message.reply_text(
+        f"*💰 INTEREST CLAIMED!*\n\n"
+        f"*Rate: {rate*100}%*\n"
+        f"*Interest: +{interest:,} 💰*\n"
+        f"*New Bank Balance: {new_bank:,} 💰*\n\n"
+        f"*⏰ Next interest: 24h*",
+        parse_mode="Markdown"
+    )
 
 # ============ LOTTERY SYSTEM ==========
 async def lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6391,41 +6266,6 @@ async def fix_achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔒 Duplicate protection added!\n\n"
         f"💡 Now /achievements will show correctly."
     )
-# ============ RESET INTEREST (ADMIN ONLY - REPLY WALA) ==========
-async def reset_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("❌ Admin only!")
-        return
-    
-    if update.message.reply_to_message:
-        user_id = update.message.reply_to_message.from_user.id
-        user_name = update.message.reply_to_message.from_user.first_name
-    else:
-        user_id = update.effective_user.id
-        user_name = update.effective_user.first_name
-    
-    db = await get_db()
-    
-    # 🔥 CHECK KARO BANK ACCOUNT HAI YA NAHI
-    row = await db.fetchrow("SELECT balance FROM bank WHERE user_id = $1", user_id)
-    if not row:
-        await update.message.reply_text("❌ No bank account found!")
-        await db.close()
-        return
-    
-    # 🔥 LAST_INTEREST KO NULL / 25 HOUR PEHLE SET KARO
-    old_time = datetime.now() - timedelta(hours=25)
-    await db.execute("UPDATE bank SET last_interest = $1 WHERE user_id = $2", old_time.isoformat(), user_id)
-    
-    await db.close()
-    
-    await update.message.reply_text(
-        f"✅ INTEREST RESET!\n\n"
-        f"User: {user_name}\n"
-        f"Now you can claim interest again!\n\n"
-        f"Use /claim_interest to test",
-        parse_mode="Markdown"
-    )
 
 # ============ MAIN ==========
 async def main():
@@ -6480,7 +6320,6 @@ async def main():
     app.add_handler(CallbackQueryHandler(shop_callback, pattern="^shop_"))
     app.add_handler(CommandHandler("add_women_players", add_women_players))
     app.add_handler(CommandHandler("balance", balance))
-    app.add_handler(CommandHandler("reset_interest", reset_interest))
     # RPS Game
     app.add_handler(CommandHandler("rps", rps))
     app.add_handler(CallbackQueryHandler(rps_join_callback, pattern="^rps_join_"))
@@ -6532,7 +6371,6 @@ async def main():
     app.add_handler(CommandHandler("deposit", deposit))
     app.add_handler(CommandHandler("withdraw", withdraw))
     app.add_handler(CommandHandler("claim_interest", claim_interest))
-    app.add_handler(CallbackQueryHandler(interest_callback, pattern="^interest_"))
     app.add_handler(CommandHandler("removeplayer2", removeplayer2))
     app.add_handler(CommandHandler("removeplayer3", removeplayer3))
     app.add_handler(CommandHandler("removeplayer4", removeplayer4))
