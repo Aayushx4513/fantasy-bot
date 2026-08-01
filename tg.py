@@ -1918,19 +1918,19 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     row = await db.fetchrow("SELECT balance, last_interest FROM bank WHERE user_id = $1", user_id)
     if not row:
-        await query.edit_message_text("❌ No bank account found!")
+        await query.edit_message_text("*❌ No bank account found!*", parse_mode="Markdown")
         await db.close()
         return
 
     bank_bal, last_interest = row['balance'], row['last_interest']
     now = datetime.now()
 
-    # Check if interest already claimed
     if last_interest:
         last = datetime.fromisoformat(last_interest)
         if (now - last).total_seconds() < 86400:
             await query.edit_message_text(
-                f"⏰ Interest already claimed!\n\nCome back in 24 hours.",
+                f"*⏰ Interest already claimed!*\n\n*Come back in 24 hours.*",
+                parse_mode="Markdown",
                 reply_markup=None
             )
             await db.close()
@@ -1953,17 +1953,16 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         new_bank = bank_bal + interest
         await db.execute("UPDATE bank SET balance = $1, last_interest = $2 WHERE user_id = $3", new_bank, now.isoformat(), user_id)
         await db.execute("INSERT INTO interest_history (user_id, amount, type, claimed_at) VALUES ($1, $2, 'bank', $3)", user_id, interest, now.isoformat())
-        
-        # 🔥 DB CLOSE KARO
         await db.close()
 
         await query.edit_message_text(
-            f"💰 INTEREST CLAIMED!\n\n"
-            f"Rate: {rate*100}%\n"
-            f"Interest: +{interest:,} 💰\n"
-            f"Previous Bank Balance: {bank_bal:,} 💰\n"
-            f"New Bank Balance: {new_bank:,} 💰\n\n"
-            f"⏰ Next interest: 24h",
+            f"*💰 INTEREST CLAIMED!*\n\n"
+            f"*Rate: {rate*100}%*\n"
+            f"*Interest: +{interest:,} 💰*\n"
+            f"*Previous Bank Balance: {bank_bal:,} 💰*\n"
+            f"*New Bank Balance: {new_bank:,} 💰*\n\n"
+            f"*⏰ Next interest: 24h*",
+            parse_mode="Markdown",
             reply_markup=None
         )
 
@@ -1973,17 +1972,16 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", interest, user_id)
         await db.execute("INSERT INTO interest_history (user_id, amount, type, claimed_at) VALUES ($1, $2, 'wallet', $3)", user_id, interest, now.isoformat())
         new_wallet = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-        
-        # 🔥 DB CLOSE KARO
         await db.close()
 
         await query.edit_message_text(
-            f"💰 INTEREST CLAIMED!\n\n"
-            f"Rate: {rate*100}%\n"
-            f"Interest: +{interest:,} 💰\n"
-            f"Previous Wallet Balance: {prev_wallet:,} 💰\n"
-            f"New Wallet Balance: {new_wallet:,} 💰\n\n"
-            f"⏰ Next interest: 24h",
+            f"*💰 INTEREST CLAIMED!*\n\n"
+            f"*Rate: {rate*100}%*\n"
+            f"*Interest: +{interest:,} 💰*\n"
+            f"*Previous Wallet Balance: {prev_wallet:,} 💰*\n"
+            f"*New Wallet Balance: {new_wallet:,} 💰*\n\n"
+            f"*⏰ Next interest: 24h*",
+            parse_mode="Markdown",
             reply_markup=None
         )
 
@@ -1991,17 +1989,17 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         history = await db.fetch("SELECT amount, type, claimed_at FROM interest_history WHERE user_id = $1 ORDER BY claimed_at DESC LIMIT 10", user_id)
 
         if not history:
-            await query.edit_message_text("📜 No interest history yet!")
+            await query.edit_message_text("*📜 No interest history yet!*", parse_mode="Markdown")
             await db.close()
             return
 
-        msg = "📜 INTEREST HISTORY\n\n"
+        msg = "*📜 INTEREST HISTORY*\n\n"
         total = 0
         for h in history:
-            msg += f"📅 {h['claimed_at'][:10]}  →  +{h['amount']:,} 💰  ({h['type']})\n"
+            msg += f"*📅 {h['claimed_at'][:10]}  →  +{h['amount']:,} 💰  ({h['type']})*\n"
             total += h['amount']
 
-        msg += f"\n💰 Total Interest: {total:,} 💰"
+        msg += f"\n*💰 Total Interest: {total:,} 💰*"
 
         streak = await db.fetchval("""
             SELECT COUNT(*) FROM (
@@ -2014,12 +2012,10 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """, user_id)
 
         if streak and streak > 0:
-            msg += f"\n🔥 Streak: {streak} days"
+            msg += f"\n*🔥 Streak: {streak} days*"
 
-        # 🔥 DB CLOSE KARO
         await db.close()
-        await query.edit_message_text(msg, reply_markup=None)
-
+        await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=None)
 
 # ============ LOTTERY SYSTEM ==========
 async def lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
