@@ -295,6 +295,16 @@ async def init_db():
     ''')
     
     await db.execute('''
+        CREATE TABLE IF NOT EXISTS interest_history (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT,
+            amount INT,
+            type TEXT,
+            claimed_at TIMESTAMP
+        )
+    ''')
+
+    await db.execute('''
         CREATE TABLE IF NOT EXISTS code_claims (
             code TEXT,
             user_id BIGINT,
@@ -698,6 +708,7 @@ async def rmpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text('❌ Profile photo removed!')
 
 # ============ CLAIM ==========
+# ============ CLAIM ==========
 async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_id = update.message.chat.id
@@ -727,7 +738,7 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         extra_note = "\n\n💡 Tip: Use /claim in CL Zone Group to get 1000 credits!"
     else:
         reward = 500
-        # 🔥 SAHI LINK - 1 HAI, L NAHI
+        # 🔥 FIX: POORA LINK DAALO (CUT MAT KARO)
         extra_note = f"\n\n💡 Tip: Use /claim in [CL Zone Group](https://t.me/+eTD1m8Cjc_wyOTNl) to get 1000 credits!"
 
     await db.execute("INSERT INTO claim (user_id, last_claim) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_claim = $2", user_id, today)
@@ -1815,6 +1826,7 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(f"✅ WITHDRAWN!\n\nAmount: -{amount:,} 💰\nBank: {bank_bal:,} → {new_bank:,} 💰\nWallet: {new_wallet - amount:,} → {new_wallet:,} 💰")
 
+# ============ CLAIM INTEREST ==========
 async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
@@ -1840,11 +1852,15 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
             remaining = next_time - now
             hours = remaining.seconds // 3600
             mins = (remaining.seconds % 3600) // 60
-            await update.message.reply_text(f"⏰ Interest not ready yet!\n\nCome back in {hours}h {mins}m")
+            await update.message.reply_text(
+                f"*⏰ Interest not ready yet!*\n\n"
+                f"*Come back in {hours}h {mins}m*",
+                parse_mode="Markdown"
+            )
             await db.close()
             return
 
-    # 🔥 TIER SYSTEM — YAHAN SE CHANGE
+    # 🔥 TIER SYSTEM
     if bank_bal <= 1000000:
         rate = 0.05
     elif bank_bal <= 5000000:
@@ -1857,17 +1873,131 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         rate = 0.005
 
     interest = int(bank_bal * rate)
-    new_bank = bank_bal + interest
-    await db.execute("UPDATE bank SET balance = $1, last_interest = $2 WHERE user_id = $3", new_bank, now.isoformat(), user_id)
-    await db.close()
+
+    # 🔥 BUTTONS
+    keyboard = [
+        [
+            InlineKeyboardButton("💳 CLAIM & DEPOSIT TO BANK", callback_data=f"interest_bank_{user_id}"),
+            InlineKeyboardButton("👛 CLAIM TO WALLET", callback_data=f"interest_wallet_{user_id}")
+        ],
+        [InlineKeyboardButton("📜 HISTORY", callback_data=f"interest_history_{user_id}")]
+    ]
 
     await update.message.reply_text(
-        f"💰 INTEREST CLAIMED!\n\n"
-        f"Rate: {rate*100}%\n"
-        f"Interest: +{interest:,} 💰\n"
-        f"New Bank Balance: {new_bank:,} 💰\n\n"
-        f"⏰ Next interest: 24h"
+        f"*💰 INTEREST AVAILABLE!*\n\n"
+        f"*Rate: {rate*100}%*\n"
+        f"*Interest: +{interest:,} 💰*\n\n"
+        f"*Choose an option:*",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
     )
+    await db.close()
+
+# ============ INTEREST CALLBACK ==========
+async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    parts = data.split("_")
+    action = parts[1]
+    user_id = int(parts[2])
+
+    if update.effective_user.id != user_id:
+        await query.answer("❌ Not your request!", show_alert=True)
+        return
+
+    db = await get_db()
+
+    row = await db.fetchrow("SELECT balance, last_interest FROM bank WHERE user_id = $1", user_id)
+    if not row:
+        await query.edit_message_text("❌ No bank account found!", parse_mode="Markdown")
+        await db.close()
+        return
+
+    bank_bal, last_interest = row['balance'], row['last_interest']
+    now = datetime.now()
+
+    # 🔥 RATE CALCULATE
+    if bank_bal <= 1000000:
+        rate = 0.05
+    elif bank_bal <= 5000000:
+        rate = 0.03
+    elif bank_bal <= 10000000:
+        rate = 0.015
+    elif bank_bal <= 20000000:
+        rate = 0.01
+    else:
+        rate = 0.005
+
+    interest = int(bank_bal * rate)
+
+    if action == "bank":
+        new_bank = bank_bal + interest
+        await db.execute("UPDATE bank SET balance = $1, last_interest = $2 WHERE user_id = $3", new_bank, now.isoformat(), user_id)
+        
+        # 🔥 SAVE HISTORY
+        await db.execute("INSERT INTO interest_history (user_id, amount, type, claimed_at) VALUES ($1, $2, 'bank', $3)", user_id, interest, now.isoformat())
+
+        await query.edit_message_text(
+            f"*💰 INTEREST CLAIMED!*\n\n"
+            f"*Rate: {rate*100}%*\n"
+            f"*Interest: +{interest:,} 💰*\n"
+            f"*New Bank Balance: {new_bank:,} 💰*\n\n"
+            f"*⏰ Next interest: 24h*",
+            parse_mode="Markdown"
+        )
+
+    elif action == "wallet":
+        await db.execute("UPDATE bank SET last_interest = $1 WHERE user_id = $2", now.isoformat(), user_id)
+        await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", interest, user_id)
+        
+        # 🔥 SAVE HISTORY
+        await db.execute("INSERT INTO interest_history (user_id, amount, type, claimed_at) VALUES ($1, $2, 'wallet', $3)", user_id, interest, now.isoformat())
+
+        new_wallet = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
+
+        await query.edit_message_text(
+            f"*💰 INTEREST CLAIMED!*\n\n"
+            f"*Rate: {rate*100}%*\n"
+            f"*Interest: +{interest:,} 💰*\n"
+            f"*New Wallet Balance: {new_wallet:,} 💰*\n\n"
+            f"*⏰ Next interest: 24h*",
+            parse_mode="Markdown"
+        )
+
+    elif action == "history":
+        history = await db.fetch("SELECT amount, type, claimed_at FROM interest_history WHERE user_id = $1 ORDER BY claimed_at DESC LIMIT 10", user_id)
+        
+        if not history:
+            await query.edit_message_text("*📜 No interest history yet!*", parse_mode="Markdown")
+            await db.close()
+            return
+
+        msg = "*📜 INTEREST HISTORY*\n\n"
+        total = 0
+        for h in history:
+            msg += f"*📅 {h['claimed_at'][:10]}  →  +{h['amount']:,} 💰  ({h['type']})*\n"
+            total += h['amount']
+        
+        msg += f"\n*💰 Total Interest: {total:,} 💰*"
+        
+        # 🔥 STREAK CALCULATE
+        streak = await db.fetchval("""
+            SELECT COUNT(*) FROM (
+                SELECT DISTINCT DATE(claimed_at) as d 
+                FROM interest_history 
+                WHERE user_id = $1 
+                ORDER BY d DESC 
+                LIMIT 7
+            ) t
+        """, user_id)
+        
+        if streak:
+            msg += f"\n*🔥 Streak: {streak} days*"
+
+        await query.edit_message_text(msg, parse_mode="Markdown")
+
+    await db.close()
 
 # ============ LOTTERY SYSTEM ==========
 async def lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6332,7 +6462,7 @@ async def main():
     app.add_handler(CommandHandler("removeplayer2", removeplayer2))
     app.add_handler(CommandHandler("removeplayer3", removeplayer3))
     app.add_handler(CommandHandler("removeplayer4", removeplayer4))
-
+    app.add_handler(CallbackQueryHandler(interest_callback, pattern="^interest_"))
     # Admin Cricket
     app.add_handler(CommandHandler("addmatch", addmatch))
     app.add_handler(CommandHandler("deletematch", deletematch))
