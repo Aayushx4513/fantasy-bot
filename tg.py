@@ -1107,11 +1107,10 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    
+
     msg = (
-        "📋 CL ZONE - COMMAND LIST\n\n"
-        
-        "👤 PROFILE\n"
+        "*📋 CL BOT - COMMAND LIST*\n\n"
+        "*👤 PROFILE*\n"
         "• /start - Start bot\n"
         "• /profile - Your stats & collection\n"
         "• /balance - Check wallet balance\n"
@@ -1120,15 +1119,13 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /rmbio - Remove bio\n"
         "• /setpfp - Set photo (reply to pic)\n"
         "• /rmpfp - Remove photo\n\n"
-        
-        "💰 EARN CREDITS\n"
+        "*💰 EARN CREDITS*\n"
         "• /claim - 500 daily\n"
         "• /spin - 1,000-10,000 daily\n"
         "• /dice <amount> - 0x to 2.5x\n"
         "• /flip heads/tails <amount> - 2x\n"
         "• /tip <amount> (reply) - Send credits\n\n"
-        
-        "🏏 CRICKET BETTING\n"
+        "*🏏 CRICKET BETTING*\n"
         "• /matches - Live matches\n"
         "• /bet <team> <amount> - Place bet\n"
         "• /mybets - Your bets\n"
@@ -1136,44 +1133,37 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /allbets - All bets\n"
         "• /history - Win/loss record\n"
         "• /top_fantasy - Fantasy points ranking\n\n"
-        
-        "🏆 ACHIEVEMENTS\n"
+        "*🏆 ACHIEVEMENTS*\n"
         "• /achievements - Your badges\n"
         "• /hof - Hall of Fame\n\n"
-        
-        "🛒 SHOP\n"
+        "*🛒 SHOP*\n"
         "• /shop - Buy players\n"
         "• /buy <id> - Purchase mens player\n"
         "• /buyw <id> - Purchase women player\n"
         "• /myteam - Your collection\n"
         "• /top - Top collectors\n\n"
-        
-        "🛍️ AFFORDABLE STORE\n"
+        "*🛍️ AFFORDABLE STORE*\n"
         "• /shop2 - Budget players\n"
         "• /buy2 <id> - Purchase\n"
         "• /myteam2 - Your collection\n"
         "• /top2 - Top collectors\n\n"
-        
-        "🛒 TG PLAYERS\n"
+        "*🛒 TG PLAYERS*\n"
         "• /shop3 - Telegram players\n"
         "• /buy3 <id> - Purchase\n"
         "• /myteam3 - Your collection\n"
         "• /top3 - Top collectors\n\n"
-        
-        "🏦 BANK\n"
+        "*🏦 BANK*\n"
         "• /bank - Check balance\n"
         "• /deposit <amount> - Add to bank\n"
         "• /withdraw <amount> - Take from bank\n"
         "• /claim_interest - 5% daily\n\n"
-        
-        "🎰 LOTTERY\n"
+        "*🎰 LOTTERY*\n"
         "• /lottery - Lottery menu\n"
         "• /buy_ticket <qty> - Buy tickets (20k each)\n"
         "• /mytickets - Your tickets\n"
         "• /lottery_info - Lottery stats\n"
         "• /claim_coupon <code> - Claim free tickets\n\n"
-        
-        "🎮 GAMES\n"
+        "*🎮 GAMES*\n"
         "• /hilo <bet> - HiLo card game (100-10k bet)\n"
         "• /ttt [amount] - Tic Tac Toe\n"
         "• /mines <amount> <bombs> - Mines game\n"
@@ -1184,18 +1174,24 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /claimcode <code> - Claim rewards\n"
         "• /activecodes - Active codes\n"
         "• /numpuz - Number puzzle\n"
-        "• /tower - Tower climb game\n"
-        "• /afk - Set AFK status\n\n"
-        
-        "🎁 REFERRAL\n"
+        "• /tower - Tower climb game\n\n"
+        "*🎁 REFERRAL*\n"
         "• /refer - Get your link (1k per refer)\n\n"
-        
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "💡 Need help? @clbothelp"
+        "*💡 Need help? @clbothelp*"
     )
-    
-    await update.message.reply_text(msg)
-# ============ LEADERBOARD ==========
+
+    # 🔥 BUTTON - GROUP LINK
+    keyboard = [
+        [InlineKeyboardButton("👥 JOIN CL ZONE GROUP", url="https://t.me/+EsC9tYVccrJmNDY1")]
+    ]
+
+    await update.message.reply_text(
+        msg,
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
@@ -1860,7 +1856,7 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await db.close()
             return
 
-    # 🔥 TIER SYSTEM
+    # TIER SYSTEM
     if bank_bal <= 1000000:
         rate = 0.05
     elif bank_bal <= 5000000:
@@ -1874,12 +1870,10 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     interest = int(bank_bal * rate)
 
-    # 🔥 BUTTONS
+    # 🔥 FIXED BUTTONS - ALAG ALAG ROW
     keyboard = [
-        [
-            InlineKeyboardButton("💳 CLAIM & DEPOSIT TO BANK", callback_data=f"interest_bank_{user_id}"),
-            InlineKeyboardButton("👛 CLAIM TO WALLET", callback_data=f"interest_wallet_{user_id}")
-        ],
+        [InlineKeyboardButton("💳 DEPOSIT TO BANK", callback_data=f"interest_bank_{user_id}")],
+        [InlineKeyboardButton("👛 TO WALLET", callback_data=f"interest_wallet_{user_id}")],
         [InlineKeyboardButton("📜 HISTORY", callback_data=f"interest_history_{user_id}")]
     ]
 
@@ -1892,6 +1886,7 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
     await db.close()
+
 
 # ============ INTEREST CALLBACK ==========
 async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1917,7 +1912,7 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bank_bal, last_interest = row['balance'], row['last_interest']
     now = datetime.now()
 
-    # 🔥 RATE CALCULATE
+    # RATE CALCULATE
     if bank_bal <= 1000000:
         rate = 0.05
     elif bank_bal <= 5000000:
@@ -1934,8 +1929,6 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if action == "bank":
         new_bank = bank_bal + interest
         await db.execute("UPDATE bank SET balance = $1, last_interest = $2 WHERE user_id = $3", new_bank, now.isoformat(), user_id)
-        
-        # 🔥 SAVE HISTORY
         await db.execute("INSERT INTO interest_history (user_id, amount, type, claimed_at) VALUES ($1, $2, 'bank', $3)", user_id, interest, now.isoformat())
 
         await query.edit_message_text(
@@ -1950,8 +1943,6 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif action == "wallet":
         await db.execute("UPDATE bank SET last_interest = $1 WHERE user_id = $2", now.isoformat(), user_id)
         await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", interest, user_id)
-        
-        # 🔥 SAVE HISTORY
         await db.execute("INSERT INTO interest_history (user_id, amount, type, claimed_at) VALUES ($1, $2, 'wallet', $3)", user_id, interest, now.isoformat())
 
         new_wallet = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
@@ -1981,7 +1972,6 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         msg += f"\n*💰 Total Interest: {total:,} 💰*"
         
-        # 🔥 STREAK CALCULATE
         streak = await db.fetchval("""
             SELECT COUNT(*) FROM (
                 SELECT DISTINCT DATE(claimed_at) as d 
@@ -1992,7 +1982,7 @@ async def interest_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ) t
         """, user_id)
         
-        if streak:
+        if streak and streak > 0:
             msg += f"\n*🔥 Streak: {streak} days*"
 
         await query.edit_message_text(msg, parse_mode="Markdown")
