@@ -897,37 +897,44 @@ async def codestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============ SPIN ==========
-# ============ SPIN COMMAND ==========
+# ============ SPIN ==========
 async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    
+
     db = await get_db()
     last = await db.fetchval("SELECT last_claim FROM spin WHERE user_id = $1", user_id)
-    
+
+    now = datetime.now()
+    today_str = now.strftime("%m/%d/%y")
+
     if last:
-        last_time = datetime.fromisoformat(last)
-        if (datetime.now() - last_time).total_seconds() < 86400:
-            remaining = 86400 - (datetime.now() - last_time).total_seconds()
-            hours = int(remaining // 3600)
-            minutes = int((remaining % 3600) // 60)
-            await update.message.reply_text(f"⏳ Next spin in {hours}h {minutes}m")
+        last_date = datetime.fromisoformat(last)
+        if last_date.date() == now.date():
+            await update.message.reply_text("⚠️ Already spin today!\nCome back tomorrow.")
             await db.close()
             return
-    
-    await db.close()
-    
-    # 🔥 BUTTON KE SAATH SPIN
-    await update.message.reply_text(
-        "🎰 SPIN THE WHEEL! 🎰\n\n"
-        "Click below to spin and win daily rewards!",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎡 SPIN NOW", callback_data="spin_now")]
-        ])
-    )
 
+    amount = random.randint(1000, 10000)
+
+    await db.execute(
+        "INSERT INTO spin (user_id, last_claim) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_claim = $2",
+        user_id, now.isoformat()
+    )
+    await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", amount, user_id)
+
+    new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
+    await db.close()
+
+    await update.message.reply_text(
+        f"*✅ Claimed Daily Spin Rewards of {amount:,} Credits*\n"
+        f"*at {today_str}*\n\n"
+        f"*💰 New balance: {new_bal:,} 💰*\n"
+        f"*🎡 Next spin: tomorrow*",
+        parse_mode="Markdown"
+    )
 
 # ============ SPIN CALLBACK ==========
 # ============ SPIN CALLBACK ==========
