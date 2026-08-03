@@ -5597,7 +5597,6 @@ async def result_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-# ============ MY TEAM ==========
 async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
@@ -5615,7 +5614,11 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """, user_id)
 
     if not players:
-        await update.message.reply_text("*📭 You haven't won any players yet!*\n\n*💡 Bid on players using /players*", parse_mode="Markdown")
+        await update.message.reply_text(
+            "*📭 You haven't won any players yet!*\n\n"
+            "*💡 Bid on players using /players*",
+            parse_mode="Markdown"
+        )
         await db.close()
         return
 
