@@ -940,20 +940,14 @@ async def spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     db = await get_db()
 
-    # 🔥 SPINNING EFFECT - FAST
-    spin_msg = await query.edit_message_text(
-        "*🎰 SPINNING... 🎰*",
-        parse_mode="Markdown"
-    )
+    # 🔥 PEHLE SPINNING MESSAGE
+    spin_msg = await query.edit_message_text("*🎰 SPINNING... 🎰*", parse_mode="Markdown")
 
-    # 🔥 EMOJI ROTATION - FAST (0.1 sec)
+    # 🔥 EMOJI ROTATION
     emojis = ["🎰", "🎡", "🎲", "🎯", "🎪", "🔄", "🌀"]
     for emoji in emojis:
         await asyncio.sleep(0.1)
-        await spin_msg.edit_text(
-            f"*{emoji} SPINNING... {emoji}*",
-            parse_mode="Markdown"
-        )
+        await spin_msg.edit_text(f"*{emoji} SPINNING... {emoji}*", parse_mode="Markdown")
 
     await asyncio.sleep(0.1)
 
@@ -971,7 +965,7 @@ async def spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     await db.close()
 
-    # 🔥 BOLD OUTPUT
+    # 🔥 FINAL RESULT
     await spin_msg.edit_text(
         f"*✅ Claimed Daily Spin Rewards of {amount:,} Credits*\n"
         f"*at {today_str}*\n\n"
@@ -979,7 +973,6 @@ async def spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"*🎡 Next spin: tomorrow*",
         parse_mode="Markdown"
     )
-
 
 # ============ DICE ==========
 async def dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
