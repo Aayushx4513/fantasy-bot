@@ -13,7 +13,7 @@ import asyncio
 import asyncpg
 
 # ============ TOKEN & ADMINS ============
-TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAHw8C4zg1cKpKP_t1wmARZnQiotM17d41g")
+TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAEM6c1Avi4PcbGA_vQMtmcNv_pwD9WltFo")
 ADMIN_IDS = [7687078555, 1315564307, 7361215114]
 
 # ============ DATABASE URL ============
@@ -1876,6 +1876,7 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await db.close()
             return
 
+    # 🔥 TIER SYSTEM
     if bank_bal <= 1000000:
         rate = 0.05
     elif bank_bal <= 5000000:
@@ -1889,10 +1890,7 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     interest = int(bank_bal * rate)
     new_bank = bank_bal + interest
-
     await db.execute("UPDATE bank SET balance = $1, last_interest = $2 WHERE user_id = $3", new_bank, now.isoformat(), user_id)
-    await db.execute("INSERT INTO interest_history (user_id, amount, type, claimed_at) VALUES ($1, $2, 'bank', $3)", user_id, interest, now.isoformat())
-
     await db.close()
 
     await update.message.reply_text(
