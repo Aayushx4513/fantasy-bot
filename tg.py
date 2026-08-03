@@ -896,47 +896,42 @@ async def codestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"📊 CODE STATS\n\n📝 Total codes: {total_codes}\n🟢 Active codes: {active_codes}\n🎯 Total claims: {total_claims}\n💰 Credits given: {total_given:,}\n👥 Unique users: {unique_users}")
 
 
-# ============ SPIN ==========
-# ============ SPIN ==========
+# ============ SPIN COMMAND ==========
 async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
+        await update.message.reply_text('*❌ Send /start first!*', parse_mode="Markdown")
         return
 
     db = await get_db()
     last = await db.fetchval("SELECT last_claim FROM spin WHERE user_id = $1", user_id)
 
-    now = datetime.now()
-    today_str = now.strftime("%m/%d/%y")
-
     if last:
-        last_date = datetime.fromisoformat(last)
-        if last_date.date() == now.date():
-            await update.message.reply_text("⚠️ Already spin today!\nCome back tomorrow.")
+        last_time = datetime.fromisoformat(last)
+        if (datetime.now() - last_time).total_seconds() < 86400:
+            remaining = 86400 - (datetime.now() - last_time).total_seconds()
+            hours = int(remaining // 3600)
+            minutes = int((remaining % 3600) // 60)
+            await update.message.reply_text(
+                f"*⏳ Already claimed! Next spin in {hours}h {minutes}m*",
+                parse_mode="Markdown"
+            )
             await db.close()
             return
 
-    amount = random.randint(1000, 10000)
-
-    await db.execute(
-        "INSERT INTO spin (user_id, last_claim) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_claim = $2",
-        user_id, now.isoformat()
-    )
-    await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", amount, user_id)
-
-    new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     await db.close()
 
+    # 🔥 BUTTON KE SAATH SPIN
     await update.message.reply_text(
-        f"*✅ Claimed Daily Spin Rewards of {amount:,} Credits*\n"
-        f"*at {today_str}*\n\n"
-        f"*💰 New balance: {new_bal:,} 💰*\n"
-        f"*🎡 Next spin: tomorrow*",
+        "*🎰 SPIN THE WHEEL! 🎰*\n\n"
+        "*Click below to spin and win daily rewards!*",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎡 SPIN NOW", callback_data="spin_now")]
+        ]),
         parse_mode="Markdown"
     )
 
-# ============ SPIN CALLBACK ==========
+
 # ============ SPIN CALLBACK ==========
 async def spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -945,16 +940,22 @@ async def spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     db = await get_db()
 
-    # 🔥 SPINNING EFFECT
-    spin_msg = await query.edit_message_text("*🎰 SPINNING... 🎰*\n⏳ Please wait...", parse_mode="Markdown")
+    # 🔥 SPINNING EFFECT - FAST
+    spin_msg = await query.edit_message_text(
+        "*🎰 SPINNING... 🎰*",
+        parse_mode="Markdown"
+    )
 
-    # 🔥 EMOJI ROTATION - 0.2 sec each (Total ~2 sec)
-    emojis = ["🎰", "🎡", "🎲", "🎯", "🎪", "🔄", "🌀", "⭐", "🌟", "✨"]
+    # 🔥 EMOJI ROTATION - FAST (0.1 sec)
+    emojis = ["🎰", "🎡", "🎲", "🎯", "🎪", "🔄", "🌀"]
     for emoji in emojis:
-        await asyncio.sleep(0.2)  # 🔥 0.2 sec
-        await spin_msg.edit_text(f"*{emoji} SPINNING... {emoji}*", parse_mode="Markdown")
+        await asyncio.sleep(0.1)
+        await spin_msg.edit_text(
+            f"*{emoji} SPINNING... {emoji}*",
+            parse_mode="Markdown"
+        )
 
-    await asyncio.sleep(0.2)
+    await asyncio.sleep(0.1)
 
     # 🔥 GENERATE REWARD
     now = datetime.now()
@@ -966,6 +967,7 @@ async def spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id, now.isoformat()
     )
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", amount, user_id)
+
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     await db.close()
 
@@ -977,7 +979,6 @@ async def spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"*🎡 Next spin: tomorrow*",
         parse_mode="Markdown"
     )
-
 
 
 # ============ DICE ==========
