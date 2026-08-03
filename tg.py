@@ -72,6 +72,39 @@ async def init_db():
         )
     ''')
     
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS auction_players (
+            id SERIAL PRIMARY KEY,
+            name TEXT,
+            base_price INT,
+            current_bid INT,
+            highest_bidder BIGINT,
+            added_by BIGINT,
+            added_at TIMESTAMP,
+            end_time TIMESTAMP,
+            status TEXT DEFAULT 'active'  -- active, ended, sold
+        )
+    ''')
+
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS user_players (
+            user_id BIGINT,
+            player_id INT,
+            purchased_at TIMESTAMP,
+            PRIMARY KEY (user_id, player_id)
+        )
+    ''')
+
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS bid_history (
+            id SERIAL PRIMARY KEY,
+            player_id INT,
+            user_id BIGINT,
+            amount INT,
+            bid_at TIMESTAMP
+        )
+    ''')
+
     # Bets table
     await db.execute('''
         CREATE TABLE IF NOT EXISTS bets (
@@ -3151,149 +3184,6 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     )
 
 
-# ============ ADD ALL PLAYERS (20 Current + 20 Legends per country) ==========
-async def add_all_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("❌ Admin only!")
-        return
-    
-    db = await get_db()
-    
-    await db.execute("DELETE FROM shop")
-    
-    # ========== INDIA CURRENT (20) ==========
-    india_current = [
-        ("Virat Kohli", 2000000), ("Rohit Sharma", 1900000), ("Shubman Gill", 1700000),
-        ("Hardik Pandya", 1800000), ("Jasprit Bumrah", 2000000), ("Ravindra Jadeja", 1600000),
-        ("KL Rahul", 1500000), ("Suryakumar Yadav", 1750000), ("Mohammed Shami", 1650000),
-        ("Rishabh Pant", 1550000), ("Mohammed Siraj", 1450000), ("Axar Patel", 1400000),
-        ("Shreyas Iyer", 1480000), ("Ishan Kishan", 1380000), ("Deepak Chahar", 1350000),
-        ("Sanju Samson", 1420000), ("Yuzvendra Chahal", 1390000), ("Bhuvneshwar Kumar", 1370000),
-        ("Shardul Thakur", 1320000), ("Washington Sundar", 1300000)
-    ]
-    
-    # ========== INDIA LEGENDS (20) ==========
-    india_legends = [
-        ("Sachin Tendulkar", 5000000), ("MS Dhoni", 4500000), ("Rahul Dravid", 4000000),
-        ("Sourav Ganguly", 3800000), ("Virender Sehwag", 4200000), ("VVS Laxman", 3500000),
-        ("Anil Kumble", 3600000), ("Kapil Dev", 4800000), ("Sunil Gavaskar", 4400000),
-        ("Zaheer Khan", 3200000), ("Harbhajan Singh", 3100000), ("Yuvraj Singh", 4300000),
-        ("Gautam Gambhir", 3400000), ("Mohammad Azharuddin", 3300000), ("Navjot Sidhu", 2800000),
-        ("Kris Srikkanth", 2700000), ("Erapalli Prasanna", 2500000), ("Bishan Bedi", 2600000),
-        ("Bhagwat Chandrasekhar", 2400000), ("Venkatesh Prasad", 2300000)
-    ]
-    
-    # ========== ENGLAND CURRENT (20) ==========
-    england_current = [
-        ("Joe Root", 1800000), ("Ben Stokes", 1900000), ("Jos Buttler", 1700000),
-        ("Jonny Bairstow", 1600000), ("Jofra Archer", 1750000), ("Moeen Ali", 1500000),
-        ("Sam Curran", 1550000), ("Chris Woakes", 1400000), ("Mark Wood", 1450000),
-        ("Adil Rashid", 1350000), ("Dawid Malan", 1300000), ("Jason Roy", 1250000),
-        ("Liam Livingstone", 1450000), ("Harry Brook", 1500000), ("Reece Topley", 1200000),
-        ("David Willey", 1150000), ("Phil Salt", 1100000), ("Will Jacks", 1050000),
-        ("Gus Atkinson", 1000000), ("Tom Curran", 1080000)
-    ]
-    
-    # ========== ENGLAND LEGENDS (20) ==========
-    england_legends = [
-        ("Ian Botham", 4800000), ("Alastair Cook", 4000000), ("Andrew Flintoff", 4500000),
-        ("Kevin Pietersen", 4200000), ("James Anderson", 5000000), ("Stuart Broad", 4500000),
-        ("Graeme Swann", 3800000), ("Michael Vaughan", 3500000), ("Alec Stewart", 3400000),
-        ("Marcus Trescothick", 3300000), ("Paul Collingwood", 3200000), ("Monty Panesar", 2800000),
-        ("Matthew Hoggard", 2700000), ("Steve Harmison", 3000000), ("Darren Gough", 2900000),
-        ("Graeme Hick", 3100000), ("David Gower", 3500000), ("Geoffrey Boycott", 3800000),
-        ("Fred Trueman", 4000000), ("WG Grace", 5000000)
-    ]
-    
-    # ========== AUSTRALIA CURRENT (20) ==========
-    australia_current = [
-        ("Pat Cummins", 1900000), ("Steve Smith", 2000000), ("David Warner", 1800000),
-        ("Mitchell Starc", 1850000), ("Glenn Maxwell", 1750000), ("Travis Head", 1650000),
-        ("Marnus Labuschagne", 1700000), ("Josh Hazlewood", 1600000), ("Adam Zampa", 1500000),
-        ("Marcus Stoinis", 1450000), ("Cameron Green", 1550000), ("Alex Carey", 1350000),
-        ("Mitchell Marsh", 1400000), ("Nathan Lyon", 1480000), ("Matthew Wade", 1300000),
-        ("Tim David", 1380000), ("Ashton Agar", 1250000), ("Sean Abbott", 1200000),
-        ("Ben McDermott", 1150000), ("Kane Richardson", 1100000)
-    ]
-    
-    # ========== AUSTRALIA LEGENDS (20) ==========
-    australia_legends = [
-        ("Don Bradman", 10000000), ("Ricky Ponting", 5500000), ("Shane Warne", 6000000),
-        ("Glenn McGrath", 5500000), ("Adam Gilchrist", 5000000), ("Matthew Hayden", 4500000),
-        ("Michael Clarke", 4200000), ("Steve Waugh", 4800000), ("Mark Waugh", 4000000),
-        ("Brett Lee", 4500000), ("Dennis Lillee", 5000000), ("Jeff Thomson", 4200000),
-        ("Allan Border", 4600000), ("Greg Chappell", 4400000), ("Ian Chappell", 4200000),
-        ("David Boon", 3800000), ("Dean Jones", 3900000), ("Damien Martyn", 3700000),
-        ("Jason Gillespie", 3600000), ("Michael Hussey", 4300000)
-    ]
-    
-    # ========== NEW ZEALAND CURRENT (20) ==========
-    nz_current = [
-        ("Kane Williamson", 1900000), ("Trent Boult", 1800000), ("Devon Conway", 1600000),
-        ("Daryl Mitchell", 1550000), ("Mitchell Santner", 1450000), ("Lockie Ferguson", 1500000),
-        ("Tim Southee", 1400000), ("Glenn Phillips", 1350000), ("Michael Bracewell", 1250000),
-        ("Finn Allen", 1300000), ("Adam Milne", 1200000), ("Ish Sodhi", 1150000),
-        ("James Neesham", 1250000), ("Tom Latham", 1300000), ("Martin Guptill", 1400000),
-        ("Matt Henry", 1200000), ("Kyle Jamieson", 1350000), ("Henry Nicholls", 1100000),
-        ("Will Young", 1050000), ("Ben Sears", 1000000)
-    ]
-    
-    # ========== NEW ZEALAND LEGENDS (20) ==========
-    nz_legends = [
-        ("Richard Hadlee", 5500000), ("Martin Crowe", 4800000), ("Brendon McCullum", 4500000),
-        ("Daniel Vettori", 4200000), ("Stephen Fleming", 4000000), ("Chris Cairns", 3800000),
-        ("Nathan Astle", 3600000), ("Craig McMillan", 3400000), ("Scott Styris", 3300000),
-        ("Jacob Oram", 3200000), ("Shane Bond", 4500000), ("Geoff Allott", 2800000),
-        ("Dion Nash", 2900000), ("John Wright", 3100000), ("Mark Greatbatch", 3000000),
-        ("Ian Smith", 2900000), ("Lance Cairns", 3500000), ("Ewen Chatfield", 2800000),
-        ("Bruce Taylor", 3000000), ("Bert Sutcliffe", 3200000)
-    ]
-    
-    # ========== INSERT ALL ==========
-    
-    # India
-    for name, price in india_current:
-        await db.execute("INSERT INTO shop (name, price, category, type) VALUES ($1, $2, 'India', 'current')", name, price)
-    for name, price in india_legends:
-        await db.execute("INSERT INTO shop (name, price, category, type) VALUES ($1, $2, 'India', 'legend')", name, price)
-    
-    # England
-    for name, price in england_current:
-        await db.execute("INSERT INTO shop (name, price, category, type) VALUES ($1, $2, 'England', 'current')", name, price)
-    for name, price in england_legends:
-        await db.execute("INSERT INTO shop (name, price, category, type) VALUES ($1, $2, 'England', 'legend')", name, price)
-    
-    # Australia
-    for name, price in australia_current:
-        await db.execute("INSERT INTO shop (name, price, category, type) VALUES ($1, $2, 'Australia', 'current')", name, price)
-    for name, price in australia_legends:
-        await db.execute("INSERT INTO shop (name, price, category, type) VALUES ($1, $2, 'Australia', 'legend')", name, price)
-    
-    # New Zealand
-    for name, price in nz_current:
-        await db.execute("INSERT INTO shop (name, price, category, type) VALUES ($1, $2, 'New Zealand', 'current')", name, price)
-    for name, price in nz_legends:
-        await db.execute("INSERT INTO shop (name, price, category, type) VALUES ($1, $2, 'New Zealand', 'legend')", name, price)
-    
-    
-    total = await db.fetchval("SELECT COUNT(*) FROM shop")
-    current_count = await db.fetchval("SELECT COUNT(*) FROM shop WHERE type = 'current'")
-    legend_count = await db.fetchval("SELECT COUNT(*) FROM shop WHERE type = 'legend'")
-    
-    await db.close()
-    
-    await update.message.reply_text(
-        f"✅ ALL PLAYERS ADDED!\n\n"
-        f"🏏 TOTAL: {total} players\n"
-        f"📊 Current: {current_count} players\n"
-        f"📊 Legends: {legend_count} players\n\n"
-        f"🇮🇳 India: 20 Current + 20 Legends\n"
-        f"🏴󠁧󠁢󠁥󠁮󠁧󠁿 England: 20 Current + 20 Legends\n"
-        f"🇦🇺 Australia: 20 Current + 20 Legends\n"
-        f"🇳🇿 New Zealand: 20 Current + 20 Legends\n\n"
-        f"💡 /shop - Now buy players!"
-    )
-
 # ============ NUMPUZ GAME ==========
 def get_size_for_level(level):
     if level == 1: return 3
@@ -4296,316 +4186,6 @@ async def edithof(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.close()
     await update.message.reply_text(f"✏️ EDITED HALL OF FAME!\n\n❌ Old: {old_text}\n✅ New: {new_text}")
 
-async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("❌ Admin only!")
-        return
-    await update.message.reply_text("🏓 Pong!")
-
-# ============ SHOP3 ==========
-async def shop3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not await is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    db = await get_db()
-    players = await db.fetch("SELECT id, name, price FROM shop3 ORDER BY price ASC")
-    await db.close()
-    if not players:
-        await update.message.reply_text('🛒 SHOP3\n\nNo players yet.\n👑 Admin: /addplayer3 <name> <price>')
-        return
-    msg = "🛒 SHOP3\n\n"
-    for p in players:
-        msg += f"{p['id']}. {p['name']} - {p['price']:,} 💰\n"
-    msg += "\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /buy3 <id> to purchase"
-    await update.message.reply_text(msg)
-
-async def buy3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not await is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text('❌ /buy3 <player_id>')
-        return
-    try:
-        player_id = int(args[0])
-    except:
-        await update.message.reply_text('❌ Invalid ID')
-        return
-    db = await get_db()
-    player = await db.fetchrow("SELECT name, price FROM shop3 WHERE id = $1", player_id)
-    if not player:
-        await update.message.reply_text(f'❌ Player ID {player_id} not found!')
-        await db.close()
-        return
-    balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    if balance < player['price']:
-        await update.message.reply_text(f'❌ Need {player["price"]:,}, have {balance:,}')
-        await db.close()
-        return
-    owned = await db.fetchval("SELECT user_id FROM user_players3 WHERE user_id = $1 AND player_id = $2", user_id, player_id)
-    if owned:
-        await update.message.reply_text(f'❌ You already own {player["name"]}!')
-        await db.close()
-        return
-    await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", player['price'], user_id)
-    await db.execute("INSERT INTO user_players3 (user_id, player_id) VALUES ($1, $2)", user_id, player_id)
-    new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    await db.close()
-    await update.message.reply_text(f"✅ PURCHASED!\n\n🏏 {player['name']}\n💰 Price: {player['price']:,} 💰\n📊 New balance: {new_bal:,} 💰")
-
-async def myteam3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not await is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    db = await get_db()
-    players = await db.fetch("SELECT s.name, s.price FROM user_players3 u JOIN shop3 s ON u.player_id = s.id WHERE u.user_id = $1", user_id)
-    await db.close()
-    if not players:
-        await update.message.reply_text('📭 No shop3 players owned.\nUse /shop3 to buy!')
-        return
-    total = sum(p['price'] for p in players)
-    msg = "💎 MY SHOP3 PLAYERS\n\n"
-    for i, p in enumerate(players, 1):
-        msg += f"{i}. {p['name']} - {p['price']:,} 💰\n"
-    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💰 Total spent: {total:,} 💰"
-    await update.message.reply_text(msg)
-
-async def top3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not await is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    db = await get_db()
-    tops = await db.fetch("SELECT u.name, COUNT(up.player_id) as count, COALESCE(SUM(s.price), 0) as total FROM users u JOIN user_players3 up ON u.user_id = up.user_id JOIN shop3 s ON up.player_id = s.id GROUP BY u.user_id ORDER BY total DESC LIMIT 10")
-    await db.close()
-    if not tops:
-        await update.message.reply_text('🏆 SHOP3 TOP COLLECTORS\n\nNo one owns any yet!')
-        return
-    msg = "🏆 SHOP3 TOP COLLECTORS\n\n"
-    for i, t in enumerate(tops, 1):
-        medal = "👑" if i==1 else "🥈" if i==2 else "🥉" if i==3 else f"{i}."
-        msg += f"{medal} {t['name']} - {t['count']} players ({t['total']:,} 💰)\n"
-    await update.message.reply_text(msg)
-
-async def addplayer3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    args = context.args
-    if len(args) < 2:
-        await update.message.reply_text('❌ /addplayer3 <name> <price>')
-        return
-    name = ' '.join(args[:-1])
-    try:
-        price = int(args[-1])
-    except:
-        await update.message.reply_text('❌ Invalid price!')
-        return
-    db = await get_db()
-    await db.execute("INSERT INTO shop3 (name, price) VALUES ($1, $2)", name, price)
-    await db.close()
-    await update.message.reply_text(f"✅ PLAYER ADDED TO SHOP3!\n\n{name}\n💰 Price: {price:,} 💰")
-
-# ============ SHOP4 ==========
-async def shop4(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not await is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    db = await get_db()
-    players = await db.fetch("SELECT id, name, price FROM shop4 ORDER BY price ASC")
-    await db.close()
-    if not players:
-        await update.message.reply_text('🛒 SHOP4\n\nNo players yet.\n👑 Admin: /addplayer4 <name> <price>')
-        return
-    msg = "🛒 SHOP4\n\n"
-    for p in players:
-        msg += f"{p['id']}. {p['name']} - {p['price']:,} 💰\n"
-    msg += "\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /buy4 <id> to purchase"
-    await update.message.reply_text(msg)
-
-async def buy4(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not await is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text('❌ /buy4 <player_id>')
-        return
-    try:
-        player_id = int(args[0])
-    except:
-        await update.message.reply_text('❌ Invalid ID')
-        return
-    db = await get_db()
-    player = await db.fetchrow("SELECT name, price FROM shop4 WHERE id = $1", player_id)
-    if not player:
-        await update.message.reply_text(f'❌ Player ID {player_id} not found!')
-        await db.close()
-        return
-    balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    if balance < player['price']:
-        await update.message.reply_text(f'❌ Need {player["price"]:,}, have {balance:,}')
-        await db.close()
-        return
-    owned = await db.fetchval("SELECT user_id FROM user_players4 WHERE user_id = $1 AND player_id = $2", user_id, player_id)
-    if owned:
-        await update.message.reply_text(f'❌ You already own {player["name"]}!')
-        await db.close()
-        return
-    await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", player['price'], user_id)
-    await db.execute("INSERT INTO user_players4 (user_id, player_id) VALUES ($1, $2)", user_id, player_id)
-    new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    await db.close()
-    await update.message.reply_text(f"✅ PURCHASED!\n\n🏏 {player['name']}\n💰 Price: {player['price']:,} 💰\n📊 New balance: {new_bal:,} 💰")
-
-async def myteam4(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not await is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    db = await get_db()
-    players = await db.fetch("SELECT s.name, s.price FROM user_players4 u JOIN shop4 s ON u.player_id = s.id WHERE u.user_id = $1", user_id)
-    await db.close()
-    if not players:
-        await update.message.reply_text('📭 No shop4 players owned.\nUse /shop4 to buy!')
-        return
-    total = sum(p['price'] for p in players)
-    msg = "🤑 MY SHOP4 PLAYERS\n\n"
-    for i, p in enumerate(players, 1):
-        msg += f"{i}. {p['name']} - {p['price']:,} 💰\n"
-    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n💰 Total spent: {total:,} 💰"
-    await update.message.reply_text(msg)
-
-async def top4(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not await is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    db = await get_db()
-    tops = await db.fetch("SELECT u.name, COUNT(up.player_id) as count, COALESCE(SUM(s.price), 0) as total FROM users u JOIN user_players4 up ON u.user_id = up.user_id JOIN shop4 s ON up.player_id = s.id GROUP BY u.user_id ORDER BY total DESC LIMIT 10")
-    await db.close()
-    if not tops:
-        await update.message.reply_text('🏆 SHOP4 TOP COLLECTORS\n\nNo one owns any yet!')
-        return
-    msg = "🏆 SHOP4 TOP COLLECTORS\n\n"
-    for i, t in enumerate(tops, 1):
-        medal = "👑" if i==1 else "🥈" if i==2 else "🥉" if i==3 else f"{i}."
-        msg += f"{medal} {t['name']} - {t['count']} players ({t['total']:,} 💰)\n"
-    await update.message.reply_text(msg)
-
-async def addplayer4(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    args = context.args
-    if len(args) < 2:
-        await update.message.reply_text('❌ /addplayer4 <name> <price>')
-        return
-    name = ' '.join(args[:-1])
-    try:
-        price = int(args[-1])
-    except:
-        await update.message.reply_text('❌ Invalid price!')
-        return
-    db = await get_db()
-    await db.execute("INSERT INTO shop4 (name, price) VALUES ($1, $2)", name, price)
-    await db.close()
-    await update.message.reply_text(f"✅ PLAYER ADDED TO SHOP4!\n\n{name}\n💰 Price: {price:,} 💰")
-
-# ============ REMOVE PLAYER FROM SHOP2 ==========
-async def removeplayer2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        return
-    
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text('❌ /removeplayer2 <player_id>')
-        return
-    
-    try:
-        player_id = int(args[0])
-    except:
-        await update.message.reply_text('❌ Invalid ID!')
-        return
-    
-    db = await get_db()
-    player = await db.fetchrow("SELECT name FROM shop2 WHERE id = $1", player_id)
-    
-    if not player:
-        await update.message.reply_text(f'❌ Player ID {player_id} not found in Shop2!')
-        await db.close()
-        return
-    
-    await db.execute("DELETE FROM shop2 WHERE id = $1", player_id)
-    await db.close()
-    
-    await update.message.reply_text(f"✅ REMOVED from Shop2!\n\n🏏 {player['name']}\n🆔 ID: {player_id}")
-
-
-# ============ REMOVE PLAYER FROM SHOP3 ==========
-async def removeplayer3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        return
-    
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text('❌ /removeplayer3 <player_id>')
-        return
-    
-    try:
-        player_id = int(args[0])
-    except:
-        await update.message.reply_text('❌ Invalid ID!')
-        return
-    
-    db = await get_db()
-    player = await db.fetchrow("SELECT name FROM shop3 WHERE id = $1", player_id)
-    
-    if not player:
-        await update.message.reply_text(f'❌ Player ID {player_id} not found in Shop3!')
-        await db.close()
-        return
-    
-    await db.execute("DELETE FROM shop3 WHERE id = $1", player_id)
-    await db.close()
-    
-    await update.message.reply_text(f"✅ REMOVED from Shop3!\n\n🏏 {player['name']}\n🆔 ID: {player_id}")
-
-
-# ============ REMOVE PLAYER FROM SHOP4 ==========
-async def removeplayer4(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        return
-    
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text('❌ /removeplayer4 <player_id>')
-        return
-    
-    try:
-        player_id = int(args[0])
-    except:
-        await update.message.reply_text('❌ Invalid ID!')
-        return
-    
-    db = await get_db()
-    player = await db.fetchrow("SELECT name FROM shop4 WHERE id = $1", player_id)
-    
-    if not player:
-        await update.message.reply_text(f'❌ Player ID {player_id} not found in Shop4!')
-        await db.close()
-        return
-    
-    await db.execute("DELETE FROM shop4 WHERE id = $1", player_id)
-    await db.close()
-    
-    await update.message.reply_text(f"✅ REMOVED from Shop4!\n\n🏏 {player['name']}\n🆔 ID: {player_id}")
 
 
 # ============ CLAIM CODES ==========
@@ -5479,51 +5059,6 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 
-async def add_women_players(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("❌ Admin only!")
-        return
-    
-    db = await get_db()
-    
-    # Clear existing
-    await db.execute("DELETE FROM shop_women")
-    
-    women_players = [
-        ("Smriti Mandhana", 1500000, "India", "batter"),
-        ("Harmanpreet Kaur", 1400000, "India", "batter"),
-        ("Jemimah Rodrigues", 1300000, "India", "batter"),
-        ("Shafali Verma", 1350000, "India", "batter"),
-        ("Deepti Sharma", 1250000, "India", "allrounder"),
-        ("Poonam Yadav", 1150000, "India", "bowler"),
-        ("Richa Ghosh", 1200000, "India", "wicketkeeper"),
-        ("Meg Lanning", 1600000, "Australia", "batter"),
-        ("Ellyse Perry", 1800000, "Australia", "allrounder"),
-        ("Alyssa Healy", 1550000, "Australia", "wicketkeeper"),
-        ("Sophie Devine", 1650000, "New Zealand", "allrounder"),
-        ("Amelia Kerr", 1450000, "New Zealand", "allrounder"),
-        ("Suzy Bates", 1500000, "New Zealand", "batter"),
-        ("Natalie Sciver", 1550000, "England", "allrounder"),
-        ("Heather Knight", 1500000, "England", "batter"),
-        ("Tammy Beaumont", 1400000, "England", "batter"),
-        ("Marizanne Kapp", 1450000, "South Africa", "allrounder"),
-        ("Laura Wolvaardt", 1350000, "South Africa", "batter"),
-        ("Tahlia McGrath", 1400000, "Australia", "allrounder"),
-        ("Beth Mooney", 1450000, "Australia", "wicketkeeper"),
-    ]
-    
-    for name, price, country, ptype in women_players:
-        await db.execute("INSERT INTO shop_women (name, price, country, type) VALUES ($1, $2, $3, $4)", name, price, country, ptype)
-    
-    await db.close()
-    
-    await update.message.reply_text(
-        f"✅ WOMEN PLAYERS ADDED!\n\n"
-        f"👩 Total: {len(women_players)} players\n"
-        f"💰 Prices: 1,150,000 - 1,800,000\n\n"
-        f"💡 /shop then click Women Players to buy!"
-    )
-
 # ============ TOWER CLIMB GAME ============
 
 import random
@@ -5903,7 +5438,6 @@ async def fix_duplicates(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ FIXED DUPLICATES!\n\n"
         f"🗑️ Removed: {removed} duplicate entries"
     )
-
 async def fix_achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Fix all achievement duplicates - Admin only"""
     if update.effective_user.id not in ADMIN_IDS:
@@ -5942,19 +5476,388 @@ async def fix_achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💡 Now /achievements will show correctly."
     )
 
+# ============ ADD PLAYER (NO TIME) ==========
+async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("*❌ Admin only!*", parse_mode="Markdown")
+        return
+
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "*❌ Usage:* `/add_player <name> <base_price>`\n\n"
+            "*Example:* `/add_player Virat Kohli 50000`\n\n"
+            "*💡 Time will be set manually (TBD)*",
+            parse_mode="Markdown"
+        )
+        return
+
+    name = " ".join(args[:-1])
+    try:
+        base_price = int(args[-1])
+    except:
+        await update.message.reply_text("*❌ Invalid price!*", parse_mode="Markdown")
+        return
+
+    if base_price < 1000:
+        await update.message.reply_text("*❌ Base price must be at least 1,000!*", parse_mode="Markdown")
+        return
+
+    db = await get_db()
+    now = datetime.now()
+
+    # 🔥 NO END TIME - TBD (NULL)
+    await db.execute(
+        "INSERT INTO auction_players (name, base_price, current_bid, added_by, added_at, end_time, status) VALUES ($1, $2, $3, $4, $5, NULL, 'active')",
+        name, base_price, base_price, user_id, now.isoformat()
+    )
+
+    player_id = await db.fetchval("SELECT lastval()")
+    await db.close()
+
+    await update.message.reply_text(
+        f"*✅ PLAYER ADDED!*\n\n"
+        f"*🏏 Name:* {name}\n"
+        f"*💰 Base Price:* {base_price:,}\n"
+        f"*🆔 ID:* {player_id}\n"
+        f"*⏰ Time:* TBD (Manual)\n\n"
+        f"*💡 Use /result_auction {player_id} when ready!*",
+        parse_mode="Markdown"
+    )
+
+# ============ PLAYERS LIST ==========
+async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not await is_registered(user_id):
+        await update.message.reply_text('*❌ Send /start first!*', parse_mode="Markdown")
+        return
+
+    db = await get_db()
+
+    players_data = await db.fetch("""
+        SELECT id, name, base_price, current_bid, highest_bidder, end_time
+        FROM auction_players
+        WHERE status = 'active'
+        ORDER BY id
+    """)
+
+    if not players_data:
+        await update.message.reply_text("*📭 No players available right now!*", parse_mode="Markdown")
+        await db.close()
+        return
+
+    msg = "*🏏 AVAILABLE PLAYERS*\n\n"
+    for p in players_data:
+        # 🔥 TIME HATAO - Sirf "TBD" dikhao
+        time_left = "⏰ TBD"
+
+        bidder_name = "No bids"
+        if p['highest_bidder']:
+            bidder = await db.fetchval("SELECT name FROM users WHERE user_id = $1", p['highest_bidder'])
+            bidder_name = bidder if bidder else "Unknown"
+
+        msg += f"*🆔 {p['id']}. {p['name']}*\n"
+        msg += f"   *💰 Base:* {p['base_price']:,} | *Current:* {p['current_bid']:,}\n"
+        msg += f"   *👤 Highest Bidder:* {bidder_name}\n"
+        msg += f"   *{time_left}*\n\n"
+
+    msg += "*💡 /bid <id> <amount> to place bid*"
+
+    await update.message.reply_text(msg, parse_mode="Markdown")
+    await db.close()
+
+# ============ BID ==========
+async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not await is_registered(user_id):
+        await update.message.reply_text('*❌ Send /start first!*', parse_mode="Markdown")
+        return
+
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "*❌ Usage:* `/bid <player_id> <amount>`\n\n"
+            "*Example:* `/bid 1 60000`\n\n"
+            "*💡 Use /players to see available players.*",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        player_id = int(args[0])
+        amount = int(args[1])
+    except:
+        await update.message.reply_text("*❌ Invalid input! Use numbers only.*", parse_mode="Markdown")
+        return
+
+    if amount < 1000:
+        await update.message.reply_text("*❌ Minimum bid is 1,000!*", parse_mode="Markdown")
+        return
+
+    db = await get_db()
+
+    player = await db.fetchrow("SELECT * FROM auction_players WHERE id = $1 AND status = 'active'", player_id)
+    if not player:
+        await update.message.reply_text("*❌ Player not found or auction ended!*", parse_mode="Markdown")
+        await db.close()
+        return
+
+    end_time = datetime.fromisoformat(player['end_time'])
+    if datetime.now() > end_time:
+        await update.message.reply_text("*⏰ Auction for this player has ended!*", parse_mode="Markdown")
+        await db.close()
+        return
+
+    if amount <= player['current_bid']:
+        await update.message.reply_text(
+            f"*❌ Bid must be higher than current bid!*\n\n"
+            f"*Current Bid:* {player['current_bid']:,}\n"
+            f"*Minimum Bid:* {player['current_bid'] + 1:,}",
+            parse_mode="Markdown"
+        )
+        await db.close()
+        return
+
+    balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
+    if balance < amount:
+        await update.message.reply_text(
+            f"*❌ Insufficient balance!*\n\n"
+            f"*Your Balance:* {balance:,}\n"
+            f"*Required:* {amount:,}",
+            parse_mode="Markdown"
+        )
+        await db.close()
+        return
+
+    # 🔥 DEDUCT BALANCE
+    await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", amount, user_id)
+
+    # 🔥 UPDATE CURRENT BID
+    await db.execute(
+        "UPDATE auction_players SET current_bid = $1, highest_bidder = $2 WHERE id = $3",
+        amount, user_id, player_id
+    )
+
+    # 🔥 SAVE BID HISTORY
+    await db.execute(
+        "INSERT INTO bid_history (player_id, user_id, amount, bid_at) VALUES ($1, $2, $3, $4)",
+        player_id, user_id, amount, datetime.now().isoformat()
+    )
+
+    await db.close()
+
+    await update.message.reply_text(
+        f"*✅ BID PLACED!*\n\n"
+        f"*🏏 Player:* {player['name']}\n"
+        f"*💰 Your Bid:* {amount:,}\n"
+        f"*👤 Current Highest:* You\n"
+        f"*⏰ Time left:* {remaining_time}",
+        parse_mode="Markdown"
+    )
+
+# ============ RESULT AUCTION ==========
+async def result_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("*❌ Admin only!*", parse_mode="Markdown")
+        return
+
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text(
+            "*❌ Usage:* `/result_auction <player_id>`",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        player_id = int(args[0])
+    except:
+        await update.message.reply_text("*❌ Invalid player ID!*", parse_mode="Markdown")
+        return
+
+    db = await get_db()
+
+    player = await db.fetchrow("SELECT * FROM auction_players WHERE id = $1 AND status = 'active'", player_id)
+    if not player:
+        await update.message.reply_text("*❌ Player not found or already sold!*", parse_mode="Markdown")
+        await db.close()
+        return
+
+    if not player['highest_bidder']:
+        await update.message.reply_text("*❌ No bids placed on this player!*", parse_mode="Markdown")
+        await db.close()
+        return
+
+    # 🔥 TIME CHECK HATAO - Admin manually result karega
+    winner_id = player['highest_bidder']
+    winner_name = await db.fetchval("SELECT name FROM users WHERE user_id = $1", winner_id)
+    winning_bid = player['current_bid']
+
+    await db.execute("UPDATE auction_players SET status = 'sold' WHERE id = $1", player_id)
+
+    await db.execute(
+        "INSERT INTO user_players (user_id, player_id, purchased_at) VALUES ($1, $2, $3)",
+        winner_id, player_id, datetime.now().isoformat()
+    )
+
+    await db.close()
+
+    await update.message.reply_text(
+        f"*🏆 AUCTION RESULT!*\n\n"
+        f"*🏏 Player:* {player['name']}\n"
+        f"*👤 Winner:* {winner_name} 🎉\n"
+        f"*💰 Winning Bid:* {winning_bid:,}\n\n"
+        f"*✅ Player added to {winner_name}'s team!*",
+        parse_mode="Markdown"
+    )
+
+# ============ MY TEAM ==========
+async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not await is_registered(user_id):
+        await update.message.reply_text('*❌ Send /start first!*', parse_mode="Markdown")
+        return
+
+    db = await get_db()
+
+    players = await db.fetch("""
+        SELECT p.id, p.name, p.current_bid
+        FROM user_players up
+        JOIN auction_players p ON up.player_id = p.id
+        WHERE up.user_id = $1
+        ORDER BY up.purchased_at DESC
+    """, user_id)
+
+    if not players:
+        await update.message.reply_text("*📭 You haven't won any players yet!*\n\n*💡 Bid on players using /players*", parse_mode="Markdown")
+        await db.close()
+        return
+
+    msg = "*🏏 MY CRICKET TEAM*\n\n"
+    total = 0
+    for i, p in enumerate(players, 1):
+        msg += f"*{i}. {p['name']} - {p['current_bid']:,} 💰*\n"
+        total += p['current_bid']
+
+    msg += f"\n*━━━━━━━━━━━━━━━━━━━━━━*\n"
+    msg += f"*💰 Total Value: {total:,} 💰*\n"
+    msg += f"*🏆 Total Players: {len(players)}*"
+
+    await update.message.reply_text(msg, parse_mode="Markdown")
+    await db.close()
+
+# ============ TOP COLLECTORS ==========
+async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not await is_registered(user_id):
+        await update.message.reply_text('*❌ Send /start first!*', parse_mode="Markdown")
+        return
+
+    db = await get_db()
+
+    tops = await db.fetch("""
+        SELECT u.name, COUNT(up.player_id) as count, COALESCE(SUM(p.current_bid), 0) as total
+        FROM user_players up
+        JOIN auction_players p ON up.player_id = p.id
+        JOIN users u ON up.user_id = u.user_id
+        GROUP BY u.user_id, u.name
+        ORDER BY total DESC
+        LIMIT 10
+    """)
+
+    if not tops:
+        await update.message.reply_text("*🏆 TOP COLLECTORS*\n\n*No one has won any players yet!*", parse_mode="Markdown")
+        await db.close()
+        return
+
+    msg = "*🏆 TOP COLLECTORS*\n\n"
+    medals = ["🥇", "🥈", "🥉"]
+    for i, t in enumerate(tops, 1):
+        medal = medals[i-1] if i <= 3 else f"{i}."
+        msg += f"*{medal} {t['name']} - {t['count']} players ({t['total']:,} 💰)*\n"
+
+    await update.message.reply_text(msg, parse_mode="Markdown")
+    await db.close()
+
+# ============ REMOVE PLAYER WITH REFUND ==========
+async def rmplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("*❌ Admin only!*", parse_mode="Markdown")
+        return
+
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text(
+            "*❌ Usage:* `/rmplayer <player_id>`\n\n"
+            "*Example:* `/rmplayer 1`\n\n"
+            "*💡 All bidders will get a refund.*",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        player_id = int(args[0])
+    except:
+        await update.message.reply_text("*❌ Invalid player ID!*", parse_mode="Markdown")
+        return
+
+    db = await get_db()
+
+    player = await db.fetchrow("SELECT name, highest_bidder, current_bid FROM auction_players WHERE id = $1", player_id)
+    if not player:
+        await update.message.reply_text("*❌ Player not found!*", parse_mode="Markdown")
+        await db.close()
+        return
+
+    # 🔥 GET ALL BIDDERS
+    bidders = await db.fetch("SELECT DISTINCT user_id, amount FROM bid_history WHERE player_id = $1", player_id)
+
+    refund_count = 0
+    refund_total = 0
+
+    # 🔥 REFUND ALL BIDDERS
+    for bid in bidders:
+        await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", bid['amount'], bid['user_id'])
+        refund_count += 1
+        refund_total += bid['amount']
+
+    # 🔥 DELETE FROM AUCTION_PLAYERS
+    await db.execute("DELETE FROM auction_players WHERE id = $1", player_id)
+
+    # 🔥 DELETE FROM USER_PLAYERS (AGAR KISI NE KHARIDA HO)
+    await db.execute("DELETE FROM user_players WHERE player_id = $1", player_id)
+
+    # 🔥 DELETE BID HISTORY
+    await db.execute("DELETE FROM bid_history WHERE player_id = $1", player_id)
+
+    await db.close()
+
+    await update.message.reply_text(
+        f"*🗑️ PLAYER REMOVED + REFUNDED!*\n\n"
+        f"*🏏 Name:* {player['name']}\n"
+        f"*🆔 ID:* {player_id}\n\n"
+        f"*💰 Refunded {refund_count} users*\n"
+        f"*💰 Total Refund: {refund_total:,} 💰*\n\n"
+        f"*✅ Removed from auction, teams, and history!*",
+        parse_mode="Markdown"
+    )
+
 # ============ MAIN ==========
 async def main():
     await init_db()
 
     app = Application.builder().token(TOKEN).build()
 
-    # 🔥 ERROR HANDLER - SAB IGNORE (YE 2 LINE DAALO)
+    # 🔥 ERROR HANDLER - SAB IGNORE
     async def error_handler(update, context):
         pass
-    
+
     app.add_error_handler(error_handler)
 
-    # User commands
+    # ============ USER COMMANDS ==========
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("refer", refer))
     app.add_handler(CommandHandler("help", help))
@@ -5986,19 +5889,28 @@ async def main():
     app.add_handler(CommandHandler("tower", tower))
     app.add_handler(CallbackQueryHandler(tower_callback, pattern="^tower_"))
     app.add_handler(CommandHandler("fix_duplicates", fix_duplicates))
-    # Shop commands
+    
+    # ============ PLAYER AUCTION ==========
+    app.add_handler(CommandHandler("add_player", add_player))
+    app.add_handler(CommandHandler("players", players))
+    app.add_handler(CommandHandler("bid", bid))
     app.add_handler(CommandHandler("myteam", myteam))
     app.add_handler(CommandHandler("top", top))
+    app.add_handler(CommandHandler("result_auction", result_auction))
+    app.add_handler(CommandHandler("rmplayer", rmplayer))
     app.add_handler(CommandHandler("balance", balance))
-    # RPS Game
+    
+    # ============ RPS GAME ==========
     app.add_handler(CommandHandler("rps", rps))
     app.add_handler(CallbackQueryHandler(rps_join_callback, pattern="^rps_join_"))
     app.add_handler(CallbackQueryHandler(rps_move_callback, pattern="^rps_move_"))
     app.add_handler(CallbackQueryHandler(rps_none_callback, pattern="^rps_none"))
-    # Hilo Game
+    
+    # ============ HILO GAME ==========
     app.add_handler(CommandHandler("hilo", hilo))
     app.add_handler(CallbackQueryHandler(hilo_callback, pattern="^hilo_"))
-    # Lottery
+    
+    # ============ LOTTERY ==========
     app.add_handler(CommandHandler("lottery", lottery))
     app.add_handler(CommandHandler("buy_ticket", buy_ticket))
     app.add_handler(CommandHandler("mytickets", mytickets_command))
@@ -6009,37 +5921,23 @@ async def main():
     app.add_handler(CommandHandler("lottery_coupon", lottery_coupon))
     app.add_handler(CommandHandler("claim_coupon", claim_coupon))
 
-    # Numpuz
+    # ============ NUMPUZ ==========
     app.add_handler(CommandHandler("numpuz", numpuz))
     app.add_handler(CallbackQueryHandler(numpuz_callback, pattern="^numpuz_"))
 
-    # Hall of Fame
+    # ============ HALL OF FAME ==========
     app.add_handler(CommandHandler("hof", hof))
     app.add_handler(CommandHandler("addhof", addhof))
     app.add_handler(CommandHandler("rmhof", rmhof))
     app.add_handler(CommandHandler("edithof", edithof))
-    app.add_handler(CommandHandler("ping", ping))
-
-    # Shop2, Shop3, Shop4
-    app.add_handler(CommandHandler("shop3", shop3))
-    app.add_handler(CommandHandler("buy3", buy3))
-    app.add_handler(CommandHandler("myteam3", myteam3))
-    app.add_handler(CommandHandler("top3", top3))
-    app.add_handler(CommandHandler("addplayer3", addplayer3))
-    app.add_handler(CommandHandler("shop4", shop4))
-    app.add_handler(CommandHandler("buy4", buy4))
-    app.add_handler(CommandHandler("myteam4", myteam4))
-    app.add_handler(CommandHandler("top4", top4))
-    app.add_handler(CommandHandler("addplayer4", addplayer4))
-    # Bank
+    
+    # ============ BANK ==========
     app.add_handler(CommandHandler("bank", bank))
     app.add_handler(CommandHandler("deposit", deposit))
     app.add_handler(CommandHandler("withdraw", withdraw))
     app.add_handler(CommandHandler("claim_interest", claim_interest))
-    app.add_handler(CommandHandler("removeplayer2", removeplayer2))
-    app.add_handler(CommandHandler("removeplayer3", removeplayer3))
-    app.add_handler(CommandHandler("removeplayer4", removeplayer4))
-    # Admin Cricket
+    
+    # ============ ADMIN CRICKET ==========
     app.add_handler(CommandHandler("addmatch", addmatch))
     app.add_handler(CommandHandler("deletematch", deletematch))
     app.add_handler(CommandHandler("lockmatch", lockmatch))
@@ -6047,12 +5945,12 @@ async def main():
     app.add_handler(CommandHandler("add", add))
     app.add_handler(CommandHandler("removew", removew))
     app.add_handler(CommandHandler("removeb", removeb))
-    app.add_handler(CommandHandler("setprice", setprice))
     app.add_handler(CommandHandler("achieve", achieve))
     app.add_handler(CommandHandler("rmachieve", rmachieve))
     app.add_handler(CommandHandler("unlockmatch", unlockmatch))
     app.add_handler(CallbackQueryHandler(allbets_callback, pattern="^allbets_"))
-    # CLcricket
+    
+    # ============ CLCRICKET ==========
     app.add_handler(CommandHandler("CLcricket", clcricket))
     app.add_handler(CallbackQueryHandler(cricket_mode_callback, pattern="^cricket_mode_"))
     app.add_handler(CallbackQueryHandler(cricket_join_callback, pattern="^cricket_join_"))
@@ -6061,42 +5959,41 @@ async def main():
     app.add_handler(CallbackQueryHandler(cricket_bowl_callback, pattern="^cricket_bowl_"))
     app.add_handler(CallbackQueryHandler(cricket_bat_callback, pattern="^cricket_bat_"))
 
-    # Mines
+    # ============ MINES ==========
     app.add_handler(CommandHandler("mines", mines))
     app.add_handler(CallbackQueryHandler(mine_callback, pattern="^mine_"))
-    app.add_handler(CommandHandler("add_all_players", add_all_players))
 
-    # Claim Codes
+    # ============ CLAIM CODES ==========
     app.add_handler(CommandHandler("claimcode", claimcode))
     app.add_handler(CommandHandler("activecodes", activecodes))
     app.add_handler(CommandHandler("createcode", createcode))
     app.add_handler(CommandHandler("deletecode", deletecode))
     app.add_handler(CommandHandler("codestats", codestats))
 
-    # Tic Tac Toe
+    # ============ TIC TAC TOE ==========
     app.add_handler(CommandHandler("ttt", ttt))
     app.add_handler(CallbackQueryHandler(ttt_callback, pattern="^ttt_"))
 
-    # Broadcast
+    # ============ BROADCAST ==========
     app.add_handler(CommandHandler("broadcast", broadcast_cmd))
     app.add_handler(CommandHandler("broadcast_stats", broadcast_stats))
     app.add_handler(CommandHandler("rain", rain))
-    # Stats
+    
+    # ============ STATS ==========
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("mystats", mystats))
     app.add_handler(CallbackQueryHandler(stats_callback, pattern="^stats_"))
-    app.add_handler(CommandHandler("add_all_players", add_all_players))
 
-    # Group tracking
+    # ============ GROUP TRACKING ==========
     app.add_handler(MessageHandler(filters.ALL, track_all_activity), group=0)
     app.add_handler(MessageHandler(filters.ChatType.GROUP | filters.ChatType.SUPERGROUP, track_group))
 
     print("🤖 Bot is running...")
-    
+
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
-    
+
     try:
         await asyncio.Event().wait()
     except KeyboardInterrupt:
