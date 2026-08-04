@@ -904,8 +904,7 @@ async def codestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.close()
     await update.message.reply_text(f"📊 CODE STATS\n\n📝 Total codes: {total_codes}\n🟢 Active codes: {active_codes}\n🎯 Total claims: {total_claims}\n💰 Credits given: {total_given:,}\n👥 Unique users: {unique_users}")
 
-
-# ============ SPIN COMMAND ==========
+# ============ SPIN ==========
 async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
@@ -915,10 +914,13 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
     last = await db.fetchval("SELECT last_claim FROM spin WHERE user_id = $1", user_id)
 
+    now = datetime.now()
+    today_str = now.strftime("%m/%d/%y")
+
     if last:
         last_time = datetime.fromisoformat(last)
-        if (datetime.now() - last_time).total_seconds() < 86400:
-            remaining = 86400 - (datetime.now() - last_time).total_seconds()
+        if (now - last_time).total_seconds() < 86400:
+            remaining = 86400 - (now - last_time).total_seconds()
             hours = int(remaining // 3600)
             minutes = int((remaining % 3600) // 60)
             await update.message.reply_text(
@@ -928,41 +930,6 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await db.close()
             return
 
-    await db.close()
-
-    # 🔥 BUTTON KE SAATH SPIN
-    await update.message.reply_text(
-        "*🎰 SPIN THE WHEEL! 🎰*\n\n"
-        "*Click below to spin and win daily rewards!*",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🎡 SPIN NOW", callback_data="spin_now")]
-        ]),
-        parse_mode="Markdown"
-    )
-
-
-# ============ SPIN CALLBACK ==========
-async def spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user_id = update.effective_user.id
-    db = await get_db()
-
-    # 🔥 PEHLE SPINNING MESSAGE
-    spin_msg = await query.edit_message_text("*🎰 SPINNING... 🎰*", parse_mode="Markdown")
-
-    # 🔥 EMOJI ROTATION
-    emojis = ["🎰", "🎡", "🎲", "🎯", "🎪", "🔄", "🌀"]
-    for emoji in emojis:
-        await asyncio.sleep(0.1)
-        await spin_msg.edit_text(f"*{emoji} SPINNING... {emoji}*", parse_mode="Markdown")
-
-    await asyncio.sleep(0.1)
-
-    # 🔥 GENERATE REWARD
-    now = datetime.now()
-    today_str = now.strftime("%m/%d/%y")
     amount = random.randint(1000, 10000)
 
     await db.execute(
@@ -974,14 +941,14 @@ async def spin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     await db.close()
 
-    # 🔥 FINAL RESULT
-    await spin_msg.edit_text(
+    await update.message.reply_text(
         f"*✅ Claimed Daily Spin Rewards of {amount:,} Credits*\n"
         f"*at {today_str}*\n\n"
         f"*💰 New balance: {new_bal:,} 💰*\n"
         f"*🎡 Next spin: tomorrow*",
         parse_mode="Markdown"
     )
+
 
 # ============ DICE ==========
 async def dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5755,7 +5722,6 @@ async def main():
     app.add_handler(CommandHandler("rmpfp", rmpfp))
     app.add_handler(CommandHandler("claim", claim))
     app.add_handler(CommandHandler("spin", spin))
-    app.add_handler(CallbackQueryHandler(spin_callback, pattern="^spin_now$"))
     app.add_handler(CommandHandler("dice", dice))
     app.add_handler(CommandHandler("flip", flip))
     app.add_handler(CommandHandler("matches", matches))
