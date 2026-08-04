@@ -13,7 +13,7 @@ import asyncio
 import asyncpg
 
 # ============ TOKEN & ADMINS ============
-TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAEM6c1Avi4PcbGA_vQMtmcNv_pwD9WltFo")
+TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAGOjZZzdkzjsRTC5LRMC_tDLqA-TVw2MOk")
 ADMIN_IDS = [7687078555, 1315564307, 7361215114]
 
 # ============ DATABASE URL ============
@@ -1244,9 +1244,16 @@ async def top_fantasy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.close()
     await update.message.reply_text(msg)
 
-# ============ TIP ==========
-TIP_PHOTO_ID = "AgACAgUAAx0CYwTJMQABBSo4anHBe1uUxv19IMbO-ARg1BtxVF8AArMSaxtUJ3FVQyIXvksscnMBAAMCAAN3AAM7BA"
+# ============ ESCAPE FUNCTION (TOP PE) ==========
+import re
 
+def escape_md(text):
+    """Escape markdown special characters"""
+    special_chars = r'([_*\[\]()~`>#+\-=|{}.!])'
+    return re.sub(special_chars, r'\\\1', str(text))
+
+
+# ============ TIP ==========
 async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
     if not msg:
@@ -1261,52 +1268,51 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if chat_type != 'supergroup' or chat_id != ALLOWED_GROUP_ID:
         await msg.reply_text(
-            f"*🚫 Access Denied!*\n\nThe /tip command can only be used in the Official Group Chat.\n\n👉 [CL ZONE GROUP]({GROUP_LINK})",
-            disable_web_page_preview=True,
-            parse_mode='Markdown'
+            f"🚫 Access Denied!\n\nThe /tip command can only be used in the Official Group Chat.\n\n👉 [CL ZONE GROUP]({GROUP_LINK})",
+            disable_web_page_preview=True
         )
         return
 
     if not await is_registered(user_id):
-        await msg.reply_text('*❌ Send /start first!*', parse_mode='Markdown')
+        await msg.reply_text('❌ Send /start first!')
         return
 
     if not msg.reply_to_message:
-        await msg.reply_text('*❌ Reply to user with /tip AMOUNT*', parse_mode='Markdown')
+        await msg.reply_text('❌ Reply to user with /tip AMOUNT')
         return
 
     args = context.args
     if len(args) < 1:
-        await msg.reply_text('*❌ /tip AMOUNT*\n*Example: /tip 500*', parse_mode='Markdown')
+        await msg.reply_text('❌ /tip AMOUNT\nExample: /tip 500')
         return
 
     try:
         amount = int(args[0])
     except:
-        await msg.reply_text('*❌ Invalid amount*', parse_mode='Markdown')
+        await msg.reply_text('❌ Invalid amount')
         return
 
     if amount <= 0:
-        await msg.reply_text('*❌ Amount must be greater than 0!*', parse_mode='Markdown')
+        await msg.reply_text('❌ Amount must be greater than 0!')
         return
 
     sender = update.effective_user
     receiver = msg.reply_to_message.from_user
 
     if sender.id == receiver.id:
-        await msg.reply_text('*❌ Cannot tip yourself!*', parse_mode='Markdown')
+        await msg.reply_text('❌ Cannot tip yourself!')
         return
 
     db = await get_db()
     sender_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", sender.id)
 
     if sender_bal is None:
-        await msg.reply_text("*❌ You are not registered! Send /start first.*", parse_mode='Markdown')
+        await msg.reply_text("❌ You are not registered! Send /start first.")
         await db.close()
         return
 
     if sender_bal < amount:
-        await msg.reply_text(f'*❌ Need {amount:,}, have {sender_bal:,}*', parse_mode='Markdown')
+        await msg.reply_text(f'❌ Need {amount:,}, have {sender_bal:,}')
         await db.close()
         return
 
@@ -1321,23 +1327,21 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sender_name = f"@{sender.username}" if sender.username else sender.first_name
     receiver_name = f"@{receiver.username}" if receiver.username else receiver.first_name
 
+    # 🔥 ESCAPE SPECIAL CHARACTERS
+    sender_name = escape_md(sender_name)
+    receiver_name = escape_md(receiver_name)
+
     caption = (
-        f"*💝 TIP SENT!*\n\n"
-        f"*FROM:* {sender_name}\n"
-        f"*TO:* {receiver_name}\n"
-        f"*💰 Amount:* {amount:,}\n"
-        f"*💸 Fee (5%):* {fee:,}\n"
-        f"*📥 Received:* {receiver_amount:,}\n\n"
-        f"*📊 Your balance:* {sender_new_bal:,} 💰"
+        f"💝 TIP SENT!\n\n"
+        f"FROM: {sender_name}\n"
+        f"TO: {receiver_name}\n"
+        f"💰 Amount: *{amount:,}*\n"
+        f"💸 Fee (5%): *{fee:,}*\n"
+        f"📥 Received: *{receiver_amount:,}*\n\n"
+        f"📊 Your balance: *{sender_new_bal:,} 💰*"
     )
 
-    # 🔥 PHOTO WITH CAPTION
-    await msg.reply_photo(
-        photo=TIP_PHOTO_ID,
-        caption=caption,
-        parse_mode="Markdown"
-    )
-
+    await msg.reply_text(caption, parse_mode="Markdown")
 
 # ============ ACHIEVEMENTS ==========
 async def achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
