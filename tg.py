@@ -5301,9 +5301,10 @@ async def fix_achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💡 Now /achievements will show correctly."
     )
 
-# ============ ADD PLAYER (NO TIME) ==========
+# ============ ADD PLAYER (FIXED - BOLD) ==========
 async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+
     if user_id not in ADMIN_IDS:
         await update.message.reply_text("*❌ Admin only!*", parse_mode="Markdown")
         return
@@ -5312,13 +5313,14 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(args) < 2:
         await update.message.reply_text(
             "*❌ Usage:* `/add_player <name> <base_price>`\n\n"
-            "*Example:* `/add_player Virat Kohli 50000`\n\n"
-            "*💡 Time will be set manually (TBD)*",
+            "*Example:* `/add_player Virat 5000`\n\n"
+            "*💡 Minimum price: 1,000*",
             parse_mode="Markdown"
         )
         return
 
     name = " ".join(args[:-1])
+
     try:
         base_price = int(args[-1])
     except:
@@ -5332,7 +5334,6 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
     now = datetime.now()
 
-    # 🔥 NO END TIME - TBD (NULL)
     await db.execute(
         "INSERT INTO auction_players (name, base_price, current_bid, added_by, added_at, end_time, status) VALUES ($1, $2, $3, $4, $5, NULL, 'active')",
         name, base_price, base_price, user_id, now.isoformat()
@@ -5346,8 +5347,8 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"*🏏 Name:* {name}\n"
         f"*💰 Base Price:* {base_price:,}\n"
         f"*🆔 ID:* {player_id}\n"
-        f"*⏰ Time:* TBD (Manual)\n\n"
-        f"*💡 Use /result_auction {player_id} when ready!*",
+        f"*⏰ Time:* TBD\n\n"
+        f"*💡 Use /players to see all players*",
         parse_mode="Markdown"
     )
 
