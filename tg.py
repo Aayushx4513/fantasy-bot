@@ -2391,7 +2391,7 @@ async def update_cricket_stats_realtime(user_id, name, runs_added=0, wickets_add
         new_runs = stats['runs'] + runs_added
         new_wickets = stats['wickets'] + wickets_added
         new_highest = stats['highest_score']
-        new_ducks = stats.get('ducks', 0) + ducks_added
+        new_ducks = (stats['ducks'] or 0) + ducks_added
         if current_match_runs > new_highest:
             new_highest = current_match_runs
         await db.execute(
@@ -4477,7 +4477,7 @@ async def mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     highest_score = stats['highest_score']
     wins = stats['wins']
     losses = stats['losses']
-    ducks = stats['ducks'] if 'ducks' in stats else 0
+    ducks = stats['ducks'] or 0
 
     runs_rank = await db.fetchval("SELECT COUNT(*) + 1 FROM cricket_stats WHERE runs > $1", runs) if runs > 0 else None
     wickets_rank = await db.fetchval("SELECT COUNT(*) + 1 FROM cricket_stats WHERE wickets > $1", wickets) if wickets > 0 else None
