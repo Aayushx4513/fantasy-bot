@@ -391,7 +391,8 @@ async def init_db():
             wickets INT DEFAULT 0,
             wins INT DEFAULT 0,
             losses INT DEFAULT 0,
-            highest_score INT DEFAULT 0
+            highest_score INT DEFAULT 0,
+            ducks INT DEFAULT 0
         )
     ''')
     
