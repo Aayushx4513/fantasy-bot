@@ -2798,8 +2798,8 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     msg += f"*{batsman_name} played: {bat_number}  | {bowler_name} bowled: {bowl_number}*\n\n"
 
     if is_out:
-        # 🔥 DUCK CHECK
-        if bat_number == 0:
+        # 🔥 DUCK CHECK - SIRF TAB JAB BATTER NE 0 RUNS BANAYE
+        if game.score == 0:
             db = await get_db()
             if game.current_batsman == game.player1_id:
                 await db.execute("UPDATE cricket_stats SET ducks = ducks + 1 WHERE user_id = $1", game.player1_id)
