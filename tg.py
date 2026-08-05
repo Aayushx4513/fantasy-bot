@@ -920,11 +920,8 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if last:
         last_time = datetime.fromisoformat(last)
         if (now - last_time).total_seconds() < 86400:
-            remaining = 86400 - (now - last_time).total_seconds()
-            hours = int(remaining // 3600)
-            minutes = int((remaining % 3600) // 60)
             await update.message.reply_text(
-                f"*⏳ Already claimed! Next spin in {hours}h {minutes}m*",
+                f"*⏳ Already claimed! Next spin: tomorrow*",
                 parse_mode="Markdown"
             )
             await db.close()
@@ -948,7 +945,6 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"*🎡 Next spin: tomorrow*",
         parse_mode="Markdown"
     )
-
 
 # ============ DICE ==========
 async def dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1175,39 +1171,56 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-
+# ============ LEADERBOARD ==========
 async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    
+
     db = await get_db()
+
+    # 🔥 TOP 10 USERS (Wallet + Bank)
     users_data = await db.fetch("""
         SELECT u.name, u.balance + COALESCE(b.balance, 0) as total_wealth
-        FROM users u LEFT JOIN bank b ON u.user_id = b.user_id
-        ORDER BY total_wealth DESC LIMIT 10
+        FROM users u
+        LEFT JOIN bank b ON u.user_id = b.user_id
+        ORDER BY total_wealth DESC
+        LIMIT 10
     """)
-    
-    msg = "🏆 TOP 10 RICHEST (Wallet + Bank)\n\n"
-    for i, u in enumerate(users_data, 1):
-        medal = "👑" if i==1 else "🥈" if i==2 else "🥉" if i==3 else f"{i}."
-        msg += f"{medal} {u['name']} - {u['total_wealth']:,} 💰\n"
-    
+
+    msg = "🌍 *Global Top 10 — Coins 🪙*\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
+
+    # 🔥 EMOJIS
+    emojis = ["👑", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+
+    for i, u in enumerate(users_data):
+        name = u['name']
+        wealth = u['total_wealth']
+        msg += f"{emojis[i]} {name} : *{wealth:,}*\n"
+
+    # 🔥 USER RANK
     user_total = await db.fetchval("""
-        SELECT u.balance + COALESCE(b.balance, 0) FROM users u
-        LEFT JOIN bank b ON u.user_id = b.user_id WHERE u.user_id = $1
+        SELECT u.balance + COALESCE(b.balance, 0)
+        FROM users u
+        LEFT JOIN bank b ON u.user_id = b.user_id
+        WHERE u.user_id = $1
     """, user_id)
-    
+
     rank = await db.fetchval("""
         SELECT COUNT(*) + 1 FROM (
             SELECT u.balance + COALESCE(b.balance, 0) as total
-            FROM users u LEFT JOIN bank b ON u.user_id = b.user_id
+            FROM users u
+            LEFT JOIN bank b ON u.user_id = b.user_id
         ) t WHERE total > $1
     """, user_total)
-    
-    msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 Your rank: #{rank}\n💰 Total wealth: {user_total:,} 💰"
-    await update.message.reply_text(msg)
+
+    msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"📌 Your Position: #{rank}\n"
+    msg += f"🪙 Total wealth : *{user_total:,}*"
+
+    await update.message.reply_text(msg, parse_mode="Markdown")
     await db.close()
 
 # ============ TOP FANTASY ==========
