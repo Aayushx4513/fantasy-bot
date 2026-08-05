@@ -87,6 +87,20 @@ async def init_db():
     ''')
 
     await db.execute('''
+        CREATE TABLE IF NOT EXISTS cricket_stats (
+            user_id BIGINT PRIMARY KEY,
+            name TEXT,
+            runs INT DEFAULT 0,
+            wickets INT DEFAULT 0,
+            wins INT DEFAULT 0,
+            losses INT DEFAULT 0,
+            highest_score INT DEFAULT 0,
+            ducks INT DEFAULT 0
+        )
+    ''')
+
+
+    await db.execute('''
         CREATE TABLE IF NOT EXISTS user_players (
             user_id BIGINT,
             player_id INT,
@@ -2776,6 +2790,15 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     msg += f"*{batsman_name} played: {bat_number}  | {bowler_name} bowled: {bowl_number}*\n\n"
 
     if is_out:
+        # 🔥 DUCK CHECK
+        if bat_number == 0:
+            db = await get_db()
+            if game.current_batsman == game.player1_id:
+                await db.execute("UPDATE cricket_stats SET ducks = ducks + 1 WHERE user_id = $1", game.player1_id)
+            else:
+                await db.execute("UPDATE cricket_stats SET ducks = ducks + 1 WHERE user_id = $1", game.player2_id)
+            await db.close()
+        
         if game.current_bowler == game.player1_id:
             game.player1_wickets_taken += 1
             await update_cricket_stats_realtime(game.player1_id, game.player1_name, 0, 1, 0)
@@ -2961,7 +2984,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             keyboard.append(row)
             row = []
     if row:
-        keyboard.append(row)
+            keyboard.append(row)
 
     msg += f"*🎮 {batsman_name} choose your shot :-*"
 
@@ -4302,14 +4325,15 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not await is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    
+
     keyboard = [
         [InlineKeyboardButton("🏏 MOST RUNS", callback_data="stats_runs")],
         [InlineKeyboardButton("🎯 MOST WICKETS", callback_data="stats_wickets")],
         [InlineKeyboardButton("⭐ HIGHEST SCORE", callback_data="stats_highest")],
         [InlineKeyboardButton("✅ MOST WINS", callback_data="stats_wins")],
         [InlineKeyboardButton("❌ MOST LOSSES", callback_data="stats_losses")],
-        [InlineKeyboardButton("🏆 OVERALL TOP 5", callback_data="stats_mvp")],  # 🔥 NEW
+        [InlineKeyboardButton("🦆 MOST DUCKS", callback_data="stats_ducks")],
+        [InlineKeyboardButton("🏆 OVERALL TOP 5", callback_data="stats_mvp")],
     ]
     await update.message.reply_text("🏏 CRICKET STATS LEADERBOARD\n\nSelect stat to view:", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -4365,10 +4389,19 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [[InlineKeyboardButton("◀️ BACK TO MENU", callback_data="stats_back")]]
         await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
 
+    elif data == "stats_ducks":
+        top = await db.fetch("SELECT name, ducks FROM cricket_stats WHERE ducks > 0 ORDER BY ducks DESC LIMIT 5")
+        msg = "🦆 MOST DUCKS LEADERBOARD\n\n"
+        medals = ["1.", "2.", "3.", "4.", "5."]
+        for i, t in enumerate(top):
+            msg += f"{medals[i]} {t['name']} - {t['ducks']} ducks\n"
+        keyboard = [[InlineKeyboardButton("◀️ BACK TO MENU", callback_data="stats_back")]]
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+
     elif data == "stats_mvp":
         players = await db.fetch("""
-            SELECT name, runs, wickets, highest_score, wins, losses,
-                   (runs * 2) + (wickets * 3) + (highest_score * 2) + (wins * 2) + (losses * 2) as total_score
+            SELECT name, runs, wickets, highest_score, wins, losses, ducks,
+                   (runs * 2) + (wickets * 3) + (highest_score * 2) + (wins * 2) + (losses * 2) + (ducks * 5) as total_score
             FROM cricket_stats
             ORDER BY total_score DESC
             LIMIT 5
@@ -4379,7 +4412,10 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         for i, p in enumerate(players):
             msg += f"{medals[i]} {p['name']}\n"
-            msg += f"   Runs: *{p['runs']}*  Wickets: *{p['wickets']}*  HS: *{p['highest_score']}*  Wins: *{p['wins']}*  Losses: *{p['losses']}*\n\n"
+            msg += f"   Runs: *{p['runs']}*  Wickets: *{p['wickets']}*  HS: *{p['highest_score']}*  Wins: *{p['wins']}*  Losses: *{p['losses']}*"
+            if p['ducks'] > 0:
+                msg += f"  Ducks: *{p['ducks']}*"
+            msg += f"\n\n"
 
         keyboard = [[InlineKeyboardButton("◀️ BACK TO MENU", callback_data="stats_back")]]
         await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
@@ -4391,6 +4427,7 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("⭐ HIGHEST SCORE", callback_data="stats_highest")],
             [InlineKeyboardButton("✅ MOST WINS", callback_data="stats_wins")],
             [InlineKeyboardButton("❌ MOST LOSSES", callback_data="stats_losses")],
+            [InlineKeyboardButton("🦆 MOST DUCKS", callback_data="stats_ducks")],
             [InlineKeyboardButton("🏆 OVERALL TOP 5", callback_data="stats_mvp")],
         ]
         await query.edit_message_text("🏏 CRICKET STATS LEADERBOARD\n\nSelect stat to view:", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -4408,7 +4445,7 @@ async def mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     db = await get_db()
-    stats = await db.fetchrow("SELECT runs, wickets, highest_score, wins, losses FROM cricket_stats WHERE user_id = $1", user_id)
+    stats = await db.fetchrow("SELECT runs, wickets, highest_score, wins, losses, ducks FROM cricket_stats WHERE user_id = $1", user_id)
 
     if not stats:
         await db.close()
@@ -4421,6 +4458,7 @@ async def mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"*⭐ Highest Score:* 0 *(📊 Rank: N/A)*\n"
             f"*✅ Wins:* 0 *(📊 Rank: N/A)*\n"
             f"*❌ Losses:* 0 *(📊 Rank: N/A)*\n"
+            f"*🦆 Ducks:* 0 *(📊 Rank: N/A)*\n"
             f"━━━━━━━━━━━━━━━━━━━━\n\n"
             f"*💡 Play /CLcricket to start!*",
             parse_mode="Markdown"
@@ -4432,12 +4470,14 @@ async def mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     highest_score = stats['highest_score']
     wins = stats['wins']
     losses = stats['losses']
+    ducks = stats['ducks'] if 'ducks' in stats else 0
 
     runs_rank = await db.fetchval("SELECT COUNT(*) + 1 FROM cricket_stats WHERE runs > $1", runs) if runs > 0 else None
     wickets_rank = await db.fetchval("SELECT COUNT(*) + 1 FROM cricket_stats WHERE wickets > $1", wickets) if wickets > 0 else None
     highest_rank = await db.fetchval("SELECT COUNT(*) + 1 FROM cricket_stats WHERE highest_score > $1", highest_score) if highest_score > 0 else None
     wins_rank = await db.fetchval("SELECT COUNT(*) + 1 FROM cricket_stats WHERE wins > $1", wins) if wins > 0 else None
     losses_rank = await db.fetchval("SELECT COUNT(*) + 1 FROM cricket_stats WHERE losses > $1", losses) if losses > 0 else None
+    ducks_rank = await db.fetchval("SELECT COUNT(*) + 1 FROM cricket_stats WHERE ducks > $1", ducks) if ducks > 0 else None
 
     await db.close()
 
@@ -4449,6 +4489,8 @@ async def mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += f"*⭐ Highest Score:* {highest_score} *(📊 Rank: #{highest_rank if highest_rank else 'N/A'})*\n"
     msg += f"*✅ Wins:* {wins} *(📊 Rank: #{wins_rank if wins_rank else 'N/A'})*\n"
     msg += f"*❌ Losses:* {losses} *(📊 Rank: #{losses_rank if losses_rank else 'N/A'})*\n"
+    if ducks > 0:
+        msg += f"*🦆 Ducks:* {ducks} *(📊 Rank: #{ducks_rank if ducks_rank else 'N/A'})*\n"
     msg += f"━━━━━━━━━━━━━━━━━━━━"
 
     await update.message.reply_text(msg, parse_mode="Markdown")
