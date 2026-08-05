@@ -2384,18 +2384,25 @@ DELIVERIES = {
     "KNC": {"name": "KNC", "out_on": 6},
 }
 
-async def update_cricket_stats_realtime(user_id, name, runs_added=0, wickets_added=0, current_match_runs=0):
+async def update_cricket_stats_realtime(user_id, name, runs_added=0, wickets_added=0, current_match_runs=0, ducks_added=0):
     db = await get_db()
     stats = await db.fetchrow("SELECT * FROM cricket_stats WHERE user_id = $1", user_id)
     if stats:
         new_runs = stats['runs'] + runs_added
         new_wickets = stats['wickets'] + wickets_added
         new_highest = stats['highest_score']
+        new_ducks = stats.get('ducks', 0) + ducks_added
         if current_match_runs > new_highest:
             new_highest = current_match_runs
-        await db.execute("UPDATE cricket_stats SET runs = $1, wickets = $2, highest_score = $3 WHERE user_id = $4", new_runs, new_wickets, new_highest, user_id)
+        await db.execute(
+            "UPDATE cricket_stats SET runs = $1, wickets = $2, highest_score = $3, ducks = $4 WHERE user_id = $5",
+            new_runs, new_wickets, new_highest, new_ducks, user_id
+        )
     else:
-        await db.execute("INSERT INTO cricket_stats (user_id, name, runs, wickets, highest_score) VALUES ($1, $2, $3, $4, $5)", user_id, name, runs_added, wickets_added, current_match_runs)
+        await db.execute(
+            "INSERT INTO cricket_stats (user_id, name, runs, wickets, highest_score, ducks) VALUES ($1, $2, $3, $4, $5, $6)",
+            user_id, name, runs_added, wickets_added, current_match_runs, ducks_added
+        )
     await db.close()
 
 async def update_wins_losses_realtime(user_id, name, won):
@@ -2985,12 +2992,11 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             keyboard.append(row)
             row = []
     if row:
-            keyboard.append(row)
+        keyboard.append(row)
 
     msg += f"*🎮 {batsman_name} choose your shot :-*"
 
     await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-
 
 async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
