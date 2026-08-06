@@ -5754,6 +5754,35 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
     today = datetime.now().date()
     
+    # 🔥 CHECK IF USER IS IN TOP 10
+    rank = await db.fetchval("""
+        SELECT COUNT(*) + 1 FROM users WHERE balance > (SELECT balance FROM users WHERE user_id = $1)
+    """, user_id)
+    
+    # 🔥 NON-TOP 10 USER
+    if rank and rank > 10:
+        await db.close()
+        await update.message.reply_text(
+            f"*ℹ️ You are not in Top 10.*\n\n"
+            f"*✅ No login required. No penalty applies!*",
+            parse_mode="Markdown"
+        )
+        return
+    
+    # 🔥 CHECK KARO KYA AAJ LOGIN KIYA HAI (TOP 10 USER)
+    last = await db.fetchval("SELECT last_login FROM login_tracker WHERE user_id = $1", user_id)
+    
+    if last and last == today:
+        await db.close()
+        await update.message.reply_text(
+            f"*⚠️ Already logged in today!*\n"
+            f"*📅 {today.strftime('%d %b %Y')}*\n\n"
+            f"*💡 Come back tomorrow!*",
+            parse_mode="Markdown"
+        )
+        return
+    
+    # 🔥 SAVE LOGIN (TOP 10 USER)
     await db.execute(
         "INSERT INTO login_tracker (user_id, last_login) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_login = $2",
         user_id, today
@@ -5761,7 +5790,12 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await db.close()
     
-    await update.message.reply_text(f"✅ Login successful!\n📅 {today.strftime('%d %b %Y')}")
+    await update.message.reply_text(
+        f"*✅ Login successful!*\n"
+        f"*📅 {today.strftime('%d %b %Y')}*\n\n"
+        f"*💡 Come back tomorrow!*",
+        parse_mode="Markdown"
+    )
 
 # ============ PENALTY CHECK ==========
 async def check_penalty():
