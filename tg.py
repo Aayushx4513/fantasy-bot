@@ -13,7 +13,7 @@ import asyncio
 import asyncpg
 
 # ============ TOKEN & ADMINS ============
-TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAGOjZZzdkzjsRTC5LRMC_tDLqA-TVw2MOk")
+TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAG1_1VOoX5hm87eQG7IP75_vD9aK2Yk9HI")
 ADMIN_IDS = [7687078555, 1315564307, 7361215114]
 
 # ============ DATABASE URL ============
@@ -5746,11 +5746,6 @@ async def main():
 
     app = Application.builder().token(TOKEN).build()
 
-    # 🔥 ERROR HANDLER - SAB IGNORE
-    async def error_handler(update, context):
-        pass
-
-    app.add_error_handler(error_handler)
 
     # ============ USER COMMANDS ==========
     app.add_handler(CommandHandler("start", start))
