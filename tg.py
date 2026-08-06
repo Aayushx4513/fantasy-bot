@@ -732,8 +732,6 @@ async def rmpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text('❌ Profile photo removed!')
 
 # ============ CLAIM ==========
-# ============ CLAIM ==========
-# ============ CLAIM ==========
 async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_id = update.message.chat.id
@@ -761,20 +759,20 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat_type in ['group', 'supergroup'] and chat_id == CL_GROUP_ID:
         reward = 1000
         extra_note = "\n\n*💡 You got BONUS 1000 credits in CL Zone Group!*"
+        keyboard = None  # 🔥 GC MEIN BUTTON NAHI
     else:
         reward = 500
         extra_note = "\n\n*💡 Tip: Use /claim in CL Zone Group to get 1000 credits!*"
+        # 🔥 PRIVATE CHAT MEIN BUTTON
+        keyboard = [
+            [InlineKeyboardButton("👥 JOIN CL ZONE GROUP", url="https://t.me/+eTD1m8Cjc_wyOTNl")]
+        ]
 
     await db.execute("INSERT INTO claim (user_id, last_claim) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_claim = $2", user_id, today)
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", reward, user_id)
 
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     await db.close()
-
-    # 🔥 BUTTON - LINK HATAYA, SIRF BUTTON
-    keyboard = [
-        [InlineKeyboardButton("👥 JOIN CL ZONE GROUP", url="https://t.me/+eTD1m8Cjc_wyOTNl")]
-    ]
 
     await update.message.reply_text(
         f"*✅ Claimed Daily Rewards!*\n\n"
@@ -785,9 +783,8 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"*🔄 Next claim: tomorrow*",
         disable_web_page_preview=True,
         parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None
     )
-
 
 # ============ ACHIEVE COMMAND (ADMIN) ==========
 async def achieve(update: Update, context: ContextTypes.DEFAULT_TYPE):
