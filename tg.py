@@ -4403,9 +4403,10 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif data == "stats_mvp":
+        # 🔥 FIXED: LOSSES AND DUCKS ARE NEGATIVE
         players = await db.fetch("""
             SELECT name, runs, wickets, highest_score, wins, losses, ducks,
-                   (runs * 2) + (wickets * 3) + (highest_score * 2) + (wins * 2) + (losses * 2) + (ducks * 5) as total_score
+                   (runs * 2) + (wickets * 3) + (highest_score * 2) + (wins * 2) - (losses * 2) - (ducks * 5) as total_score
             FROM cricket_stats
             ORDER BY total_score DESC
             LIMIT 5
