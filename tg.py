@@ -4500,6 +4500,99 @@ async def mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 
+# ============ STATS (WITH USERNAME) ==========
+async def stats_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if not await is_registered(user_id):
+        await update.message.reply_text('*❌ Send /start first!*', parse_mode="Markdown")
+        return
+
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text(
+            "*❌ Usage:* `/stats @username`\n\n"
+            "*Example:* `/stats @Aayush`",
+            parse_mode="Markdown"
+        )
+        return
+
+    username = args[0]
+    if username.startswith('@'):
+        username = username[1:]
+
+    db = await get_db()
+
+    # 🔥 FIND USER BY USERNAME
+    user = await db.fetchrow("SELECT user_id, name FROM users WHERE LOWER(name) = LOWER($1)", username)
+    
+    if not user:
+        # 🔥 TRY TO FIND BY USERNAME (IF SAVED)
+        user = await db.fetchrow("SELECT user_id, name FROM users WHERE user_id IN (SELECT user_id FROM users WHERE name ILIKE $1)", f"%{username}%")
+        
+        if not user:
+            await update.message.reply_text(
+                f"*❌ User not registered!*\n\n"
+                f"*💡 Ask @{username} to send /start to the bot first.*",
+                parse_mode="Markdown"
+            )
+            await db.close()
+            return
+
+    target_id = user['user_id']
+    target_name = user['name']
+
+    # 🔥 FETCH STATS
+    stats = await db.fetchrow("SELECT runs, wickets, highest_score, wins, losses, ducks FROM cricket_stats WHERE user_id = $1", target_id)
+
+    if not stats:
+        # 🔥 USER IS REGISTERED BUT NO MATCHES PLAYED
+        await update.message.reply_text(
+            f"*👤 {target_name}*\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"*🏏 Runs:* 0 *(📊 Rank: N/A)*\n"
+            f"*🎯 Wickets:* 0 *(📊 Rank: N/A)*\n"
+            f"*⭐ Highest Score:* 0 *(📊 Rank: N/A)*\n"
+            f"*✅ Wins:* 0 *(📊 Rank: N/A)*\n"
+            f"*❌ Losses:* 0 *(📊 Rank: N/A)*\n"
+            f"*🦆 Ducks:* 0 *(📊 Rank: N/A)*\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"*💡 No matches played yet!*",
+            parse_mode="Markdown"
+        )
+        await db.close()
+        return
+
+    runs = stats['runs']
+    wickets = stats['wickets']
+    highest_score = stats['highest_score']
+    wins = stats['wins']
+    losses = stats['losses']
+    ducks = stats['ducks'] if 'ducks' in stats else 0
+
+    # 🔥 RANKS
+    runs_rank = await db.fetchval("SELECT COUNT(*) + 1 FROM cricket_stats WHERE runs > $1", runs) if runs > 0 else None
+    wickets_rank = await db.fetchval("SELECT COUNT(*) + 1 FROM cricket_stats WHERE wickets > $1", wickets) if wickets > 0 else None
+    highest_rank = await db.fetchval("SELECT COUNT(*) + 1 FROM cricket_stats WHERE highest_score > $1", highest_score) if highest_score > 0 else None
+    wins_rank = await db.fetchval("SELECT COUNT(*) + 1 FROM cricket_stats WHERE wins > $1", wins) if wins > 0 else None
+    losses_rank = await db.fetchval("SELECT COUNT(*) + 1 FROM cricket_stats WHERE losses > $1", losses) if losses > 0 else None
+    ducks_rank = await db.fetchval("SELECT COUNT(*) + 1 FROM cricket_stats WHERE ducks > $1", ducks) if ducks > 0 else None
+
+    await db.close()
+
+    msg = f"*👤 {target_name}*\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"*🏏 Runs:* {runs} *(📊 Rank: #{runs_rank if runs_rank else 'N/A'})*\n"
+    msg += f"*🎯 Wickets:* {wickets} *(📊 Rank: #{wickets_rank if wickets_rank else 'N/A'})*\n"
+    msg += f"*⭐ Highest Score:* {highest_score} *(📊 Rank: #{highest_rank if highest_rank else 'N/A'})*\n"
+    msg += f"*✅ Wins:* {wins} *(📊 Rank: #{wins_rank if wins_rank else 'N/A'})*\n"
+    msg += f"*❌ Losses:* {losses} *(📊 Rank: #{losses_rank if losses_rank else 'N/A'})*\n"
+    if ducks > 0:
+        msg += f"*🦆 Ducks:* {ducks} *(📊 Rank: #{ducks_rank if ducks_rank else 'N/A'})*\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━"
+
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
 # ============ MATCHES ==========
 async def matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -5815,6 +5908,7 @@ async def main():
     app.add_handler(CommandHandler("addhof", addhof))
     app.add_handler(CommandHandler("rmhof", rmhof))
     app.add_handler(CommandHandler("edithof", edithof))
+    app.add_handler(CommandHandler("stats", stats_user))
     
     # ============ BANK ==========
     app.add_handler(CommandHandler("bank", bank))
