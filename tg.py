@@ -1280,7 +1280,6 @@ def escape_md(text):
     special_chars = r'([_*\[\]()~`>#+\-=|{}.!])'
     return re.sub(special_chars, r'\\\1', str(text))
 
-
 # ============ TIP ==========
 async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.effective_message
@@ -1296,8 +1295,10 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if chat_type != 'supergroup' or chat_id != ALLOWED_GROUP_ID:
         await msg.reply_text(
-            f"🚫 Access Denied!\n\nThe /tip command can only be used in the Official Group Chat.\n\n👉 [CL ZONE GROUP]({GROUP_LINK})",
-            disable_web_page_preview=True
+            "🚫 Access Denied!\n\nThe /tip command can only be used in the Official Group Chat.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("👥 JOIN CL ZONE GROUP", url=GROUP_LINK)]
+            ])
         )
         return
 
@@ -1355,21 +1356,17 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sender_name = f"@{sender.username}" if sender.username else sender.first_name
     receiver_name = f"@{receiver.username}" if receiver.username else receiver.first_name
 
-    # 🔥 ESCAPE SPECIAL CHARACTERS
-    sender_name = escape_md(sender_name)
-    receiver_name = escape_md(receiver_name)
-
     caption = (
         f"💝 TIP SENT!\n\n"
         f"FROM: {sender_name}\n"
         f"TO: {receiver_name}\n"
-        f"💰 Amount: *{amount:,}*\n"
-        f"💸 Fee (5%): *{fee:,}*\n"
-        f"📥 Received: *{receiver_amount:,}*\n\n"
-        f"📊 Your balance: *{sender_new_bal:,} 💰*"
+        f"💰 Amount: {amount:,}\n"
+        f"💸 Fee (5%): {fee:,}\n"
+        f"📥 Received: {receiver_amount:,}\n\n"
+        f"📊 Your balance: {sender_new_bal:,} 💰"
     )
 
-    await msg.reply_text(caption, parse_mode="Markdown")
+    await msg.reply_text(caption)
 
 # ============ ACHIEVEMENTS ==========
 async def achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
