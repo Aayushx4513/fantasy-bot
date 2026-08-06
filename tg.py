@@ -5828,7 +5828,7 @@ async def schedule_penalty():
     while True:
         now = datetime.now()
         # 🔥 SUBHA 6 AM
-        next_run = now.replace(hour=6, minute=0, second=0, microsecond=0)
+        next_run = now.replace(hour=0, minute=0, second=0, microsecond=0)
         if now >= next_run:
             next_run += timedelta(days=1)
         
