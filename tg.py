@@ -5754,9 +5754,19 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
     today = datetime.now().date()
     
-    # 🔥 CHECK IF USER IS IN TOP 10
+    # 🔥 TOTAL WEALTH (WALLET + BANK) SE RANK CALCULATE KARO
     rank = await db.fetchval("""
-        SELECT COUNT(*) + 1 FROM users WHERE balance > (SELECT balance FROM users WHERE user_id = $1)
+        SELECT COUNT(*) + 1 FROM (
+            SELECT u.user_id, u.balance + COALESCE(b.balance, 0) as total_wealth
+            FROM users u
+            LEFT JOIN bank b ON u.user_id = b.user_id
+        ) t
+        WHERE total_wealth > (
+            SELECT u.balance + COALESCE(b.balance, 0)
+            FROM users u
+            LEFT JOIN bank b ON u.user_id = b.user_id
+            WHERE u.user_id = $1
+        )
     """, user_id)
     
     # 🔥 NON-TOP 10 USER
@@ -5797,22 +5807,23 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-# ============ PENALTY CHECK ==========
 async def check_penalty():
-    """Roj subha 6 AM chalega - SIRF TOP 10 KO"""
+    """Roj 12 AM chalega - SIRF TOP 10 KO"""
     db = await get_db()
     today = datetime.now().date()
     
-    # 🔥 TOP 10 USERS FETCH KARO
+    # 🔥 TOTAL WEALTH (WALLET + BANK) SE TOP 10 FETCH KARO
     top_10 = await db.fetch("""
-        SELECT user_id, balance FROM users 
-        ORDER BY balance DESC 
+        SELECT u.user_id, u.balance + COALESCE(b.balance, 0) as total_wealth
+        FROM users u
+        LEFT JOIN bank b ON u.user_id = b.user_id
+        ORDER BY total_wealth DESC
         LIMIT 10
     """)
     
     for user in top_10:
         user_id = user['user_id']
-        balance = user['balance']
+        balance = user['total_wealth']
         
         # 🔥 AGAR BALANCE < 5000 → NO PENALTY
         if balance <= 5000:
@@ -5827,26 +5838,32 @@ async def check_penalty():
         
         # 🔥 PENALTY CALCULATE
         if balance <= 100000:
-            penalty_rate = 0.001  # 0.1%
+            penalty_rate = 0.001
         elif balance <= 500000:
-            penalty_rate = 0.002  # 0.2%
+            penalty_rate = 0.002
         elif balance <= 1000000:
-            penalty_rate = 0.003  # 0.3%
+            penalty_rate = 0.003
         elif balance <= 2500000:
-            penalty_rate = 0.005  # 0.5%
+            penalty_rate = 0.005
         else:
-            penalty_rate = 0.01   # 1%
+            penalty_rate = 0.01
         
         penalty = int(balance * penalty_rate)
         new_balance = balance - penalty
         
-        # 🔥 UPDATE BALANCE
-        await db.execute("UPDATE users SET balance = $1 WHERE user_id = $2", new_balance, user_id)
+        # 🔥 UPDATE USERS TABLE (WALLET)
+        await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", penalty, user_id)
         
-        # 🔥 LOG
+        # 🔥 SAVE PENALTY HISTORY
+        await db.execute("""
+            INSERT INTO penalty_history (user_id, amount, penalty_date, balance_after)
+            VALUES ($1, $2, $3, $4)
+        """, user_id, penalty, today, new_balance)
+        
         print(f"💰 Penalty: {user_id} - {penalty} ({penalty_rate*100}%)")
     
     await db.close()
+
 
 
 # ============ LOGIN RESET ==========
