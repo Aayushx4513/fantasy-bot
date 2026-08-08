@@ -6024,6 +6024,39 @@ async def penalty_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
     await db.close()
 
+# ============ PING ==========
+async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    if not msg:
+        return
+
+    try:
+        import time
+        start_time = time.time()
+
+        # Send initial message
+        temp_msg = await msg.reply_text("🏓 Pinging...")
+
+        end_time = time.time()
+        latency = (end_time - start_time) * 1000
+
+        await temp_msg.edit_text(
+            f"*🏓 Pong!*\n"
+            f"*⏱️ Latency:* {latency:.2f}ms\n"
+            f"*💎 Gamble Man is active.*",
+            parse_mode="Markdown"
+        )
+
+    except Exception as e:
+        if "503" in str(e):
+            print("⚠️ Proxy 503: Ping failed.")
+            try:
+                await msg.reply_text("🏓 Pong! (Lag detected)")
+            except:
+                pass
+        else:
+            print(f"❌ Ping Error: {e}")
+
 # ============ MAIN ==========
 async def main():
     await init_db()
@@ -6061,7 +6094,7 @@ async def main():
     app.add_handler(CommandHandler("tower", tower))
     app.add_handler(CallbackQueryHandler(tower_callback, pattern="^tower_"))
     app.add_handler(CommandHandler("fix_duplicates", fix_duplicates))
-    
+    app.add_handler(CommandHandler("ping", ping))
     # ============ PLAYER AUCTION ==========
     app.add_handler(CommandHandler("add_player", add_player))
     app.add_handler(CommandHandler("players", players))
