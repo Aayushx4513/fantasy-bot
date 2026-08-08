@@ -2545,7 +2545,7 @@ async def clcricket(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"*👑 Host:* {user_name}\n"
         f"{bet_text}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"*⚡ Select Mode:*",
+        f"*⚡ Select Mode*",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("1-3 Mode", callback_data=f"cricket_mode_{game_id}_1-3"), InlineKeyboardButton("No 5 Mode", callback_data=f"cricket_mode_{game_id}_1-5")],
             [InlineKeyboardButton("1-9 Mode", callback_data=f"cricket_mode_{game_id}_1-9"), InlineKeyboardButton("Default Mode", callback_data=f"cricket_mode_{game_id}_default")]
