@@ -1277,13 +1277,13 @@ async def top_fantasy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.close()
     await update.message.reply_text(msg)
 
-# ============ ESCAPE FUNCTION (TOP PE) ==========
 import re
 
 def escape_md(text):
     """Escape markdown special characters"""
     special_chars = r'([_*\[\]()~`>#+\-=|{}.!])'
     return re.sub(special_chars, r'\\\1', str(text))
+
 
 # ============ TIP ==========
 async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2513,6 +2513,10 @@ async def clcricket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
     chat_id = update.message.chat.id
+    
+    # 🔥 ESCAPE NAME
+    user_name_escaped = escape_md(user_name)
+    
     if not await is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
@@ -2542,7 +2546,7 @@ async def clcricket(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"*🏏 CRICKET GAME*\n\n"
-        f"*👑 Host:* {user_name}\n"
+        f"*👑 Host:* {user_name_escaped}\n"  # 🔥 ESCAPED NAME
         f"{bet_text}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"*⚡ Select Mode*",
