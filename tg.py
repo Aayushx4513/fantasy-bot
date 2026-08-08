@@ -5981,6 +5981,48 @@ async def login_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
     await db.close()
 
+# ============ PENALTY HISTORY (ADMIN) ==========
+async def penalty_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+
+    db = await get_db()
+    
+    # 🔥 PENALTY HISTORY TABLE (AGAR NAHI HAI TOH BANAO)
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS penalty_history (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT,
+            amount INT,
+            penalty_date DATE,
+            balance_after INT
+        )
+    ''')
+    
+    penalties = await db.fetch("""
+        SELECT u.name, p.amount, p.penalty_date, p.balance_after
+        FROM penalty_history p
+        JOIN users u ON p.user_id = u.user_id
+        ORDER BY p.penalty_date DESC, p.amount DESC
+        LIMIT 20
+    """)
+    
+    if not penalties:
+        await update.message.reply_text("📊 No penalties recorded yet!")
+        await db.close()
+        return
+    
+    msg = f"📊 PENALTY HISTORY (Last 20)\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    
+    for p in penalties:
+        msg += f"👤 {p['name']}\n"
+        msg += f"   💰 -{p['amount']:,} (New Balance: {p['balance_after']:,})\n"
+        msg += f"   📅 {p['penalty_date'].strftime('%d %b %Y')}\n\n"
+    
+    await update.message.reply_text(msg)
+    await db.close()
 
 # ============ MAIN ==========
 async def main():
@@ -6029,7 +6071,7 @@ async def main():
     app.add_handler(CommandHandler("result_auction", result_auction))
     app.add_handler(CommandHandler("rmplayer", rmplayer))
     app.add_handler(CommandHandler("balance", balance))
-    
+    app.add_handler(CommandHandler("penalty_history", penalty_history))
     # ============ RPS GAME ==========
     app.add_handler(CommandHandler("rps", rps))
     app.add_handler(CallbackQueryHandler(rps_join_callback, pattern="^rps_join_"))
