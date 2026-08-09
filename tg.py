@@ -937,11 +937,12 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now()
     today_str = now.strftime("%m/%d/%y")
 
+    # 🔥 DAILY RESET - CLAIM JESA
     if last:
-        last_time = datetime.fromisoformat(last)
-        if (now - last_time).total_seconds() < 86400:
+        last_date = datetime.fromisoformat(last).date()
+        if last_date == now.date():
             await update.message.reply_text(
-                f"*⏳ Already claimed! Next spin: tomorrow*",
+                f"*⚠️ Already spin today!*\n*Come back tomorrow.*",
                 parse_mode="Markdown"
             )
             await db.close()
