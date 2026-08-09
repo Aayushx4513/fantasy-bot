@@ -5878,23 +5878,22 @@ async def reset_login():
     print("✅ Login reset! Sabko penalty lagegi agar login nahi kiya.")
 
 
-# ============ SCHEDULER ==========
 async def schedule_penalty():
     while True:
         now = datetime.now()
-        # 🔥 12 AM IST (MIDNIGHT)
-        next_run = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        # 🔥 11:59 PM IST
+        next_run = now.replace(hour=23, minute=59, second=0, microsecond=0)
         if now >= next_run:
             next_run += timedelta(days=1)
 
         wait_seconds = (next_run - now).total_seconds()
+        print(f"⏰ Next penalty check in {wait_seconds/3600:.1f} hours")
         await asyncio.sleep(wait_seconds)
 
-        # 🔥 RESET LOGIN
+        # 🔥 RESET LOGIN + PENALTY
         await reset_login()
-
-        # 🔥 PENALTY CHECK
         await check_penalty()
+
 
 # ============ LOGIN LOG (ADMIN - CURRENT LEADERBOARD) ==========
 async def login_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6061,8 +6060,12 @@ async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def main():
     await init_db()
 
-    app = Application.builder().token(TOKEN).build()
+    # 🔥 SCHEDULER START KARO
+    asyncio.create_task(schedule_penalty())
+    print("✅ Scheduler started! Will run daily at 11:59 PM IST.")
 
+    app = Application.builder().token(TOKEN).build()
+    
 
     # ============ USER COMMANDS ==========
     app.add_handler(CommandHandler("start", start))
