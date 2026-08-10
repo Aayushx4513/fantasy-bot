@@ -5816,6 +5816,7 @@ async def check_penalty():
     """Roj 11:59 PM chalega - SIRF TOP 10 KO"""
     db = await get_db()
     today = datetime.now().date()
+    penalty_date = today + timedelta(days=1)  # 🔥 AGLA DIN
 
     # 🔥 TOTAL WEALTH SE TOP 10 FETCH KARO
     top_10 = await db.fetch("""
@@ -5864,21 +5865,19 @@ async def check_penalty():
             new_wallet = 0
             new_bank = bank - remaining
 
-        # 🔥 UPDATE WALLET
         await db.execute("UPDATE users SET balance = $1 WHERE user_id = $2", new_wallet, user_id)
-
-        # 🔥 UPDATE BANK
         await db.execute("UPDATE bank SET balance = $1 WHERE user_id = $2", new_bank, user_id)
 
-        # 🔥 SAVE PENALTY HISTORY
+        # 🔥 PENALTY HISTORY - AGLA DIN SAVE KARO
         await db.execute("""
             INSERT INTO penalty_history (user_id, amount, penalty_date, balance_after)
             VALUES ($1, $2, $3, $4)
-        """, user_id, penalty, today, new_total)
+        """, user_id, penalty, penalty_date, new_total)
 
-        print(f"💰 Penalty: {user_id} - {penalty} ({penalty_rate*100}%) - Wallet: {new_wallet}, Bank: {new_bank}")
+        print(f"💰 Penalty: {user_id} - {penalty} ({penalty_rate*100}%)")
 
     await db.close()
+
 # ============ LOGIN RESET ==========
 async def reset_login():
     """Har din 12 AM login reset"""
