@@ -5812,15 +5812,15 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-# ============ PENALTY CHECK ==========
 async def check_penalty():
-    """Roj 12 AM chalega - SIRF TOP 10 KO"""
+    """Roj 11:59 PM chalega - SIRF TOP 10 KO"""
     db = await get_db()
     today = datetime.now().date()
 
-    # 🔥 TOTAL WEALTH (WALLET + BANK) SE TOP 10 FETCH KARO
+    # 🔥 TOTAL WEALTH SE TOP 10 FETCH KARO
     top_10 = await db.fetch("""
-        SELECT u.user_id, u.balance + COALESCE(b.balance, 0) as total_wealth
+        SELECT u.user_id, u.name, u.balance as wallet, COALESCE(b.balance, 0) as bank,
+               u.balance + COALESCE(b.balance, 0) as total_wealth
         FROM users u
         LEFT JOIN bank b ON u.user_id = b.user_id
         ORDER BY total_wealth DESC
@@ -5829,47 +5829,56 @@ async def check_penalty():
 
     for user in top_10:
         user_id = user['user_id']
-        balance = user['total_wealth']
+        wallet = user['wallet']
+        bank = user['bank']
+        total = user['total_wealth']
 
-        # 🔥 AGAR BALANCE < 5000 → NO PENALTY
-        if balance <= 5000:
+        if total <= 5000:
             continue
 
-        # 🔥 LAST LOGIN CHECK
         last = await db.fetchval("SELECT last_login FROM login_tracker WHERE user_id = $1", user_id)
-
-        # 🔥 AGAR TODAY LOGIN KIYA → NO PENALTY
         if last and last == today:
             continue
 
         # 🔥 PENALTY CALCULATE
-        if balance <= 100000:
+        if total <= 100000:
             penalty_rate = 0.001
-        elif balance <= 500000:
+        elif total <= 500000:
             penalty_rate = 0.002
-        elif balance <= 1000000:
+        elif total <= 1000000:
             penalty_rate = 0.003
-        elif balance <= 2500000:
+        elif total <= 2500000:
             penalty_rate = 0.005
         else:
             penalty_rate = 0.01
 
-        penalty = int(balance * penalty_rate)
-        new_balance = balance - penalty
+        penalty = int(total * penalty_rate)
+        new_total = total - penalty
 
-        # 🔥 UPDATE USERS TABLE (WALLET)
-        await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", penalty, user_id)
+        # 🔥 WALLET SE PEHLE CUT KARO, AGAR KAM PADE TOH BANK SE
+        if wallet >= penalty:
+            new_wallet = wallet - penalty
+            new_bank = bank
+        else:
+            remaining = penalty - wallet
+            new_wallet = 0
+            new_bank = bank - remaining
+
+        # 🔥 UPDATE WALLET
+        await db.execute("UPDATE users SET balance = $1 WHERE user_id = $2", new_wallet, user_id)
+
+        # 🔥 UPDATE BANK
+        await db.execute("UPDATE bank SET balance = $1 WHERE user_id = $2", new_bank, user_id)
 
         # 🔥 SAVE PENALTY HISTORY
         await db.execute("""
             INSERT INTO penalty_history (user_id, amount, penalty_date, balance_after)
             VALUES ($1, $2, $3, $4)
-        """, user_id, penalty, today, new_balance)
+        """, user_id, penalty, today, new_total)
 
-        print(f"💰 Penalty: {user_id} - {penalty} ({penalty_rate*100}%)")
+        print(f"💰 Penalty: {user_id} - {penalty} ({penalty_rate*100}%) - Wallet: {new_wallet}, Bank: {new_bank}")
 
     await db.close()
-
 # ============ LOGIN RESET ==========
 async def reset_login():
     """Har din 12 AM login reset"""
@@ -5988,33 +5997,28 @@ async def penalty_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     db = await get_db()
+    today = datetime.now().date()
     
-    # 🔥 PENALTY HISTORY TABLE (AGAR NAHI HAI TOH BANAO)
-    await db.execute('''
-        CREATE TABLE IF NOT EXISTS penalty_history (
-            id SERIAL PRIMARY KEY,
-            user_id BIGINT,
-            amount INT,
-            penalty_date DATE,
-            balance_after INT
-        )
-    ''')
-    
+    # 🔥 SIRF UNHE DIKHAO JINHONE AAJ LOGIN NAHI KIYA
     penalties = await db.fetch("""
         SELECT u.name, p.amount, p.penalty_date, p.balance_after
         FROM penalty_history p
         JOIN users u ON p.user_id = u.user_id
+        WHERE p.user_id NOT IN (
+            SELECT user_id FROM login_tracker WHERE last_login = $1
+        )
         ORDER BY p.penalty_date DESC, p.amount DESC
         LIMIT 20
-    """)
+    """, today)
     
     if not penalties:
-        await update.message.reply_text("📊 No penalties recorded yet!")
+        await update.message.reply_text("✅ No pending penalties! All Top 10 users have logged in today.")
         await db.close()
         return
     
-    msg = f"📊 PENALTY HISTORY (Last 20)\n"
-    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    msg = f"📊 PENALTY HISTORY (Pending - Not Logged In Today)\n"
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"📅 {today.strftime('%d %b %Y')}\n\n"
     
     for p in penalties:
         msg += f"👤 {p['name']}\n"
