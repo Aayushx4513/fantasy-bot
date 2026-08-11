@@ -101,6 +101,22 @@ async def init_db():
 
 
     await db.execute('''
+        CREATE TABLE IF NOT EXISTS login_tracker (
+            user_id BIGINT PRIMARY KEY,
+            last_login DATE
+        )
+    ''')
+
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS penalty_history (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT,
+            amount INT,
+            penalty_date DATE,
+        )   balance_after INT
+    ''')
+
+    await db.execute('''
         CREATE TABLE IF NOT EXISTS user_players (
             user_id BIGINT,
             player_id INT,
@@ -5783,24 +5799,6 @@ async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
             print(f"❌ Ping Error: {e}")
 
 
-# ============ LOGIN TRACKER TABLE ============
-await db.execute("""
-    CREATE TABLE IF NOT EXISTS login_tracker (
-        user_id BIGINT PRIMARY KEY,
-        last_login DATE
-    )
-""")
-
-# ============ PENALTY HISTORY TABLE ============
-await db.execute("""
-    CREATE TABLE IF NOT EXISTS penalty_history (
-        id SERIAL PRIMARY KEY,
-        user_id BIGINT,
-        amount INT,
-        penalty_date DATE,
-        balance_after BIGINT
-    )
-""")
 
 # ============ LOGIN ============
 async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
