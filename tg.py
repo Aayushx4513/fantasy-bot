@@ -6141,8 +6141,6 @@ async def main():
 
     app = Application.builder().token(TOKEN).build()
 
-    await app.run_polling()
-
     # ============ USER COMMANDS ==========
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("refer", refer))
@@ -6174,6 +6172,7 @@ async def main():
     app.add_handler(CallbackQueryHandler(tower_callback, pattern="^tower_"))
     app.add_handler(CommandHandler("fix_duplicates", fix_duplicates))
     app.add_handler(CommandHandler("ping", ping))
+
     # ============ PLAYER AUCTION ==========
     app.add_handler(CommandHandler("add_player", add_player))
     app.add_handler(CommandHandler("players", players))
@@ -6183,23 +6182,24 @@ async def main():
     app.add_handler(CommandHandler("result_auction", result_auction))
     app.add_handler(CommandHandler("rmplayer", rmplayer))
     app.add_handler(CommandHandler("balance", balance))
+
     # ============ RPS GAME ==========
     app.add_handler(CommandHandler("rps", rps))
     app.add_handler(CallbackQueryHandler(rps_join_callback, pattern="^rps_join_"))
     app.add_handler(CallbackQueryHandler(rps_move_callback, pattern="^rps_move_"))
     app.add_handler(CallbackQueryHandler(rps_none_callback, pattern="^rps_none"))
+
+    # ============ LOGIN / PENALTY ==========
     app.add_handler(CommandHandler("login", login))
     app.add_handler(CommandHandler("login_log", login_log))
     app.add_handler(CommandHandler("penalty_history", penalty_history))
     app.add_handler(CommandHandler("penalty", penalty_preview))
     app.add_handler(CommandHandler("penaltystatus", penalty_status))
 
-   
-
     # ============ HILO GAME ==========
     app.add_handler(CommandHandler("hilo", hilo))
     app.add_handler(CallbackQueryHandler(hilo_callback, pattern="^hilo_"))
-    
+
     # ============ LOTTERY ==========
     app.add_handler(CommandHandler("lottery", lottery))
     app.add_handler(CommandHandler("buy_ticket", buy_ticket))
@@ -6220,14 +6220,14 @@ async def main():
     app.add_handler(CommandHandler("addhof", addhof))
     app.add_handler(CommandHandler("rmhof", rmhof))
     app.add_handler(CommandHandler("edithof", edithof))
-    
+
     # ============ BANK ==========
     app.add_handler(CommandHandler("bank", bank))
     app.add_handler(CommandHandler("deposit", deposit))
     app.add_handler(CommandHandler("withdraw", withdraw))
     app.add_handler(CommandHandler("claim_interest", claim_interest))
-    
-    # ============ ADMIN CRICKET ==========
+
+       # ============ ADMIN CRICKET ==========
     app.add_handler(CommandHandler("addmatch", addmatch))
     app.add_handler(CommandHandler("deletematch", deletematch))
     app.add_handler(CommandHandler("lockmatch", lockmatch))
@@ -6239,7 +6239,7 @@ async def main():
     app.add_handler(CommandHandler("rmachieve", rmachieve))
     app.add_handler(CommandHandler("unlockmatch", unlockmatch))
     app.add_handler(CallbackQueryHandler(allbets_callback, pattern="^allbets_"))
-    
+
     # ============ CLCRICKET ==========
     app.add_handler(CommandHandler("CLcricket", clcricket))
     app.add_handler(CallbackQueryHandler(cricket_mode_callback, pattern="^cricket_mode_"))
@@ -6252,8 +6252,7 @@ async def main():
     # ============ MINES ==========
     app.add_handler(CommandHandler("mines", mines))
     app.add_handler(CallbackQueryHandler(mine_callback, pattern="^mine_"))
-
-    # ============ CLAIM CODES ==========
+       # ============ CLAIM CODES ==========
     app.add_handler(CommandHandler("claimcode", claimcode))
     app.add_handler(CommandHandler("activecodes", activecodes))
     app.add_handler(CommandHandler("createcode", createcode))
@@ -6268,39 +6267,28 @@ async def main():
     app.add_handler(CommandHandler("broadcast", broadcast_cmd))
     app.add_handler(CommandHandler("broadcast_stats", broadcast_stats))
     app.add_handler(CommandHandler("rain", rain))
-    
-    # ============ STATS ==========
+
+        # ============ STATS ==========
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("mystats", mystats))
     app.add_handler(CallbackQueryHandler(stats_callback, pattern="^stats_"))
-
     # ============ GROUP TRACKING ==========
     app.add_handler(MessageHandler(filters.ALL, track_all_activity), group=0)
     app.add_handler(MessageHandler(filters.ChatType.GROUP | filters.ChatType.SUPERGROUP, track_group))
 
+
+
     print("🤖 Bot is running...")
 
+    # ============ START BOT ==========
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
 
     try:
         await asyncio.Event().wait()
-    except KeyboardInterrupt:
-        pass
     finally:
+        await app.updater.stop()
         await app.stop()
         await app.shutdown()
-
-# ============ RUN ==========
-if __name__ == "__main__":
-    threading.Thread(target=run_flask, daemon=True).start()
-    
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(main())
-    except KeyboardInterrupt:
-        pass
-    finally:
-        loop.close()
+ 
