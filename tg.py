@@ -5748,163 +5748,285 @@ async def rmplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-# ============ LOGIN ==========
+
+# ============ PING ==========
+async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.effective_message
+    if not msg:
+        return
+
+    try:
+        import time
+        start_time = time.time()
+
+        # Send initial message
+        temp_msg = await msg.reply_text("🏓 Pinging...")
+
+        end_time = time.time()
+        latency = (end_time - start_time) * 1000
+
+        await temp_msg.edit_text(
+            f"*🏓 Pong!*\n"
+            f"*⏱️ Latency:* {latency:.2f}ms\n"
+            f"*💎 Gamble Man is active.*",
+            parse_mode="Markdown"
+        )
+
+    except Exception as e:
+        if "503" in str(e):
+            print("⚠️ Proxy 503: Ping failed.")
+            try:
+                await msg.reply_text("🏓 Pong! (Lag detected)")
+            except:
+                pass
+        else:
+            print(f"❌ Ping Error: {e}")
+
+
+# ============ LOGIN TRACKER TABLE ============
+await db.execute("""
+    CREATE TABLE IF NOT EXISTS login_tracker (
+        user_id BIGINT PRIMARY KEY,
+        last_login DATE
+    )
+""")
+
+# ============ PENALTY HISTORY TABLE ============
+await db.execute("""
+    CREATE TABLE IF NOT EXISTS penalty_history (
+        id SERIAL PRIMARY KEY,
+        user_id BIGINT,
+        amount INT,
+        penalty_date DATE,
+        balance_after BIGINT
+    )
+""")
+
+# ============ LOGIN ============
 async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if not await is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
+        await update.message.reply_text("❌ Send /start first!")
         return
 
     db = await get_db()
-    today = datetime.now().date()
 
-    # 🔥 TOTAL WEALTH (WALLET + BANK) SE RANK CALCULATE KARO
-    rank = await db.fetchval("""
-        SELECT COUNT(*) + 1 FROM (
-            SELECT u.user_id, u.balance + COALESCE(b.balance, 0) as total_wealth
-            FROM users u
-            LEFT JOIN bank b ON u.user_id = b.user_id
-        ) t
-        WHERE total_wealth > (
+    try:
+        today = datetime.now().date()
+
+        # Current total wealth
+        total_wealth = await db.fetchval("""
             SELECT u.balance + COALESCE(b.balance, 0)
             FROM users u
             LEFT JOIN bank b ON u.user_id = b.user_id
             WHERE u.user_id = $1
+        """, user_id)
+
+        if total_wealth is None:
+            total_wealth = 0
+
+        # Rank based on total wealth
+        rank = await db.fetchval("""
+            SELECT COUNT(*) + 1
+            FROM (
+                SELECT u.user_id,
+                       u.balance + COALESCE(b.balance, 0) AS total_wealth
+                FROM users u
+                LEFT JOIN bank b ON u.user_id = b.user_id
+            ) t
+            WHERE t.total_wealth > $1
+        """, total_wealth)
+
+        # Only Top 10 need daily login
+        if rank > 10:
+            await update.message.reply_text(
+                "*ℹ️ You are not in Top 10.*\n\n"
+                "*✅ Daily login is not required for you.*",
+                parse_mode="Markdown"
+            )
+            return
+
+        # Already logged in today?
+        last_login = await db.fetchval(
+            "SELECT last_login FROM login_tracker WHERE user_id = $1",
+            user_id
         )
-    """, user_id)
 
-    # 🔥 NON-TOP 10 USER
-    if rank and rank > 10:
-        await db.close()
-        await update.message.reply_text(
-            f"*ℹ️ You are not in Top 10.*\n\n"
-            f"*✅ No login required. No penalty applies!*",
-            parse_mode="Markdown"
-        )
-        return
+        if last_login == today:
+            await update.message.reply_text(
+                "*⚠️ Already logged in today!*\n\n"
+                f"*📅 {today.strftime('%d %b %Y')}*\n\n"
+                "*💡 Come back tomorrow!*",
+                parse_mode="Markdown"
+            )
+            return
 
-    # 🔥 CHECK KARO KYA AAJ LOGIN KIYA HAI (TOP 10 USER)
-    last = await db.fetchval("SELECT last_login FROM login_tracker WHERE user_id = $1", user_id)
-
-    if last and last == today:
-        await db.close()
-        await update.message.reply_text(
-            f"*⚠️ Already logged in today!*\n"
-            f"*📅 {today.strftime('%d %b %Y')}*\n\n"
-            f"*💡 Come back tomorrow!*",
-            parse_mode="Markdown"
-        )
-        return
-
-    # 🔥 SAVE LOGIN (TOP 10 USER)
-    await db.execute(
-        "INSERT INTO login_tracker (user_id, last_login) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_login = $2",
-        user_id, today
-    )
-
-    await db.close()
-
-    await update.message.reply_text(
-        f"*✅ Login successful!*\n"
-        f"*📅 {today.strftime('%d %b %Y')}*\n\n"
-        f"*💡 Come back tomorrow!*",
-        parse_mode="Markdown"
-    )
-
-async def check_penalty():
-    """Roj 11:59 PM chalega - SIRF TOP 10 KO"""
-    db = await get_db()
-    today = datetime.now().date()
-    penalty_date = today + timedelta(days=1)  # 🔥 AGLA DIN
-
-    # 🔥 TOTAL WEALTH SE TOP 10 FETCH KARO
-    top_10 = await db.fetch("""
-        SELECT u.user_id, u.name, u.balance as wallet, COALESCE(b.balance, 0) as bank,
-               u.balance + COALESCE(b.balance, 0) as total_wealth
-        FROM users u
-        LEFT JOIN bank b ON u.user_id = b.user_id
-        ORDER BY total_wealth DESC
-        LIMIT 10
-    """)
-
-    for user in top_10:
-        user_id = user['user_id']
-        wallet = user['wallet']
-        bank = user['bank']
-        total = user['total_wealth']
-
-        if total <= 5000:
-            continue
-
-        last = await db.fetchval("SELECT last_login FROM login_tracker WHERE user_id = $1", user_id)
-        if last and last == today:
-            continue
-
-        # 🔥 PENALTY CALCULATE
-        if total <= 100000:
-            penalty_rate = 0.001
-        elif total <= 500000:
-            penalty_rate = 0.002
-        elif total <= 1000000:
-            penalty_rate = 0.003
-        elif total <= 2500000:
-            penalty_rate = 0.005
-        else:
-            penalty_rate = 0.01
-
-        penalty = int(total * penalty_rate)
-        new_total = total - penalty
-
-        # 🔥 WALLET SE PEHLE CUT KARO, AGAR KAM PADE TOH BANK SE
-        if wallet >= penalty:
-            new_wallet = wallet - penalty
-            new_bank = bank
-        else:
-            remaining = penalty - wallet
-            new_wallet = 0
-            new_bank = bank - remaining
-
-        await db.execute("UPDATE users SET balance = $1 WHERE user_id = $2", new_wallet, user_id)
-        await db.execute("UPDATE bank SET balance = $1 WHERE user_id = $2", new_bank, user_id)
-
-        # 🔥 PENALTY HISTORY - AGLA DIN SAVE KARO
+        # Save today's login
         await db.execute("""
-            INSERT INTO penalty_history (user_id, amount, penalty_date, balance_after)
-            VALUES ($1, $2, $3, $4)
-        """, user_id, penalty, penalty_date, new_total)
+            INSERT INTO login_tracker (user_id, last_login)
+            VALUES ($1, $2)
+            ON CONFLICT (user_id)
+            DO UPDATE SET last_login = EXCLUDED.last_login
+        """, user_id, today)
 
-        print(f"💰 Penalty: {user_id} - {penalty} ({penalty_rate*100}%)")
+        await update.message.reply_text(
+            "*✅ Daily Login Successful!*\n\n"
+            f"*📅 {today.strftime('%d %b %Y')}*\n"
+            f"*🏆 Your Rank: #{rank}*\n"
+            f"*🪙 Total Wealth: {total_wealth:,}*\n\n"
+            "*🛡️ Today's penalty is avoided!*",
+            parse_mode="Markdown"
+        )
 
-    await db.close()
+    finally:
+        await db.close()
 
-# ============ LOGIN RESET ==========
-async def reset_login():
-    """Har din 12 AM login reset"""
+# ============ DAILY PENALTY ============
+async def check_penalty():
+    """
+    Runs once every day.
+    Only current Top 10 users are checked.
+    Users who didn't login today receive a penalty.
+    """
+
     db = await get_db()
-    await db.execute("DELETE FROM login_tracker")
-    await db.close()
-    print("✅ Login reset! Sabko penalty lagegi agar login nahi kiya.")
+
+    try:
+        today = datetime.now().date()
+
+        # Get CURRENT Top 10
+        top_10 = await db.fetch("""
+            SELECT
+                u.user_id,
+                u.balance AS wallet,
+                COALESCE(b.balance, 0) AS bank,
+                u.balance + COALESCE(b.balance, 0) AS total_wealth
+            FROM users u
+            LEFT JOIN bank b ON u.user_id = b.user_id
+            ORDER BY total_wealth DESC
+            LIMIT 10
+        """)
+
+        for user in top_10:
+
+            user_id = user["user_id"]
+            wallet = user["wallet"] or 0
+            bank = user["bank"] or 0
+            total = user["total_wealth"] or 0
+
+            # Wealth below/equal 5000 = no penalty
+            if total <= 5000:
+                continue
+
+            # Did user login today?
+            last_login = await db.fetchval(
+                "SELECT last_login FROM login_tracker WHERE user_id = $1",
+                user_id
+            )
+
+            if last_login == today:
+                continue
+
+            # ============ PENALTY RATE ============
+            if total <= 100_000:
+                rate = 0.001       # 0.1%
+            elif total <= 500_000:
+                rate = 0.002       # 0.2%
+            elif total <= 1_000_000:
+                rate = 0.003       # 0.3%
+            elif total <= 2_500_000:
+                rate = 0.005       # 0.5%
+            else:
+                rate = 0.01        # 1%
+
+            penalty = max(1, int(total * rate))
+
+            # Never take more than total wealth
+            penalty = min(penalty, total)
+
+            # ============ TAKE FROM WALLET FIRST ============
+            if wallet >= penalty:
+                new_wallet = wallet - penalty
+                new_bank = bank
+            else:
+                remaining = penalty - wallet
+
+                new_wallet = 0
+                new_bank = max(0, bank - remaining)
+
+            new_total = new_wallet + new_bank
+
+            # Update wallet
+            await db.execute("""
+                UPDATE users
+                SET balance = $1
+                WHERE user_id = $2
+            """, new_wallet, user_id)
+
+            # Update bank
+            await db.execute("""
+                INSERT INTO bank (user_id, balance)
+                VALUES ($1, $2)
+                ON CONFLICT (user_id)
+                DO UPDATE SET balance = EXCLUDED.balance
+            """, user_id, new_bank)
+
+            # Save history
+            await db.execute("""
+                INSERT INTO penalty_history
+                (user_id, amount, penalty_date, balance_after)
+                VALUES ($1, $2, $3, $4)
+            """, user_id, penalty, today, new_total)
+
+            print(
+                f"💰 DAILY PENALTY | "
+                f"User: {user_id} | "
+                f"Penalty: {penalty:,} | "
+                f"Remaining: {new_total:,}"
+            )
+
+    finally:
+        await db.close()
 
 
+# ============ DAILY PENALTY SCHEDULER ============
 async def schedule_penalty():
+    """
+    Runs every day at 11:59 PM.
+    """
+
     while True:
+
         now = datetime.now()
-        # 🔥 11:59 PM IST
-        next_run = now.replace(hour=23, minute=59, second=0, microsecond=0)
+
+        next_run = now.replace(
+            hour=23,
+            minute=59,
+            second=0,
+            microsecond=0
+        )
+
         if now >= next_run:
             next_run += timedelta(days=1)
 
         wait_seconds = (next_run - now).total_seconds()
-        print(f"⏰ Next penalty check in {wait_seconds/3600:.1f} hours")
+
+        print(
+            f"⏰ Next penalty check: "
+            f"{next_run.strftime('%d %b %Y %H:%M:%S')}"
+        )
+
         await asyncio.sleep(wait_seconds)
 
-        # 🔥 RESET LOGIN + PENALTY
-        await reset_login()
-        await check_penalty()
+        try:
+            await check_penalty()
+            print("✅ Daily penalty check completed!")
 
+        except Exception as e:
+            print(f"❌ Penalty error: {e}")
 
-# ============ LOGIN LOG (ADMIN - CURRENT LEADERBOARD) ==========
+# ============ LOGIN LOG (ADMIN) ==========
 async def login_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Admin only!")
@@ -5912,17 +6034,6 @@ async def login_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     db = await get_db()
     today = datetime.now().date()
-
-    # 🔥 PENALTY HISTORY TABLE (AGAR NAHI HAI TOH BANAO)
-    await db.execute('''
-        CREATE TABLE IF NOT EXISTS penalty_history (
-            id SERIAL PRIMARY KEY,
-            user_id BIGINT,
-            amount INT,
-            penalty_date DATE,
-            balance_after INT
-        )
-    ''')
 
     # 🔥 CURRENT TOP 10 (TOTAL WEALTH)
     top_10 = await db.fetch("""
@@ -5937,11 +6048,6 @@ async def login_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logged_in = await db.fetch("SELECT user_id FROM login_tracker WHERE last_login = $1", today)
     logged_in_ids = [row['user_id'] for row in logged_in]
 
-    # 🔥 TODAY'S PENALTY
-    today_penalties = await db.fetch("SELECT user_id, amount FROM penalty_history WHERE penalty_date = $1", today)
-    penalty_dict = {row['user_id']: row['amount'] for row in today_penalties}
-
-    # 🔥 BUILD MESSAGE
     msg = f"🌍 Global Top 10 — Coins 🪙\n"
     msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
 
@@ -5952,16 +6058,10 @@ async def login_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
         balance = u['total_wealth']
         name = u['name']
 
-        # 🔥 LOGIN STATUS
         if user_id in logged_in_ids:
             status = "✅"
         else:
-            # 🔥 PENALTY ONLY IF APPLIED (12 AM KE BAAD)
-            if user_id in penalty_dict:
-                penalty = penalty_dict[user_id]
-                status = f"❌ (pen - {penalty:,})"
-            else:
-                status = "❌"
+            status = "❌"
 
         msg += f"{medals[i]} {name} : {balance:,} - {status}\n"
 
@@ -5988,6 +6088,7 @@ async def login_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(msg)
     await db.close()
+
 
 # ============ PENALTY HISTORY (ADMIN) ==========
 async def penalty_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6027,49 +6128,21 @@ async def penalty_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
     await db.close()
 
-# ============ PING ==========
-async def ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.effective_message
-    if not msg:
-        return
 
-    try:
-        import time
-        start_time = time.time()
 
-        # Send initial message
-        temp_msg = await msg.reply_text("🏓 Pinging...")
 
-        end_time = time.time()
-        latency = (end_time - start_time) * 1000
-
-        await temp_msg.edit_text(
-            f"*🏓 Pong!*\n"
-            f"*⏱️ Latency:* {latency:.2f}ms\n"
-            f"*💎 Gamble Man is active.*",
-            parse_mode="Markdown"
-        )
-
-    except Exception as e:
-        if "503" in str(e):
-            print("⚠️ Proxy 503: Ping failed.")
-            try:
-                await msg.reply_text("🏓 Pong! (Lag detected)")
-            except:
-                pass
-        else:
-            print(f"❌ Ping Error: {e}")
 
 # ============ MAIN ==========
 async def main():
     await init_db()
 
-    # 🔥 SCHEDULER START KARO
+    # 🔥 START DAILY LOGIN + PENALTY SCHEDULER
     asyncio.create_task(schedule_penalty())
-    print("✅ Scheduler started! Will run daily at 11:59 PM IST.")
+    print("✅ Daily login + penalty scheduler started!")
 
     app = Application.builder().token(TOKEN).build()
-    
+
+    await app.run_polling()
 
     # ============ USER COMMANDS ==========
     app.add_handler(CommandHandler("start", start))
@@ -6111,16 +6184,18 @@ async def main():
     app.add_handler(CommandHandler("result_auction", result_auction))
     app.add_handler(CommandHandler("rmplayer", rmplayer))
     app.add_handler(CommandHandler("balance", balance))
-    app.add_handler(CommandHandler("penalty_history", penalty_history))
     # ============ RPS GAME ==========
     app.add_handler(CommandHandler("rps", rps))
     app.add_handler(CallbackQueryHandler(rps_join_callback, pattern="^rps_join_"))
     app.add_handler(CallbackQueryHandler(rps_move_callback, pattern="^rps_move_"))
     app.add_handler(CallbackQueryHandler(rps_none_callback, pattern="^rps_none"))
-    
-    # ============ INACTIVITY PENALTY HANDLERS ==========
     app.add_handler(CommandHandler("login", login))
     app.add_handler(CommandHandler("login_log", login_log))
+    app.add_handler(CommandHandler("penalty_history", penalty_history))
+    app.add_handler(CommandHandler("penalty", penalty_preview))
+    app.add_handler(CommandHandler("penaltystatus", penalty_status))
+
+   
 
     # ============ HILO GAME ==========
     app.add_handler(CommandHandler("hilo", hilo))
