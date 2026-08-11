@@ -6280,15 +6280,14 @@ async def main():
 
     print("🤖 Bot is running...")
 
-    # ============ START BOT ==========
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
 
-    try:
-        await asyncio.Event().wait()
-    finally:
-        await app.updater.stop()
-        await app.stop()
-        await app.shutdown()
- 
+try:
+    await asyncio.Event().wait()
+finally:
+    await app.updater.stop()
+    await app.stop()
+    await app.shutdown()
+
