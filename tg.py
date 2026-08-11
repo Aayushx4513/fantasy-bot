@@ -113,7 +113,8 @@ async def init_db():
             user_id BIGINT,
             amount INT,
             penalty_date DATE,
-        )   balance_after INT
+            balance_after INT
+        )
     ''')
 
     await db.execute('''
