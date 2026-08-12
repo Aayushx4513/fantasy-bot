@@ -973,7 +973,7 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
     last = await db.fetchval("SELECT last_claim FROM spin WHERE user_id = $1", user_id)
 
-    now = datetime.now()
+    datetime.now().isoformat()
     today_str = now.strftime("%m/%d/%y")
 
     # 🔥 DAILY RESET - CLAIM JESA
@@ -1573,7 +1573,7 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     bank_bal, last_interest = row['balance'], row['last_interest']
-    now = datetime.now()
+    datetime.now().isoformat()
 
     if last_interest:
         last = datetime.fromisoformat(last_interest)
@@ -3860,83 +3860,185 @@ async def lockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"❌ No more bets accepted!"
     )
 
-# ============ RESULT ==========
+# ============ RESULT ==========# ============ RESULT ==========
 async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text('❌ Admin only!')
         return
 
     args = context.args
-    if len(args) < 4:
-        await update.message.reply_text('❌ /result TEAM1 vs TEAM2 WINNER\nExample: /result India vs Afghanistan India')
+
+    # Example:
+    # /result Sri Lanka vs India Sri Lanka
+    if len(args) < 4 or "vs" not in [x.lower() for x in args]:
+        await update.message.reply_text(
+            "❌ Usage: /result TEAM1 vs TEAM2 WINNER\n"
+            "Example: /result Sri Lanka vs India Sri Lanka"
+        )
         return
 
-    team1 = args[0]
-    team2 = args[2]
-    winner = args[3]
+    # Find "vs"
+    vs_index = next(i for i, x in enumerate(args) if x.lower() == "vs")
+
+    if vs_index == 0 or vs_index == len(args) - 1:
+        await update.message.reply_text("❌ Invalid format!")
+        return
+
+    # Winner is always the LAST word(s) after TEAM2.
+    # We identify the match using the stored team names instead.
+    team1_input = " ".join(args[:vs_index])
+    remaining = args[vs_index + 1:]
 
     db = await get_db()
 
-    match = await db.fetchrow("""
-        SELECT id, team1, team2 FROM matches
-        WHERE LOWER(team1) = LOWER($1) AND LOWER(team2) = LOWER($2)
-    """, team1, team2)
+    # Find match by team1 first
+    matches = await db.fetch("""
+        SELECT id, team1, team2
+        FROM matches
+        WHERE LOWER(team1) = LOWER($1)
+    """, team1_input)
+
+    if not matches:
+        await update.message.reply_text(
+            f"❌ Match with *{team1_input}* not found!",
+            parse_mode="Markdown"
+        )
+        await db.close()
+        return
+
+    # Try to match TEAM2 + WINNER from the remaining arguments
+    match = None
+
+    for m in matches:
+        team2 = m["team2"]
+
+        # Check whether stored team2 is at the beginning
+        team2_words = team2.split()
+
+        if len(remaining) > len(team2_words):
+            possible_team2 = " ".join(remaining[:len(team2_words)])
+            possible_winner = " ".join(remaining[len(team2_words):])
+
+            if (
+                possible_team2.lower() == team2.lower()
+                and possible_winner.lower() in [
+                    m["team1"].lower(),
+                    m["team2"].lower()
+                ]
+            ):
+                match = m
+                winner = possible_winner
+                break
 
     if not match:
-        await update.message.reply_text(f'❌ Match {team1} vs {team2} not found!')
+        await update.message.reply_text(
+            "❌ Match not found or winner is invalid!\n\n"
+            "Example:\n"
+            "`/result Sri Lanka vs India Sri Lanka`",
+            parse_mode="Markdown"
+        )
         await db.close()
         return
 
-    if winner.upper() not in [match['team1'].upper(), match['team2'].upper()]:
-        await update.message.reply_text(f'❌ Winner must be {match["team1"]} or {match["team2"]}!')
+    # Verify winner
+    if winner.lower() not in [
+        match["team1"].lower(),
+        match["team2"].lower()
+    ]:
+        await update.message.reply_text(
+            f"❌ Winner must be {match['team1']} or {match['team2']}!"
+        )
         await db.close()
         return
 
-    bets = await db.fetch("SELECT user_id, amount, team FROM bets WHERE match_id = $1", match['id'])
+    bets = await db.fetch(
+        "SELECT user_id, amount, team FROM bets WHERE match_id = $1",
+        match["id"]
+    )
 
     winners_count = 0
     losers_count = 0
     total_paid = 0
 
-    # 🔥 HAR BET COUNT KARO (NO SKIP!)
+    # Process every bet
     for bet in bets:
-        user_id = bet['user_id']
-        amount = bet['amount']
-        bet_team = bet['team']
+        user_id = bet["user_id"]
+        amount = bet["amount"]
+        bet_team = bet["team"]
 
-        user = await db.fetchrow("SELECT balance, won, total, points FROM users WHERE user_id = $1", user_id)
+        user = await db.fetchrow(
+            "SELECT balance, won, total, points FROM users WHERE user_id = $1",
+            user_id
+        )
 
-        if bet_team.upper() == winner.upper():
+        if not user:
+            continue
+
+        if bet_team.lower() == winner.lower():
+
             win_amount = amount * 2
-            new_balance = user['balance'] + win_amount
-            new_won = user['won'] + 1
-            new_total = user['total'] + 1
-            new_points = user['points'] + 10
+
+            new_balance = user["balance"] + win_amount
+            new_won = user["won"] + 1
+            new_total = user["total"] + 1
+            new_points = user["points"] + 10
+
             await db.execute("""
-                UPDATE users SET balance = $1, won = $2, total = $3, points = $4
+                UPDATE users
+                SET balance = $1,
+                    won = $2,
+                    total = $3,
+                    points = $4
                 WHERE user_id = $5
-            """, new_balance, new_won, new_total, new_points, user_id)
+            """,
+                new_balance,
+                new_won,
+                new_total,
+                new_points,
+                user_id
+            )
+
             total_paid += win_amount
             winners_count += 1
+
         else:
-            new_total = user['total'] + 1
-            new_points = user['points'] - 5
-            await db.execute("UPDATE users SET total = $1, points = $2 WHERE user_id = $3", new_total, new_points, user_id)
+
+            new_total = user["total"] + 1
+            new_points = user["points"] - 5
+
+            await db.execute("""
+                UPDATE users
+                SET total = $1,
+                    points = $2
+                WHERE user_id = $3
+            """,
+                new_total,
+                new_points,
+                user_id
+            )
+
             losers_count += 1
 
-    await db.execute("DELETE FROM bets WHERE match_id = $1", match['id'])
-    await db.execute("DELETE FROM matches WHERE id = $1", match['id'])
+    # Remove completed match and bets
+    await db.execute(
+        "DELETE FROM bets WHERE match_id = $1",
+        match["id"]
+    )
+
+    await db.execute(
+        "DELETE FROM matches WHERE id = $1",
+        match["id"]
+    )
 
     await db.close()
 
     await update.message.reply_text(
-        f"📢 MATCH RESULT!\n\n"
-        f"🏏 {match['team1']} vs {match['team2']}\n"
-        f"🏆 WINNER: {winner.upper()}\n\n"
-        f"✅ WINNERS (+10 pts): {winners_count} users\n"
-        f"❌ LOSERS (-5 pts): {losers_count} users\n\n"
-        f"💰 TOTAL PAYOUT: {total_paid:,} 💰"
-    )
+        f"📢 *MATCH RESULT!*\n\n"
+        f"🏏 *{match['team1']}* vs *{match['team2']}*\n"
+        f"🏆 *WINNER:* {winner.upper()}\n\n"
+        f"✅ *WINNERS (+10 pts):* {winners_count} users\n"
+        f"❌ *LOSERS (-5 pts):* {losers_count} users\n\n"
+        f"💰 *
 
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
@@ -4663,92 +4765,133 @@ async def mybets(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    
+
     if not await is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    
+
     args = context.args
+
     if len(args) < 2:
-        await update.message.reply_text('❌ /bet TEAM AMOUNT\nExample: /bet India 1000\n\n💰 Min: 100 | Max: 35,000')
+        await update.message.reply_text(
+            '❌ Usage: /bet TEAM AMOUNT\n'
+            'Example: /bet Sri Lanka 1000\n\n'
+            '💰 Min: 100 | Max: 35,000'
+        )
         return
-    
-    team = args[0]
+
+    # Last argument = amount
     try:
-        amount = int(args[1])
+        amount = int(args[-1])
     except:
         await update.message.reply_text('❌ Invalid amount')
         return
-    
+
+    # Everything before amount = team name
+    team = " ".join(args[:-1]).strip()
+
     if amount < 100:
         await update.message.reply_text('❌ Minimum 100 credits')
         return
-    
+
     if amount > 35000:
-        await update.message.reply_text('❌ Maximum 35,000 credits per bet!')
+        await update.message.reply_text(
+            '❌ Maximum 35,000 credits per bet!'
+        )
         return
-    
+
     db = await get_db()
-    
+
     match = await db.fetchrow("""
-        SELECT id, team1, team2, locked 
-        FROM matches 
-        WHERE LOWER(team1) = LOWER($1) OR LOWER(team2) = LOWER($1)
+        SELECT id, team1, team2, locked
+        FROM matches
+        WHERE LOWER(team1) = LOWER($1)
+           OR LOWER(team2) = LOWER($1)
     """, team)
-    
+
     if not match:
-        await update.message.reply_text(f'❌ Match with {team} not found!')
+        await update.message.reply_text(
+            f'❌ Match with {team} not found!'
+        )
         await db.close()
         return
-    
+
     if match['locked'] == 1:
-        await update.message.reply_text(f'🔒 Match is LOCKED! Betting closed for {match["team1"]} vs {match["team2"]}')
+        await update.message.reply_text(
+            f'🔒 Match is LOCKED!\n'
+            f'Betting closed for {match["team1"]} vs {match["team2"]}'
+        )
         await db.close()
         return
-    
+
     bet_count = await db.fetchval("""
-        SELECT COUNT(*) FROM bets 
+        SELECT COUNT(*) FROM bets
         WHERE user_id = $1 AND match_id = $2
     """, user_id, match['id'])
-    
+
     if bet_count >= 2:
-        await update.message.reply_text("❌ You can only place up to 2 bets per match!")
+        await update.message.reply_text(
+            "❌ You can only place up to 2 bets per match!"
+        )
         await db.close()
         return
-    
-    balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    
+
+    balance = await db.fetchval(
+        "SELECT balance FROM users WHERE user_id = $1",
+        user_id
+    )
+
+    if balance is None:
+        await update.message.reply_text(
+            "❌ Your balance could not be found!"
+        )
+        await db.close()
+        return
+
     if balance < amount:
-        await update.message.reply_text(f'❌ Need {amount:,}, have {balance:,}')
+        await update.message.reply_text(
+            f'❌ Need {amount:,}, have {balance:,}'
+        )
         await db.close()
         return
-    
-    bet_team = match['team1'] if match['team1'].lower() == team.lower() else match['team2']
-    
+
+    # Determine selected team
+    if match['team1'].lower() == team.lower():
+        bet_team = match['team1']
+    else:
+        bet_team = match['team2']
+
     await db.execute("""
-        INSERT INTO bets (user_id, match_id, team, amount) 
+        INSERT INTO bets (user_id, match_id, team, amount)
         VALUES ($1, $2, $3, $4)
     """, user_id, match['id'], bet_team, amount)
-    
-    await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", amount, user_id)
-    
-    new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
+
+    await db.execute(
+        "UPDATE users SET balance = balance - $1 WHERE user_id = $2",
+        amount,
+        user_id
+    )
+
+    new_bal = await db.fetchval(
+        "SELECT balance FROM users WHERE user_id = $1",
+        user_id
+    )
+
     await db.close()
-    
-    # 🔥 BOLD KE LIYE ESCAPE
+
     team1_escaped = escape_markdown(match['team1'])
     team2_escaped = escape_markdown(match['team2'])
     bet_team_escaped = escape_markdown(bet_team)
-    
+
     await update.message.reply_text(
-        f"✅ *BET PLACED!* (PENDING)\n\n"
+        f"✅ *BET PLACED\\! \\(PENDING\\)*\n\n"
         f"🏏 *{team1_escaped}* vs *{team2_escaped}*\n"
         f"🎯 *{bet_team_escaped}*\n"
         f"💰 *{amount:,}* 💰\n\n"
         f"📊 Status: ⏳ *PENDING*\n"
-        f"💡 Result will be announced after match ends!\n\n"
+        f"💡 Result will be announced after match ends\\!\n\n"
         f"📊 Current balance: *{new_bal:,}* 💰",
-        parse_mode="Markdown"
+        parse_mode="MarkdownV2"
     )
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
