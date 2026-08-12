@@ -5712,7 +5712,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         player_id,
         user_id,
         amount,
-        datetime.now(IST)
+        datetime.now()
     )
 
     await db.close()
