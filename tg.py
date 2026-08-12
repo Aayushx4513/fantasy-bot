@@ -3704,22 +3704,62 @@ async def rps_none_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer("Game Over!", show_alert=True)
 
-# ============ ADMIN CRICKET COMMANDS ==========
+# ============ ADD MATCH ==========
 async def addmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
+        await update.message.reply_text("❌ Admin only!")
         return
+
     args = context.args
-    if len(args) < 4:
-        await update.message.reply_text('❌ /addmatch TEAM1 vs TEAM2 YYYY-MM-DD')
+
+    if len(args) < 5:
+        await update.message.reply_text(
+            "❌ Usage:\n"
+            "/addmatch TEAM1 vs TEAM2 YYYY-MM-DD\n\n"
+            "Example:\n"
+            "/addmatch Sri Lanka vs India 2026-08-15"
+        )
         return
-    team1 = args[0]
-    team2 = args[2]
-    date = args[3]
+
+    try:
+        vs_index = args.index("vs")
+
+        team1 = " ".join(args[:vs_index])
+        date = args[-1]
+        team2 = " ".join(args[vs_index + 1:-1])
+
+        if not team1 or not team2:
+            raise ValueError
+
+    except:
+        await update.message.reply_text(
+            "❌ Invalid format!\n\n"
+            "Use:\n"
+            "/addmatch Sri Lanka vs India 2026-08-15"
+        )
+        return
+
     db = await get_db()
-    await db.execute("INSERT INTO matches (team1, team2, date, status, locked) VALUES ($1, $2, $3, 'upcoming', 0)", team1, team2, date)
+
+    await db.execute(
+        """
+        INSERT INTO matches
+        (team1, team2, date, status, locked)
+        VALUES ($1, $2, $3, 'upcoming', 0)
+        """,
+        team1,
+        team2,
+        date
+    )
+
     await db.close()
-    await update.message.reply_text(f"✅ MATCH ADDED!\n\n🏏 {team1} vs {team2}\n📅 {date}\n🔓 Status: OPEN")
+
+    await update.message.reply_text(
+        f"✅ MATCH ADDED!\n\n"
+        f"🏏 {team1} vs {team2}\n"
+        f"📅 {date}\n"
+        f"🔓 Status: OPEN"
+    )
 
 # ============ DELETE MATCH (Auto Refund) ==========
 async def deletematch(update: Update, context: ContextTypes.DEFAULT_TYPE):
