@@ -4038,7 +4038,8 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🏆 *WINNER:* {winner.upper()}\n\n"
         f"✅ *WINNERS (+10 pts):* {winners_count} users\n"
         f"❌ *LOSERS (-5 pts):* {losers_count} users\n\n"
-        f"💰 *
+        f"💰 *TOTAL PAYOUT:* {total_paid:,} 💰",
+        parse_mode="Markdown"
 
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
