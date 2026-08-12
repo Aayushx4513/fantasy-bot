@@ -5495,7 +5495,7 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    now = datetime.now(IST)
+    now = datetime.now()
 
     await db.execute(
         """
