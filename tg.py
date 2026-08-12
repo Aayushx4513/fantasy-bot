@@ -6127,7 +6127,136 @@ async def penalty_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
     await db.close()
 
+# ============ PART 5 — OPTIONAL: PENALTY SETTINGS ============
+# Is part se penalty ko easily control kar sakte ho.
 
+# 🔧 PENALTY SETTINGS
+PENALTY_ENABLED = True
+
+# Minimum total wealth jiske neeche penalty nahi lagegi
+MIN_WEALTH_FOR_PENALTY = 5_000
+
+# Top kitne players ko daily penalty lagegi
+PENALTY_TOP_PLAYERS = 10
+
+
+# ============ GET PENALTY RATE ============
+def get_penalty_rate(total_wealth):
+
+    if total_wealth <= 100_000:
+        return 0.001       # 0.1%
+
+    elif total_wealth <= 500_000:
+        return 0.002       # 0.2%
+
+    elif total_wealth <= 1_000_000:
+        return 0.003       # 0.3%
+
+    elif total_wealth <= 2_500_000:
+        return 0.005       # 0.5%
+
+    else:
+        return 0.01        # 1%
+
+
+# ============ PENALTY PREVIEW ============
+async def penalty_preview(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    user_id = update.effective_user.id
+
+    if not await is_registered(user_id):
+        await update.message.reply_text(
+            "❌ Send /start first!"
+        )
+        return
+
+    db = await get_db()
+
+    total_wealth = await db.fetchval("""
+        SELECT
+            u.balance + COALESCE(b.balance, 0)
+        FROM users u
+        LEFT JOIN bank b
+            ON u.user_id = b.user_id
+        WHERE u.user_id = $1
+    """, user_id)
+
+    if total_wealth is None:
+        total_wealth = 0
+
+    if total_wealth <= MIN_WEALTH_FOR_PENALTY:
+
+        await db.close()
+
+        await update.message.reply_text(
+            "🛡️ *PENALTY PREVIEW*\n\n"
+            f"🪙 Your Wealth: *{total_wealth:,}*\n"
+            "💸 Possible Penalty: *0*\n\n"
+            "✅ Your wealth is below the penalty limit.",
+            parse_mode="Markdown"
+        )
+        return
+
+    rate = get_penalty_rate(total_wealth)
+    penalty = max(1, int(total_wealth * rate))
+
+    await db.close()
+
+    await update.message.reply_text(
+        "⚠️ *PENALTY PREVIEW*\n\n"
+        f"🪙 Total Wealth: *{total_wealth:,}*\n"
+        f"📉 Penalty Rate: *{rate * 100:.1f}%*\n"
+        f"💸 Possible Penalty: *-{penalty:,}*\n"
+        f"🪙 After Penalty: *{total_wealth - penalty:,}*\n\n"
+        "💡 Use /login daily to avoid the penalty.",
+        parse_mode="Markdown"
+    )
+
+
+# ============ ADMIN: PENALTY STATUS ============
+async def penalty_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text(
+            "❌ Admin only!"
+        )
+        return
+
+    db = await get_db()
+
+    today = datetime.now(IST).date()
+
+    logged_count = await db.fetchval("""
+        SELECT COUNT(*)
+        FROM login_tracker
+        WHERE last_login = $1
+    """, today)
+
+    penalty_count = await db.fetchval("""
+        SELECT COUNT(*)
+        FROM penalty_history
+        WHERE penalty_date = $1
+    """, today)
+
+    penalty_total = await db.fetchval("""
+        SELECT COALESCE(SUM(amount), 0)
+        FROM penalty_history
+        WHERE penalty_date = $1
+    """, today)
+
+    await db.close()
+
+    await update.message.reply_text(
+        "📊 *DAILY PENALTY STATUS*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📅 Date: *{today.strftime('%d %b %Y')}*\n"
+        f"✅ Logged in: *{logged_count}*\n"
+        f"💸 Penalized: *{penalty_count}*\n"
+        f"🪙 Total Coins Removed: *{penalty_total:,}*\n\n"
+        f"🔝 Penalty applies to Top *{PENALTY_TOP_PLAYERS}*\n"
+        f"💰 Minimum Wealth: *{MIN_WEALTH_FOR_PENALTY:,}*",
+        parse_mode="Markdown"
+    ))
 
 
 
