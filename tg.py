@@ -6256,7 +6256,7 @@ async def penalty_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔝 Penalty applies to Top *{PENALTY_TOP_PLAYERS}*\n"
         f"💰 Minimum Wealth: *{MIN_WEALTH_FOR_PENALTY:,}*",
         parse_mode="Markdown"
-    ))
+    )
 
 
 
