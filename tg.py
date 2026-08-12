@@ -628,7 +628,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
          ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await update.message.reply_text(
+        await update.message.chat.send_message(
             f"✨ WELCOME BACK TO CL ZONE ✨\n\n"
             f"👑 {name}\n"
             f"💰 {existing['balance']:,} credits | 🏆 {existing['points']} pts\n\n"
