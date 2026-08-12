@@ -973,7 +973,7 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
     last = await db.fetchval("SELECT last_claim FROM spin WHERE user_id = $1", user_id)
 
-    datetime.now().isoformat()
+    now = datetime.now(IST)
     today_str = now.strftime("%m/%d/%y")
 
     # 🔥 DAILY RESET - CLAIM JESA
