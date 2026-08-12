@@ -966,36 +966,76 @@ async def codestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============ SPIN ==========
 async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+
     if not await is_registered(user_id):
-        await update.message.reply_text('*❌ Send /start first!*', parse_mode="Markdown")
+        await update.message.reply_text(
+            '*❌ Send /start first!*',
+            parse_mode="Markdown"
+        )
         return
 
     db = await get_db()
-    last = await db.fetchval("SELECT last_claim FROM spin WHERE user_id = $1", user_id)
+
+    last = await db.fetchval(
+        "SELECT last_claim FROM spin WHERE user_id = $1",
+        user_id
+    )
 
     now = datetime.now(IST)
     today_str = now.strftime("%m/%d/%y")
 
-    # 🔥 DAILY RESET - CLAIM JESA
+    # 🔥 DAILY RESET
     if last:
-        last_date = datetime.fromisoformat(last).date()
-        if last_date == now.date():
-            await update.message.reply_text(
-                f"*⚠️ Already spin today!*\n*Come back tomorrow.*",
-                parse_mode="Markdown"
-            )
-            await db.close()
-            return
+        try:
+            # Database mein saved value string hai
+            last_date = datetime.fromisoformat(str(last)).date()
 
+            if last_date == now.date():
+                await update.message.reply_text(
+                    "*⚠️ Already spin today!*\n"
+                    "*Come back tomorrow.*",
+                    parse_mode="Markdown"
+                )
+                await db.close()
+                return
+
+        except ValueError:
+            # Agar old/invalid date saved ho toh ignore karke spin allow
+            pass
+
+    # 🎁 Random reward
     amount = random.randint(1000, 10000)
 
-    await db.execute(
-        "INSERT INTO spin (user_id, last_claim) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_claim = $2",
-        user_id, now
-    )
-    await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", amount, user_id)
+    # 🔥 IMPORTANT: datetime ko string mein convert karke save karo
+    now_str = now.isoformat()
 
-    new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
+    await db.execute(
+        """
+        INSERT INTO spin (user_id, last_claim)
+        VALUES ($1, $2)
+        ON CONFLICT (user_id)
+        DO UPDATE SET last_claim = $2
+        """,
+        user_id,
+        now_str
+    )
+
+    # 💰 Add reward
+    await db.execute(
+        """
+        UPDATE users
+        SET balance = balance + $1
+        WHERE user_id = $2
+        """,
+        amount,
+        user_id
+    )
+
+    new_bal = await db.fetchval(
+        "SELECT balance FROM users WHERE user_id = $1",
+        user_id
+    )
+
     await db.close()
 
     await update.message.reply_text(
