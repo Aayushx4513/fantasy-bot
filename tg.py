@@ -5451,7 +5451,7 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     db = await get_db()
-    now = datetime.now()
+    now = datetime.now(IST)
 
     await db.execute(
         "INSERT INTO auction_players (name, base_price, current_bid, added_by, added_at, end_time, status) VALUES ($1, $2, $3, $4, $5, NULL, 'active')",
@@ -5548,7 +5548,10 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
 
-    end_time = datetime.fromisoformat(player['end_time'])
+   end_time = player['end_time']
+
+    if isinstance(end_time, str):
+    end_time = datetime.fromisoformat(end_time)
     if datetime.now() > end_time:
         await update.message.reply_text("*⏰ Auction for this player has ended!*", parse_mode="Markdown")
         await db.close()
