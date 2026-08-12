@@ -6290,3 +6290,9 @@ async def main():
         await app.updater.stop()
         await app.stop()
         await app.shutdown()
+
+    # ============ RUN ==========
+    if __name__ == "__main__":
+        threading.Thread(target=run_flask, daemon=True).start()
+        asyncio.run(main())
+
