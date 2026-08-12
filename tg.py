@@ -5420,45 +5420,97 @@ async def fix_achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💡 Now /achievements will show correctly."
     )
 
-# ============ ADD PLAYER (FIXED - BOLD) ==========
+# ============ ADD PLAYER ==========
 async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if user_id not in ADMIN_IDS:
-        await update.message.reply_text("*❌ Admin only!*", parse_mode="Markdown")
+        await update.message.reply_text(
+            "*❌ Admin only!*",
+            parse_mode="Markdown"
+        )
         return
 
     args = context.args
-    if len(args) < 2:
+
+    if len(args) < 3:
         await update.message.reply_text(
-            "*❌ Usage:* `/add_player <name> <base_price>`\n\n"
-            "*Example:* `/add_player Virat 5000`\n\n"
+            "*❌ Usage:* `/add_player <id> <name> <base_price>`\n\n"
+            "*Example:* `/add_player 1 Virat 5000`\n\n"
             "*💡 Minimum price: 1,000*",
             parse_mode="Markdown"
         )
         return
 
-    name = " ".join(args[:-1])
+    # ============ PLAYER ID ==========
+    try:
+        player_id = int(args[0])
+    except (ValueError, TypeError):
+        await update.message.reply_text(
+            "*❌ Invalid player ID!*",
+            parse_mode="Markdown"
+        )
+        return
 
+    # ============ NAME ==========
+    name = " ".join(args[1:-1])
+
+    if not name:
+        await update.message.reply_text(
+            "*❌ Player name is required!*",
+            parse_mode="Markdown"
+        )
+        return
+
+    # ============ BASE PRICE ==========
     try:
         base_price = int(args[-1])
-    except:
-        await update.message.reply_text("*❌ Invalid price!*", parse_mode="Markdown")
+    except (ValueError, TypeError):
+        await update.message.reply_text(
+            "*❌ Invalid price!*",
+            parse_mode="Markdown"
+        )
         return
 
     if base_price < 1000:
-        await update.message.reply_text("*❌ Base price must be at least 1,000!*", parse_mode="Markdown")
+        await update.message.reply_text(
+            "*❌ Base price must be at least 1,000!*",
+            parse_mode="Markdown"
+        )
         return
 
     db = await get_db()
+
+    # Check duplicate ID
+    existing = await db.fetchval(
+        "SELECT id FROM auction_players WHERE id = $1",
+        player_id
+    )
+
+    if existing:
+        await db.close()
+        await update.message.reply_text(
+            f"*❌ Player ID `{player_id}` already exists!*",
+            parse_mode="Markdown"
+        )
+        return
+
     now = datetime.now(IST)
 
     await db.execute(
-        "INSERT INTO auction_players (name, base_price, current_bid, added_by, added_at, end_time, status) VALUES ($1, $2, $3, $4, $5, NULL, 'active')",
-        name, base_price, base_price, user_id, now
+        """
+        INSERT INTO auction_players
+        (id, name, base_price, current_bid, added_by, added_at, end_time, status)
+        VALUES ($1, $2, $3, $4, $5, $6, NULL, 'active')
+        """,
+        player_id,
+        name,
+        base_price,
+        base_price,
+        user_id,
+        now
     )
 
-    player_id = await db.fetchval("SELECT lastval()")
     await db.close()
 
     await update.message.reply_text(
@@ -5515,11 +5567,16 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============ BID ==========
 async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+
     if not await is_registered(user_id):
-        await update.message.reply_text('*❌ Send /start first!*', parse_mode="Markdown")
+        await update.message.reply_text(
+            "*❌ Send /start first!*",
+            parse_mode="Markdown"
+        )
         return
 
     args = context.args
+
     if len(args) < 2:
         await update.message.reply_text(
             "*❌ Usage:* `/bid <player_id> <amount>`\n\n"
@@ -5532,32 +5589,77 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         player_id = int(args[0])
         amount = int(args[1])
-    except:
-        await update.message.reply_text("*❌ Invalid input! Use numbers only.*", parse_mode="Markdown")
+    except (ValueError, TypeError):
+        await update.message.reply_text(
+            "*❌ Invalid input! Use numbers only.*",
+            parse_mode="Markdown"
+        )
         return
 
     if amount < 1000:
-        await update.message.reply_text("*❌ Minimum bid is 1,000!*", parse_mode="Markdown")
+        await update.message.reply_text(
+            "*❌ Minimum bid is 1,000!*",
+            parse_mode="Markdown"
+        )
         return
 
     db = await get_db()
 
-    player = await db.fetchrow("SELECT * FROM auction_players WHERE id = $1 AND status = 'active'", player_id)
+    player = await db.fetchrow(
+        "SELECT * FROM auction_players "
+        "WHERE id = $1 AND status = 'active'",
+        player_id
+    )
+
     if not player:
-        await update.message.reply_text("*❌ Player not found or auction ended!*", parse_mode="Markdown")
+        await update.message.reply_text(
+            "*❌ Player not found or auction ended!*",
+            parse_mode="Markdown"
+        )
         await db.close()
         return
 
-   end_time = player['end_time']
+    # ============ END TIME ==========
+    end_time = player["end_time"]
 
-    if isinstance(end_time, str):
-    end_time = datetime.fromisoformat(end_time)
-    if datetime.now() > end_time:
-        await update.message.reply_text("*⏰ Auction for this player has ended!*", parse_mode="Markdown")
-        await db.close()
-        return
+    if end_time is not None and isinstance(end_time, str):
+        end_time = datetime.fromisoformat(end_time)
 
-    if amount <= player['current_bid']:
+    if end_time is not None:
+        # Handle timezone-naive DB datetime safely
+        if end_time.tzinfo is None:
+            end_time = end_time.replace(tzinfo=IST)
+
+        if datetime.now(IST) > end_time:
+            await update.message.reply_text(
+                "*⏰ Auction for this player has ended!*",
+                parse_mode="Markdown"
+            )
+            await db.close()
+            return
+
+        remaining_seconds = int(
+            (end_time - datetime.now(IST)).total_seconds()
+        )
+
+        if remaining_seconds < 0:
+            remaining_seconds = 0
+
+        hours = remaining_seconds // 3600
+        minutes = (remaining_seconds % 3600) // 60
+        seconds = remaining_seconds % 60
+
+        if hours > 0:
+            remaining_time = f"{hours}h {minutes}m"
+        elif minutes > 0:
+            remaining_time = f"{minutes}m {seconds}s"
+        else:
+            remaining_time = f"{seconds}s"
+    else:
+        remaining_time = "No time limit"
+
+    # ============ BID CHECK ==========
+    if amount <= player["current_bid"]:
         await update.message.reply_text(
             f"*❌ Bid must be higher than current bid!*\n\n"
             f"*Current Bid:* {player['current_bid']:,}\n"
@@ -5567,7 +5669,14 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
 
-    balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
+    balance = await db.fetchval(
+        "SELECT balance FROM users WHERE user_id = $1",
+        user_id
+    )
+
+    if balance is None:
+        balance = 0
+
     if balance < amount:
         await update.message.reply_text(
             f"*❌ Insufficient balance!*\n\n"
@@ -5578,19 +5687,32 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
 
-    # 🔥 DEDUCT BALANCE
-    await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", amount, user_id)
-
-    # 🔥 UPDATE CURRENT BID
+    # ============ DEDUCT BALANCE ==========
     await db.execute(
-        "UPDATE auction_players SET current_bid = $1, highest_bidder = $2 WHERE id = $3",
-        amount, user_id, player_id
+        "UPDATE users SET balance = balance - $1 WHERE user_id = $2",
+        amount,
+        user_id
     )
 
-    # 🔥 SAVE BID HISTORY
+    # ============ UPDATE CURRENT BID ==========
     await db.execute(
-        "INSERT INTO bid_history (player_id, user_id, amount, bid_at) VALUES ($1, $2, $3, $4)",
-        player_id, user_id, amount, datetime.now().isoformat()
+        "UPDATE auction_players "
+        "SET current_bid = $1, highest_bidder = $2 "
+        "WHERE id = $3",
+        amount,
+        user_id,
+        player_id
+    )
+
+    # ============ SAVE BID HISTORY ==========
+    await db.execute(
+        "INSERT INTO bid_history "
+        "(player_id, user_id, amount, bid_at) "
+        "VALUES ($1, $2, $3, $4)",
+        player_id,
+        user_id,
+        amount,
+        datetime.now(IST)
     )
 
     await db.close()
