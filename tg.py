@@ -1,16 +1,32 @@
 from flask import Flask
 import pytz
+from datetime import timezone, timedelta
+IST = timezone(timedelta(hours=5, minutes=30))
 from telegram.ext import MessageHandler, filters
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
 import random
+from datetime import timezone, timedelta
+IST = timezone(timedelta(hours=5, minutes=30))
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 import os
+from datetime import timezone, timedelta
+IST = timezone(timedelta(hours=5, minutes=30))
 import threading
+from datetime import timezone, timedelta
+IST = timezone(timedelta(hours=5, minutes=30))
 import json
+from datetime import timezone, timedelta
+IST = timezone(timedelta(hours=5, minutes=30))
 import time
+from datetime import timezone, timedelta
+IST = timezone(timedelta(hours=5, minutes=30))
 import asyncio
+from datetime import timezone, timedelta
+IST = timezone(timedelta(hours=5, minutes=30))
 import asyncpg
+from datetime import timezone, timedelta
+IST = timezone(timedelta(hours=5, minutes=30))
 
 # ============ TOKEN & ADMINS ============
 TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAG1_1VOoX5hm87eQG7IP75_vD9aK2Yk9HI")
@@ -499,7 +515,11 @@ async def get_balance(user_id):
 
 # ============ LOTTERY GLOBALS ==========
 import random as rand
+from datetime import timezone, timedelta
+IST = timezone(timedelta(hours=5, minutes=30))
 import string
+from datetime import timezone, timedelta
+IST = timezone(timedelta(hours=5, minutes=30))
 
 lottery_active = False
 lottery_tickets = {}
@@ -624,6 +644,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 import re
+from datetime import timezone, timedelta
+IST = timezone(timedelta(hours=5, minutes=30))
 
 # ============ ESCAPE FUNCTION ==========
 def escape_markdown(text):
@@ -1296,6 +1318,8 @@ async def top_fantasy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 import re
+from datetime import timezone, timedelta
+IST = timezone(timedelta(hours=5, minutes=30))
 
 def escape_md(text):
     """Escape markdown special characters"""
@@ -1960,6 +1984,8 @@ async def claim_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============ HILO GAME (Fixed - Game ID based, others can't affect) ==========
 # ============ HILO GAME ==========
 import random
+from datetime import timezone, timedelta
+IST = timezone(timedelta(hours=5, minutes=30))
 
 hilo_games = {}
 
@@ -4978,6 +5004,8 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============ TOWER CLIMB GAME ============
 
 import random
+from datetime import timezone, timedelta
+IST = timezone(timedelta(hours=5, minutes=30))
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackQueryHandler, CommandHandler
 
