@@ -991,7 +991,7 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await db.execute(
         "INSERT INTO spin (user_id, last_claim) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_claim = $2",
-        user_id, now.isoformat()
+        user_id, now
     )
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", amount, user_id)
 
@@ -5455,7 +5455,7 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await db.execute(
         "INSERT INTO auction_players (name, base_price, current_bid, added_by, added_at, end_time, status) VALUES ($1, $2, $3, $4, $5, NULL, 'active')",
-        name, base_price, base_price, user_id, now.isoformat()
+        name, base_price, base_price, user_id, now
     )
 
     player_id = await db.fetchval("SELECT lastval()")
