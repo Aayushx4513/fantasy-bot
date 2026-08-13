@@ -1604,20 +1604,14 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('❌ Send /start first!')
         return
 
-    # Current time
-    now = datetime.now(IST)
-
     db = await get_db()
 
-    # Create bank record if it doesn't exist
     await db.execute(
-        """
-        INSERT INTO bank (user_id, balance, last_interest)
-        VALUES ($1, 0, $2)
-        ON CONFLICT (user_id) DO NOTHING
-        """,
+        "INSERT INTO bank (user_id, balance, last_interest) "
+        "VALUES ($1, 0, $2) "
+        "ON CONFLICT (user_id) DO NOTHING",
         user_id,
-        now.isoformat()
+        datetime.now(IST).isoformat()
     )
 
     row = await db.fetchrow(
@@ -1635,7 +1629,10 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bank_bal = row['balance']
     last_interest = row['last_interest']
 
-    # ============ 24 HOUR COOLDOWN ============
+    # Current time
+    now = datetime.now(IST)
+
+    # Make sure last_interest is handled correctly
     if last_interest:
         last = datetime.fromisoformat(last_interest)
 
@@ -1648,7 +1645,56 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if now < next_time:
             remaining = next_time - now
 
-            total_seconds =
+            total_seconds = int(remaining.total_seconds())
+            hours = total_seconds // 3600
+            mins = (total_seconds % 3600) // 60
+
+            await update.message.reply_text(
+                f"*⏰ Interest not ready yet!*\n\n"
+                f"*Come back in {hours}h {mins}m*",
+                parse_mode="Markdown"
+            )
+
+            await db.close()
+            return
+
+    # 🔥 TIER SYSTEM
+    if bank_bal <= 1000000:
+        rate = 0.05
+    elif bank_bal <= 5000000:
+        rate = 0.03
+    elif bank_bal <= 10000000:
+        rate = 0.015
+    elif bank_bal <= 20000000:
+        rate = 0.01
+    else:
+        rate = 0.005
+
+    # Calculate interest
+    interest = int(bank_bal * rate)
+    new_bank = bank_bal + interest
+
+    # Update bank
+    await db.execute(
+        "UPDATE bank "
+        "SET balance = $1, last_interest = $2 "
+        "WHERE user_id = $3",
+        new_bank,
+        now.isoformat(),
+        user_id
+    )
+
+    await db.close()
+
+    # Success message
+    await update.message.reply_text(
+        f"*💰 INTEREST CLAIMED!*\n\n"
+        f"*Rate: {rate * 100}%*\n"
+        f"*Interest: +{interest:,} 💰*\n"
+        f"*New Bank Balance: {new_bank:,} 💰*\n\n"
+        f"*⏰ Next interest: 24h*",
+        parse_mode="Markdown"
+    )
 
 # ============ LOTTERY SYSTEM ==========
 async def lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
