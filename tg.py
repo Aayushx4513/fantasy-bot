@@ -6844,108 +6844,6 @@ async def penalty_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-# ============ MERGE CRICKET STATS ============
-async def mergestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Admin only
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("❌ Admin only!")
-        return
-
-    old_id = 8021283613
-    new_id = 8933480908
-
-    db = await get_db()
-
-    try:
-        # OLD ID
-        old = await db.fetchrow("""
-            SELECT runs, wickets, highest_score, wins, losses, ducks
-            FROM cricket_stats
-            WHERE user_id = $1
-        """, old_id)
-
-        # NEW ID
-        new = await db.fetchrow("""
-            SELECT runs, wickets, highest_score, wins, losses, ducks
-            FROM cricket_stats
-            WHERE user_id = $1
-        """, new_id)
-
-        if not old:
-            await update.message.reply_text("❌ Old ID stats not found!")
-            return
-
-        if not new:
-            await update.message.reply_text("❌ New ID stats not found!")
-            return
-
-        # MERGE
-        total_runs = (old["runs"] or 0) + (new["runs"] or 0)
-        total_wickets = (old["wickets"] or 0) + (new["wickets"] or 0)
-
-        highest_score = max(
-            old["highest_score"] or 0,
-            new["highest_score"] or 0
-        )
-
-        total_wins = (old["wins"] or 0) + (new["wins"] or 0)
-        total_losses = (old["losses"] or 0) + (new["losses"] or 0)
-        total_ducks = (old["ducks"] or 0) + (new["ducks"] or 0)
-
-        # UPDATE NEW ID
-        await db.execute("""
-            UPDATE cricket_stats
-            SET
-                runs = $1,
-                wickets = $2,
-                highest_score = $3,
-                wins = $4,
-                losses = $5,
-                ducks = $6
-            WHERE user_id = $7
-        """,
-            total_runs,
-            total_wickets,
-            highest_score,
-            total_wins,
-            total_losses,
-            total_ducks,
-            new_id
-        )
-
-        # DELETE OLD ID STATS
-        await db.execute("""
-            DELETE FROM cricket_stats
-            WHERE user_id = $1
-        """, old_id)
-
-        await update.message.reply_text(
-            "✅ *STATS MERGED SUCCESSFULLY!*\n\n"
-            "👤 *SIMON*\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            f"🏏 Runs: *{total_runs}*\n"
-            f"🎯 Wickets: *{total_wickets}*\n"
-            f"⭐ Highest Score: *{highest_score}*\n"
-            f"✅ Wins: *{total_wins}*\n"
-            f"❌ Losses: *{total_losses}*\n"
-            f"🦆 Ducks: *{total_ducks}*\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"🔄 Old ID: `{old_id}`\n"
-            f"➡️ New ID: `{new_id}`",
-            parse_mode="Markdown"
-        )
-
-    except Exception as e:
-        print(f"❌ MERGESTATS ERROR: {e}")
-
-        await update.message.reply_text(
-            f"❌ Merge failed!\n\n`{str(e)}`",
-            parse_mode="Markdown"
-        )
-
-    finally:
-        await db.close()
-
 # ============ MAIN ==========
 async def main():
     await init_db()
@@ -7063,7 +6961,6 @@ async def main():
     app.add_handler(CallbackQueryHandler(cricket_choice_callback, pattern="^cricket_choice_"))
     app.add_handler(CallbackQueryHandler(cricket_bowl_callback, pattern="^cricket_bowl_"))
     app.add_handler(CallbackQueryHandler(cricket_bat_callback, pattern="^cricket_bat_"))
-    app.add_handler(CommandHandler("mergestats", mergestats))
 
     # ============ MINES ==========
     app.add_handler(CommandHandler("mines", mines))
