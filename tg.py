@@ -880,54 +880,6 @@ async def rmachieve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.close()
     await update.message.reply_text(f"✅ ACHIEVEMENT REMOVED!\n\nRemoved: {removed['achievement']} 🏆")
 
-# ============ UNLOCKMATCH COMMAND (ADMIN) ==========
-async def unlockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
-        return
-    
-    args = context.args
-    if len(args) < 3:
-        await update.message.reply_text('❌ /unlockmatch TEAM1 vs TEAM2\nExample: /unlockmatch India vs Afghanistan')
-        return
-    
-    team1 = args[0]
-    team2 = args[2]
-    
-    db = await get_db()
-    
-    # 🔥 CASE INSENSITIVE SEARCH
-    match = await db.fetchrow("""
-        SELECT id, team1, team2, locked 
-        FROM matches 
-        WHERE LOWER(team1) = LOWER($1) AND LOWER(team2) = LOWER($2)
-    """, team1, team2)
-    
-    if not match:
-        await update.message.reply_text(f'❌ Match {team1} vs {team2} not found!')
-        await db.close()
-        return
-    
-    if match['locked'] == 0:
-        await update.message.reply_text(f'⚠️ Match is already UNLOCKED!')
-        await db.close()
-        return
-    
-    await db.execute("UPDATE matches SET locked = 0 WHERE id = $1", match['id'])
-    
-    # Get total bets
-    total = await db.fetchval("SELECT COALESCE(SUM(amount), 0) FROM bets WHERE match_id = $1", match['id'])
-    count = await db.fetchval("SELECT COUNT(*) FROM bets WHERE match_id = $1", match['id'])
-    
-    await db.close()
-    
-    await update.message.reply_text(
-        f"🔓 MATCH UNLOCKED!\n\n"
-        f"🏏 {match['team1']} vs {match['team2']}\n"
-        f"📊 Current Bets: {count}\n"
-        f"💰 Current Pool: {total:,} 💰\n"
-        f"✅ New bets are now accepted again!"
-    )
 
 # ============ CODELER COMMANDS (ADMIN) ==========
 async def deletecode(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3907,53 +3859,124 @@ async def deletematch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💰 Total refund: {refund_total:,} credits"
     )
 
+# ============ LOCK MATCH ============
 async def lockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text('❌ Admin only!')
+        await update.message.reply_text("❌ Admin only!")
         return
-    
-    args = context.args
-    if len(args) < 3:
-        await update.message.reply_text('❌ /lockmatch TEAM1 vs TEAM2\nExample: /lockmatch India vs Afghanistan')
+
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Usage:\n"
+            "/lockmatch TEAM1 vs TEAM2\n\n"
+            "Example:\n"
+            "/lockmatch India vs Afghanistan"
+        )
         return
-    
-    team1 = args[0]
-    team2 = args[2]
-    
+
+    # Full command after /lockmatch
+    text = " ".join(context.args).strip()
+
+    # Find "vs" / "VS" / "Vs"
+    parts = re.split(r"\s+vs\s+", text, flags=re.IGNORECASE)
+
+    if len(parts) != 2:
+        await update.message.reply_text(
+            "❌ Wrong format!\n\n"
+            "Use:\n"
+            "/lockmatch India vs Afghanistan"
+        )
+        return
+
+    team1 = parts[0].strip()
+    team2 = parts[1].strip()
+
+    if not team1 or not team2:
+        await update.message.reply_text(
+            "❌ Both team names are required!\n\n"
+            "Example:\n"
+            "/lockmatch India vs Afghanistan"
+        )
+        return
+
     db = await get_db()
-    
-    # 🔥 CASE INSENSITIVE SEARCH
-    match = await db.fetchrow("""
-        SELECT id, team1, team2, locked 
-        FROM matches 
-        WHERE LOWER(team1) = LOWER($1) AND LOWER(team2) = LOWER($2)
-    """, team1, team2)
-    
-    if not match:
-        await update.message.reply_text(f'❌ Match {team1} vs {team2} not found!')
+
+    try:
+        # 🔥 CASE + EXTRA SPACE INSENSITIVE SEARCH
+        match = await db.fetchrow("""
+            SELECT id, team1, team2, locked
+            FROM matches
+            WHERE TRIM(LOWER(team1)) = TRIM(LOWER($1))
+              AND TRIM(LOWER(team2)) = TRIM(LOWER($2))
+        """, team1, team2)
+
+        # 🔄 Also check reverse order
+        if not match:
+            match = await db.fetchrow("""
+                SELECT id, team1, team2, locked
+                FROM matches
+                WHERE TRIM(LOWER(team1)) = TRIM(LOWER($1))
+                  AND TRIM(LOWER(team2)) = TRIM(LOWER($2))
+            """, team2, team1)
+
+        if not match:
+            await update.message.reply_text(
+                f"❌ Match not found!\n\n"
+                f"🔎 Searched:\n"
+                f"🏏 {team1} vs {team2}"
+            )
+            return
+
+        if match["locked"]:
+            await update.message.reply_text(
+                "⚠️ Match is already *LOCKED*!",
+                parse_mode="Markdown"
+            )
+            return
+
+        # 🔒 LOCK MATCH
+        await db.execute(
+            "UPDATE matches SET locked = 1 WHERE id = $1",
+            match["id"]
+        )
+
+        # 📊 TOTAL BETS
+        total = await db.fetchval(
+            """
+            SELECT COALESCE(SUM(amount), 0)
+            FROM bets
+            WHERE match_id = $1
+            """,
+            match["id"]
+        )
+
+        count = await db.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM bets
+            WHERE match_id = $1
+            """,
+            match["id"]
+        )
+
+        await update.message.reply_text(
+            f"🔒 *MATCH LOCKED!*\n\n"
+            f"🏏 {match['team1']} vs {match['team2']}\n"
+            f"📊 Bets: {count}\n"
+            f"💰 Pool: {total:,} 💰\n"
+            f"❌ No more bets accepted!",
+            parse_mode="Markdown"
+        )
+
+    except Exception as e:
+        print(f"❌ LOCKMATCH ERROR: {e}")
+        await update.message.reply_text(
+            f"❌ Error locking match!\n\n`{str(e)}`",
+            parse_mode="Markdown"
+        )
+
+    finally:
         await db.close()
-        return
-    
-    if match['locked'] == 1:
-        await update.message.reply_text(f'⚠️ Match is already LOCKED!')
-        await db.close()
-        return
-    
-    await db.execute("UPDATE matches SET locked = 1 WHERE id = $1", match['id'])
-    
-    # Get total bets
-    total = await db.fetchval("SELECT COALESCE(SUM(amount), 0) FROM bets WHERE match_id = $1", match['id'])
-    count = await db.fetchval("SELECT COUNT(*) FROM bets WHERE match_id = $1", match['id'])
-    
-    await db.close()
-    
-    await update.message.reply_text(
-        f"🔒 MATCH LOCKED!\n\n"
-        f"🏏 {match['team1']} vs {match['team2']}\n"
-        f"📊 Bets: {count}\n"
-        f"💰 Pool: {total:,} 💰\n"
-        f"❌ No more bets accepted!"
-    )
 
 # ============ RESULT ==========
 async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6935,6 +6958,7 @@ async def main():
     app.add_handler(CallbackQueryHandler(cricket_choice_callback, pattern="^cricket_choice_"))
     app.add_handler(CallbackQueryHandler(cricket_bowl_callback, pattern="^cricket_bowl_"))
     app.add_handler(CallbackQueryHandler(cricket_bat_callback, pattern="^cricket_bat_"))
+    application.add_handler(CommandHandler("mergestats", mergestats))
 
     # ============ MINES ==========
     app.add_handler(CommandHandler("mines", mines))
