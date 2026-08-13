@@ -3978,6 +3978,111 @@ async def lockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         await db.close()
 
+# ============ UNLOCKMATCH COMMAND (ADMIN) ============
+async def unlockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Usage:\n"
+            "/unlockmatch TEAM1 vs TEAM2\n\n"
+            "Example:\n"
+            "/unlockmatch India vs Afghanistan"
+        )
+        return
+
+    text = " ".join(context.args).strip()
+
+    # Handle: vs / VS / Vs + extra spaces
+    parts = re.split(r"\s+vs\s+", text, flags=re.IGNORECASE)
+
+    if len(parts) != 2:
+        await update.message.reply_text(
+            "❌ Wrong format!\n\n"
+            "Use:\n"
+            "/unlockmatch India vs Afghanistan"
+        )
+        return
+
+    team1 = parts[0].strip()
+    team2 = parts[1].strip()
+
+    if not team1 or not team2:
+        await update.message.reply_text(
+            "❌ Both team names are required!"
+        )
+        return
+
+    db = await get_db()
+
+    try:
+        match = await db.fetchrow(
+            """
+            SELECT id, team1, team2, locked
+            FROM matches
+            WHERE TRIM(LOWER(team1)) = TRIM(LOWER($1))
+              AND TRIM(LOWER(team2)) = TRIM(LOWER($2))
+            """,
+            team1,
+            team2
+        )
+
+        if not match:
+            await update.message.reply_text(
+                f"❌ Match not found!\n\n"
+                f"🔎 Searched:\n"
+                f"🏏 {team1} vs {team2}"
+            )
+            return
+
+        if match["locked"] == 0:
+            await update.message.reply_text(
+                "⚠️ Match is already UNLOCKED!"
+            )
+            return
+
+        await db.execute(
+            "UPDATE matches SET locked = 0 WHERE id = $1",
+            match["id"]
+        )
+
+        total = await db.fetchval(
+            """
+            SELECT COALESCE(SUM(amount), 0)
+            FROM bets
+            WHERE match_id = $1
+            """,
+            match["id"]
+        )
+
+        count = await db.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM bets
+            WHERE match_id = $1
+            """,
+            match["id"]
+        )
+
+        await update.message.reply_text(
+            f"🔓 MATCH UNLOCKED!\n\n"
+            f"🏏 {match['team1']} vs {match['team2']}\n"
+            f"📊 Current Bets: {count}\n"
+            f"💰 Current Pool: {total:,} 💰\n"
+            f"✅ New bets are now accepted again!"
+        )
+
+    except Exception as e:
+        print(f"❌ UNLOCKMATCH ERROR: {e}")
+        await update.message.reply_text(
+            f"❌ Error unlocking match!\n\n{e}"
+        )
+
+    finally:
+        await db.close()
+
 # ============ RESULT ==========
 async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
