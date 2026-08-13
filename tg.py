@@ -1601,17 +1601,26 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
     if not await is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
+        await update.message.reply_text(
+            '**❌ Send /start first!**',
+            parse_mode="Markdown"
+        )
         return
 
     db = await get_db()
 
+    # Current time
+    now = datetime.now(IST)
+
+    # Create bank record if it doesn't exist
     await db.execute(
-        "INSERT INTO bank (user_id, balance, last_interest) "
-        "VALUES ($1, 0, $2) "
-        "ON CONFLICT (user_id) DO NOTHING",
+        """
+        INSERT INTO bank (user_id, balance, last_interest)
+        VALUES ($1, 0, $2)
+        ON CONFLICT (user_id) DO NOTHING
+        """,
         user_id,
-        datetime.now(IST).isoformat()
+        now.isoformat()
     )
 
     row = await db.fetchrow(
@@ -1621,7 +1630,8 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not row:
         await update.message.reply_text(
-            '❌ No bank account found! Use /bank first.'
+            '**❌ No bank account found! Use /bank first.**',
+            parse_mode="Markdown"
         )
         await db.close()
         return
@@ -1629,14 +1639,11 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bank_bal = row['balance']
     last_interest = row['last_interest']
 
-    # Current time
-    now = datetime.now(IST)
-
-    # Make sure last_interest is handled correctly
+    # ============ 24 HOUR CHECK ============
     if last_interest:
         last = datetime.fromisoformat(last_interest)
 
-        # Make sure both datetimes are timezone-aware
+        # Make sure datetime is timezone-aware
         if last.tzinfo is None:
             last = last.replace(tzinfo=IST)
 
@@ -1650,35 +1657,42 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
             mins = (total_seconds % 3600) // 60
 
             await update.message.reply_text(
-                f"*⏰ Interest not ready yet!*\n\n"
-                f"*Come back in {hours}h {mins}m*",
+                f"**⏰ Interest not ready yet!**\n\n"
+                f"**Come back in {hours}h {mins}m**",
                 parse_mode="Markdown"
             )
 
             await db.close()
             return
 
-    # 🔥 TIER SYSTEM
+    # ============ TIER SYSTEM ============
     if bank_bal <= 1000000:
         rate = 0.05
+
     elif bank_bal <= 5000000:
         rate = 0.03
+
     elif bank_bal <= 10000000:
         rate = 0.015
+
     elif bank_bal <= 20000000:
         rate = 0.01
+
     else:
         rate = 0.005
 
-    # Calculate interest
+    # ============ CALCULATE INTEREST ============
     interest = int(bank_bal * rate)
     new_bank = bank_bal + interest
 
-    # Update bank
+    # Update balance + claim time
     await db.execute(
-        "UPDATE bank "
-        "SET balance = $1, last_interest = $2 "
-        "WHERE user_id = $3",
+        """
+        UPDATE bank
+        SET balance = $1,
+            last_interest = $2
+        WHERE user_id = $3
+        """,
         new_bank,
         now.isoformat(),
         user_id
@@ -1686,13 +1700,13 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await db.close()
 
-    # Success message
+    # ============ RESULT ============
     await update.message.reply_text(
-        f"*💰 INTEREST CLAIMED!*\n\n"
-        f"*Rate: {rate * 100}%*\n"
-        f"*Interest: +{interest:,} 💰*\n"
-        f"*New Bank Balance: {new_bank:,} 💰*\n\n"
-        f"*⏰ Next interest: 24h*",
+        f"**💰 INTEREST CLAIMED!**\n\n"
+        f"**Rate: {rate * 100:g}%**\n"
+        f"**Interest: +{interest:,} 💰**\n"
+        f"**New Bank Balance: {new_bank:,} 💰**\n\n"
+        f"**⏰ Next interest: 24h**",
         parse_mode="Markdown"
     )
 
@@ -6715,14 +6729,14 @@ async def mergestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
 
     try:
-        # Get OLD ID stats
+        # OLD ID
         old = await db.fetchrow("""
             SELECT runs, wickets, highest_score, wins, losses, ducks
             FROM cricket_stats
             WHERE user_id = $1
         """, old_id)
 
-        # Get NEW ID stats
+        # NEW ID
         new = await db.fetchrow("""
             SELECT runs, wickets, highest_score, wins, losses, ducks
             FROM cricket_stats
@@ -6730,29 +6744,27 @@ async def mergestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         """, new_id)
 
         if not old:
-            await update.message.reply_text(
-                "❌ Old ID stats not found!"
-            )
+            await update.message.reply_text("❌ Old ID stats not found!")
             return
 
         if not new:
-            await update.message.reply_text(
-                "❌ New ID stats not found!"
-            )
+            await update.message.reply_text("❌ New ID stats not found!")
             return
 
-        # Merge OLD + NEW
-        total_runs = old["runs"] + new["runs"]
-        total_wickets = old["wickets"] + new["wickets"]
-        highest_score = max(
-            old["highest_score"],
-            new["highest_score"]
-        )
-        total_wins = old["wins"] + new["wins"]
-        total_losses = old["losses"] + new["losses"]
-        total_ducks = old["ducks"] + new["ducks"]
+        # MERGE
+        total_runs = (old["runs"] or 0) + (new["runs"] or 0)
+        total_wickets = (old["wickets"] or 0) + (new["wickets"] or 0)
 
-        # Update NEW ID
+        highest_score = max(
+            old["highest_score"] or 0,
+            new["highest_score"] or 0
+        )
+
+        total_wins = (old["wins"] or 0) + (new["wins"] or 0)
+        total_losses = (old["losses"] or 0) + (new["losses"] or 0)
+        total_ducks = (old["ducks"] or 0) + (new["ducks"] or 0)
+
+        # UPDATE NEW ID
         await db.execute("""
             UPDATE cricket_stats
             SET
@@ -6773,7 +6785,7 @@ async def mergestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             new_id
         )
 
-        # Delete OLD ID stats
+        # DELETE OLD ID STATS
         await db.execute("""
             DELETE FROM cricket_stats
             WHERE user_id = $1
@@ -6781,7 +6793,7 @@ async def mergestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
             "✅ *STATS MERGED SUCCESSFULLY!*\n\n"
-            "👤 SIMON\n"
+            "👤 *SIMON*\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             f"🏏 Runs: *{total_runs}*\n"
             f"🎯 Wickets: *{total_wickets}*\n"
@@ -6796,6 +6808,8 @@ async def mergestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     except Exception as e:
+        print(f"❌ MERGESTATS ERROR: {e}")
+
         await update.message.reply_text(
             f"❌ Merge failed!\n\n`{str(e)}`",
             parse_mode="Markdown"
@@ -6803,7 +6817,6 @@ async def mergestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     finally:
         await db.close()
-
 
 # ============ MAIN ==========
 async def main():
