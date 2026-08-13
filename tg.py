@@ -7063,7 +7063,7 @@ async def main():
     app.add_handler(CallbackQueryHandler(cricket_choice_callback, pattern="^cricket_choice_"))
     app.add_handler(CallbackQueryHandler(cricket_bowl_callback, pattern="^cricket_bowl_"))
     app.add_handler(CallbackQueryHandler(cricket_bat_callback, pattern="^cricket_bat_"))
-    application.add_handler(CommandHandler("mergestats", mergestats))
+    app.add_handler(CommandHandler("mergestats", mergestats))
 
     # ============ MINES ==========
     app.add_handler(CommandHandler("mines", mines))
