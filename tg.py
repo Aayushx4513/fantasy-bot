@@ -1438,36 +1438,117 @@ async def achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============ BANK SYSTEM ==========
 async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if not await is_registered(user_id):
-        await update.message.reply_text('❌ Send /start first!')
-        return
-    
-    db = await get_db()
-    
-    # Insert if not exists
-    await db.execute("INSERT INTO bank (user_id, balance, last_interest) VALUES ($1, 0, $2) ON CONFLICT (user_id) DO NOTHING", user_id, datetime.now().isoformat())
-    
-    row = await db.fetchrow("SELECT balance, last_interest FROM bank WHERE user_id = $1", user_id)
-    bank_bal = row['balance'] if row else 0
-    last_interest = row['last_interest'] if row else None
-    
-    wallet_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    
-    next_time_str = "Available now"
-    if last_interest:
-        last = datetime.fromisoformat(last_interest)
-        next_time = last + timedelta(hours=24)
-        now = datetime.now()
-        if now < next_time:
-            remaining = next_time - now
-            hours = remaining.seconds // 3600
-            mins = (remaining.seconds % 3600) // 60
-            next_time_str = f"{hours}h {mins}m"
-    
-    await db.close()
-    
-    await update.message.reply_text(f"🏦 MY BANK ACCOUNT\n\n💰 Bank Balance: {bank_bal:,} 💰\n👛 Wallet Balance: {wallet_bal:,} 💰\n📈 Interest Rate: 5% daily\n⏰ Next interest: {next_time_str}\n\n━━━━━━━━━━━━━━━━━━━━━━\n💡 /deposit <amount>\n💡 /withdraw <amount>\n💡 /claim_interest")
 
+    if not await is_registered(user_id):
+        await update.message.reply_text("❌ Send /start first!")
+        return
+
+    db = await get_db()
+
+    try:
+        # Current IST time — timezone-aware
+        now = datetime.now(IST)
+
+        # Insert bank account if it doesn't exist
+        await db.execute(
+            """
+            INSERT INTO bank (user_id, balance, last_interest)
+            VALUES ($1, 0, $2)
+            ON CONFLICT (user_id) DO NOTHING
+            """,
+            user_id,
+            now
+        )
+
+        # Get bank data
+        row = await db.fetchrow(
+            """
+            SELECT balance, last_interest
+            FROM bank
+            WHERE user_id = $1
+            """,
+            user_id
+        )
+
+        bank_bal = row["balance"] if row else 0
+        last_interest = row["last_interest"] if row else None
+
+        # Get wallet balance
+        wallet_bal = await db.fetchval(
+            """
+            SELECT balance
+            FROM users
+            WHERE user_id = $1
+            """,
+            user_id
+        )
+
+        wallet_bal = wallet_bal or 0
+
+        # Default
+        next_time_str = "Available now"
+
+        # =====================================================
+        # CHECK NEXT INTEREST TIME
+        # =====================================================
+
+        if last_interest:
+
+            # PostgreSQL may return datetime object
+            if isinstance(last_interest, str):
+                last = datetime.fromisoformat(last_interest)
+            else:
+                last = last_interest
+
+            # If DB datetime is timezone-naive,
+            # assume it is IST
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=IST)
+            else:
+                # Convert any timezone to IST
+                last = last.astimezone(IST)
+
+            # Next interest after 24 hours
+            next_time = last + timedelta(hours=24)
+
+            # Compare timezone-aware datetimes
+            if now < next_time:
+
+                remaining = next_time - now
+
+                total_seconds = max(
+                    0,
+                    int(remaining.total_seconds())
+                )
+
+                hours = total_seconds // 3600
+                mins = (total_seconds % 3600) // 60
+
+                next_time_str = f"{hours}h {mins}m"
+
+            else:
+                next_time_str = "Available now"
+
+        await update.message.reply_text(
+            f"🏦 *MY BANK ACCOUNT*\n\n"
+            f"💰 Bank Balance: *{bank_bal:,}* 💰\n"
+            f"👛 Wallet Balance: *{wallet_bal:,}* 💰\n"
+            f"📈 Interest Rate: *5% daily*\n"
+            f"⏰ Next interest: *{next_time_str}*\n\n"
+            f"━━━━━━━"
+            ,
+            parse_mode="Markdown"
+        )
+
+    except Exception as e:
+        print(f"❌ BANK ERROR: {e}")
+
+        await update.message.reply_text(
+            "❌ Something went wrong while checking your bank."
+        )
+
+    finally:
+        await db.close()
 async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
