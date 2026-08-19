@@ -1435,7 +1435,8 @@ async def achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode="Markdown")
 
 
-# ============ BANK SYSTEM ==========
+# ============ BANK SYSTEM ============
+
 async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -1446,10 +1447,10 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
 
     try:
-        # Current IST time — timezone-aware
+        # Current IST time — ALWAYS timezone aware
         now = datetime.now(IST)
 
-        # Insert bank account if it doesn't exist
+        # Create bank account if it doesn't exist
         await db.execute(
             """
             INSERT INTO bank (user_id, balance, last_interest)
@@ -1470,8 +1471,14 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_id
         )
 
-        bank_bal = row["balance"] if row else 0
-        last_interest = row["last_interest"] if row else None
+        if not row:
+            await update.message.reply_text(
+                "❌ Bank account could not be found."
+            )
+            return
+
+        bank_bal = row["balance"] or 0
+        last_interest = row["last_interest"]
 
         # Get wallet balance
         wallet_bal = await db.fetchval(
@@ -1488,30 +1495,30 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Default
         next_time_str = "Available now"
 
-        # =====================================================
+        # ==============================
         # CHECK NEXT INTEREST TIME
-        # =====================================================
-
+        # ==============================
         if last_interest:
 
-            # PostgreSQL may return datetime object
-            if isinstance(last_interest, str):
-                last = datetime.fromisoformat(last_interest)
-            else:
+            # PostgreSQL may return datetime directly
+            if isinstance(last_interest, datetime):
                 last = last_interest
+            else:
+                # If returned as string
+                last = datetime.fromisoformat(
+                    str(last_interest).replace("Z", "+00:00")
+                )
 
-            # If DB datetime is timezone-naive,
-            # assume it is IST
+            # Make timezone-aware
             if last.tzinfo is None:
                 last = last.replace(tzinfo=IST)
             else:
                 # Convert any timezone to IST
                 last = last.astimezone(IST)
 
-            # Next interest after 24 hours
             next_time = last + timedelta(hours=24)
 
-            # Compare timezone-aware datetimes
+            # IMPORTANT: both are now timezone-aware
             if now < next_time:
 
                 remaining = next_time - now
@@ -1535,13 +1542,13 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"👛 Wallet Balance: *{wallet_bal:,}* 💰\n"
             f"📈 Interest Rate: *5% daily*\n"
             f"⏰ Next interest: *{next_time_str}*\n\n"
-            f"━━━━━━━"
-            ,
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🏦 Your money is safely stored in the bank!",
             parse_mode="Markdown"
         )
 
     except Exception as e:
-        print(f"❌ BANK ERROR: {e}")
+        print(f"❌ BANK ERROR for {user_id}: {repr(e)}")
 
         await update.message.reply_text(
             "❌ Something went wrong while checking your bank."
@@ -1549,6 +1556,8 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     finally:
         await db.close()
+
+
 async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
