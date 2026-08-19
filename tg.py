@@ -1437,7 +1437,6 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = None
 
     try:
-        # Check registration
         if not await is_registered(user_id):
             await update.message.reply_text("❌ Send /start first!")
             return
@@ -1447,7 +1446,8 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Current IST time
         now = datetime.now(IST)
 
-        # Create bank account if it doesn't exist
+        # Bank account create if not exists
+        # last_interest column is TEXT, so store string
         await db.execute(
             """
             INSERT INTO bank (user_id, balance, last_interest)
@@ -1456,10 +1456,10 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """,
             user_id,
             0,
-            now
+            now.isoformat()
         )
 
-        # Fetch bank account
+        # Get bank data
         row = await db.fetchrow(
             """
             SELECT balance, last_interest
@@ -1478,7 +1478,7 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bank_bal = row["balance"] or 0
         last_interest = row["last_interest"]
 
-        # Fetch wallet balance
+        # Get wallet balance
         wallet_bal = await db.fetchval(
             """
             SELECT balance
@@ -1497,38 +1497,30 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # INTEREST TIMER
         # ==========================================
 
-        if last_interest is not None:
+        if last_interest:
 
-            # PostgreSQL normally returns datetime
-            if isinstance(last_interest, datetime):
-                last = last_interest
+            # Convert DB string -> datetime
+            last = datetime.fromisoformat(
+                str(last_interest)
+            )
 
-            else:
-                # Convert string to datetime
-                last = datetime.fromisoformat(
-                    str(last_interest).replace("Z", "+00:00")
-                )
-
-            # Make last timezone-aware
+            # Make timezone-aware
             if last.tzinfo is None:
                 last = last.replace(tzinfo=IST)
             else:
                 last = last.astimezone(IST)
 
-            # 24 hours cooldown
+            # 24 hour cooldown
             next_time = last + timedelta(hours=24)
 
-            # Both are now timezone-aware
             if now < next_time:
 
                 remaining = next_time - now
 
-                total_seconds = int(
-                    remaining.total_seconds()
+                total_seconds = max(
+                    0,
+                    int(remaining.total_seconds())
                 )
-
-                if total_seconds < 0:
-                    total_seconds = 0
 
                 hours = total_seconds // 3600
                 minutes = (total_seconds % 3600) // 60
@@ -1556,7 +1548,6 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
 
-        # Print complete error in Render logs
         import traceback
 
         print("========== BANK ERROR ==========")
@@ -1566,15 +1557,11 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
         traceback.print_exc()
         print("================================")
 
-        # Show exact error in Telegram
-        try:
-            await update.message.reply_text(
-                f"❌ *BANK ERROR*\n\n"
-                f"`{type(e).__name__}: {e}`",
-                parse_mode="Markdown"
-            )
-        except Exception:
-            pass
+        await update.message.reply_text(
+            f"❌ *BANK ERROR*\n\n"
+            f"`{type(e).__name__}: {e}`",
+            parse_mode="Markdown"
+        )
 
     finally:
         if db is not None:
