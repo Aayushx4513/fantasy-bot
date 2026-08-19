@@ -1,31 +1,26 @@
 from flask import Flask
 import pytz
-from datetime import timezone, timedelta
-IST = timezone(timedelta(hours=5, minutes=30))
-from telegram.ext import MessageHandler, filters
-from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler
-import random
-from datetime import timezone, timedelta
-IST = timezone(timedelta(hours=5, minutes=30))
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    MessageHandler,
+    filters,
+    Application,
+    CommandHandler,
+    ContextTypes,
+    CallbackQueryHandler
+)
+
+import random
 import os
-from datetime import timezone, timedelta
-IST = timezone(timedelta(hours=5, minutes=30))
 import threading
-from datetime import timezone, timedelta
-IST = timezone(timedelta(hours=5, minutes=30))
 import json
-from datetime import timezone, timedelta
-IST = timezone(timedelta(hours=5, minutes=30))
 import time
-from datetime import timezone, timedelta
-IST = timezone(timedelta(hours=5, minutes=30))
 import asyncio
-from datetime import timezone, timedelta
-IST = timezone(timedelta(hours=5, minutes=30))
 import asyncpg
-from datetime import timezone, timedelta
+
+# India Standard Time
 IST = timezone(timedelta(hours=5, minutes=30))
 
 # ============ TOKEN & ADMINS ============
@@ -1439,29 +1434,32 @@ async def achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-
-    if not await is_registered(user_id):
-        await update.message.reply_text("❌ Send /start first!")
-        return
-
-    db = await get_db()
+    db = None
 
     try:
-        # Current IST time — ALWAYS timezone aware
+        # Check registration
+        if not await is_registered(user_id):
+            await update.message.reply_text("❌ Send /start first!")
+            return
+
+        db = await get_db()
+
+        # Current IST time
         now = datetime.now(IST)
 
         # Create bank account if it doesn't exist
         await db.execute(
             """
             INSERT INTO bank (user_id, balance, last_interest)
-            VALUES ($1, 0, $2)
+            VALUES ($1, $2, $3)
             ON CONFLICT (user_id) DO NOTHING
             """,
             user_id,
+            0,
             now
         )
 
-        # Get bank data
+        # Fetch bank account
         row = await db.fetchrow(
             """
             SELECT balance, last_interest
@@ -1473,14 +1471,14 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not row:
             await update.message.reply_text(
-                "❌ Bank account could not be found."
+                "❌ Bank account not found!"
             )
             return
 
         bank_bal = row["balance"] or 0
         last_interest = row["last_interest"]
 
-        # Get wallet balance
+        # Fetch wallet balance
         wallet_bal = await db.fetchval(
             """
             SELECT balance
@@ -1495,46 +1493,56 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Default
         next_time_str = "Available now"
 
-        # ==============================
-        # CHECK NEXT INTEREST TIME
-        # ==============================
-        if last_interest:
+        # ==========================================
+        # INTEREST TIMER
+        # ==========================================
 
-            # PostgreSQL may return datetime directly
+        if last_interest is not None:
+
+            # PostgreSQL normally returns datetime
             if isinstance(last_interest, datetime):
                 last = last_interest
+
             else:
-                # If returned as string
+                # Convert string to datetime
                 last = datetime.fromisoformat(
                     str(last_interest).replace("Z", "+00:00")
                 )
 
-            # Make timezone-aware
+            # Make last timezone-aware
             if last.tzinfo is None:
                 last = last.replace(tzinfo=IST)
             else:
-                # Convert any timezone to IST
                 last = last.astimezone(IST)
 
+            # 24 hours cooldown
             next_time = last + timedelta(hours=24)
 
-            # IMPORTANT: both are now timezone-aware
+            # Both are now timezone-aware
             if now < next_time:
 
                 remaining = next_time - now
 
-                total_seconds = max(
-                    0,
-                    int(remaining.total_seconds())
+                total_seconds = int(
+                    remaining.total_seconds()
                 )
 
-                hours = total_seconds // 3600
-                mins = (total_seconds % 3600) // 60
+                if total_seconds < 0:
+                    total_seconds = 0
 
-                next_time_str = f"{hours}h {mins}m"
+                hours = total_seconds // 3600
+                minutes = (total_seconds % 3600) // 60
+
+                next_time_str = (
+                    f"{hours}h {minutes}m"
+                )
 
             else:
                 next_time_str = "Available now"
+
+        # ==========================================
+        # SEND BANK
+        # ==========================================
 
         await update.message.reply_text(
             f"🏦 *MY BANK ACCOUNT*\n\n"
@@ -1542,21 +1550,38 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"👛 Wallet Balance: *{wallet_bal:,}* 💰\n"
             f"📈 Interest Rate: *5% daily*\n"
             f"⏰ Next interest: *{next_time_str}*\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🏦 Your money is safely stored in the bank!",
+            f"━━━━━━━━━━━━━━━━━━━━",
             parse_mode="Markdown"
         )
 
     except Exception as e:
-        print(f"❌ BANK ERROR for {user_id}: {repr(e)}")
 
-        await update.message.reply_text(
-            "❌ Something went wrong while checking your bank."
-        )
+        # Print complete error in Render logs
+        import traceback
+
+        print("========== BANK ERROR ==========")
+        print(f"User ID: {user_id}")
+        print(f"Error Type: {type(e).__name__}")
+        print(f"Error: {e}")
+        traceback.print_exc()
+        print("================================")
+
+        # Show exact error in Telegram
+        try:
+            await update.message.reply_text(
+                f"❌ *BANK ERROR*\n\n"
+                f"`{type(e).__name__}: {e}`",
+                parse_mode="Markdown"
+            )
+        except Exception:
+            pass
 
     finally:
-        await db.close()
-
+        if db is not None:
+            try:
+                await db.close()
+            except Exception:
+                pass
 
 async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
