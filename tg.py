@@ -7339,7 +7339,7 @@ async def main():
     app.add_handler(CallbackQueryHandler(tower_callback, pattern="^tower_"))
     app.add_handler(CommandHandler("fix_duplicates", fix_duplicates))
     app.add_handler(CommandHandler("ping", ping))
-    app.add_handler(CommandHandler("transferstats", transferstats))/
+    app.add_handler(CommandHandler("transferstats", transferstats))
     # ============ PLAYER AUCTION ==========
     app.add_handler(CommandHandler("add_player", add_player))
     app.add_handler(CommandHandler("players", players))
