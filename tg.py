@@ -7145,6 +7145,159 @@ async def penalty_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+# ============ TRANSFER CRICKET STATS ============
+
+async def transferstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+
+    source_id = 8933480908
+    target_id = 8538402671
+
+    # Extra stats to add
+    extra_runs = 51
+    extra_wickets = 8
+    extra_highest = 16
+    extra_wins = 1
+    extra_losses = 0
+    extra_ducks = 1
+
+    db = await get_db()
+
+    try:
+        # Fetch SOURCE stats
+        source = await db.fetchrow(
+            """
+            SELECT runs, wickets, highest_score, wins, losses, ducks
+            FROM cricket_stats
+            WHERE user_id = $1
+            """,
+            source_id
+        )
+
+        # Fetch TARGET stats
+        target = await db.fetchrow(
+            """
+            SELECT runs, wickets, highest_score, wins, losses, ducks
+            FROM cricket_stats
+            WHERE user_id = $1
+            """,
+            target_id
+        )
+
+        if not source:
+            await update.message.reply_text(
+                f"❌ Source ID `{source_id}` stats not found!",
+                parse_mode="Markdown"
+            )
+            return
+
+        if not target:
+            await update.message.reply_text(
+                f"❌ Target ID `{target_id}` stats not found!",
+                parse_mode="Markdown"
+            )
+            return
+
+        # SOURCE + TARGET + EXTRA
+        total_runs = (
+            source["runs"]
+            + target["runs"]
+            + extra_runs
+        )
+
+        total_wickets = (
+            source["wickets"]
+            + target["wickets"]
+            + extra_wickets
+        )
+
+        total_highest = max(
+            source["highest_score"],
+            target["highest_score"],
+            extra_highest
+        )
+
+        total_wins = (
+            source["wins"]
+            + target["wins"]
+            + extra_wins
+        )
+
+        total_losses = (
+            source["losses"]
+            + target["losses"]
+            + extra_losses
+        )
+
+        total_ducks = (
+            source["ducks"]
+            + target["ducks"]
+            + extra_ducks
+        )
+
+        # Update TARGET
+        await db.execute(
+            """
+            UPDATE cricket_stats
+            SET
+                runs = $1,
+                wickets = $2,
+                highest_score = $3,
+                wins = $4,
+                losses = $5,
+                ducks = $6
+            WHERE user_id = $7
+            """,
+            total_runs,
+            total_wickets,
+            total_highest,
+            total_wins,
+            total_losses,
+            total_ducks,
+            target_id
+        )
+
+        # Delete SOURCE after successful transfer
+        await db.execute(
+            """
+            DELETE FROM cricket_stats
+            WHERE user_id = $1
+            """,
+            source_id
+        )
+
+        await update.message.reply_text(
+            "✅ *STATS TRANSFERRED SUCCESSFULLY!*\n\n"
+            "👤 *SIMON*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"🏏 Runs: *{total_runs}*\n"
+            f"🎯 Wickets: *{total_wickets}*\n"
+            f"⭐ Highest Score: *{total_highest}*\n"
+            f"✅ Wins: *{total_wins}*\n"
+            f"❌ Losses: *{total_losses}*\n"
+            f"🦆 Ducks: *{total_ducks}*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🔄 Source: `{source_id}`\n"
+            f"➡️ Target: `{target_id}`",
+            parse_mode="Markdown"
+        )
+
+    except Exception as e:
+        import traceback
+        print("========== TRANSFER STATS ERROR ==========")
+        traceback.print_exc()
+
+        await update.message.reply_text(
+            f"❌ Error: `{type(e).__name__}: {e}`",
+            parse_mode="Markdown"
+        )
+
+    finally:
+        await db.close()
+
+
 # ============ MAIN ==========
 async def main():
     await init_db()
@@ -7186,7 +7339,7 @@ async def main():
     app.add_handler(CallbackQueryHandler(tower_callback, pattern="^tower_"))
     app.add_handler(CommandHandler("fix_duplicates", fix_duplicates))
     app.add_handler(CommandHandler("ping", ping))
-
+    app.add_handler(CommandHandler("transferstats", transferstats))/
     # ============ PLAYER AUCTION ==========
     app.add_handler(CommandHandler("add_player", add_player))
     app.add_handler(CommandHandler("players", players))
