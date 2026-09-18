@@ -7756,6 +7756,10 @@ async def main():
 
     app = Application.builder().token(TOKEN).build()
 
+    # 🔥 START AUCTION AUTO-LOCK TASK
+    asyncio.create_task(auction_auto_lock(app))
+    print("✅ Auction auto-lock task started!")
+
     # ============ USER COMMANDS ==========
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("refer", refer))
