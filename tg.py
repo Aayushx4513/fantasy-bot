@@ -160,6 +160,8 @@ async def init_db():
     # 🔥 Ensure columns exist (for old DB)
     await db.execute("ALTER TABLE user_players ADD COLUMN IF NOT EXISTS purchased_at TIMESTAMP")
     await db.execute("ALTER TABLE user_players ADD COLUMN IF NOT EXISTS type TEXT")
+    await db.execute("ALTER TABLE auction_players ADD COLUMN IF NOT EXISTS locked INT DEFAULT 0")
+    await db.execute("ALTER TABLE auction_players ADD COLUMN IF NOT EXISTS lock_time TEXT")
 
     # 🔥 Ensure PRIMARY KEY exists (for ON CONFLICT)
     try:
@@ -6381,6 +6383,7 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ============ PLAYERS LIST ============
+# ============ PLAYERS LIST ============
 async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
@@ -6390,7 +6393,7 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
 
     players_data = await db.fetch("""
-        SELECT id, name, base_price, current_bid, highest_bidder, end_time, photo
+        SELECT id, name, base_price, current_bid, highest_bidder, end_time, photo, locked, lock_time
         FROM auction_players
         WHERE status = 'active'
         ORDER BY id
@@ -6401,7 +6404,6 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
 
-    # 🔥 Naive IST now
     now_naive_ist = datetime.now(IST).replace(tzinfo=None)
 
     for p in players_data:
@@ -6411,7 +6413,6 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if isinstance(end_time, str):
                 end_time = datetime.fromisoformat(end_time)
 
-            # Ensure naive (both in IST)
             if end_time.tzinfo is not None:
                 end_time = end_time.replace(tzinfo=None)
 
@@ -6441,6 +6442,13 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             bidder_name = bidder if bidder else "Unknown"
 
+        # ============ LOCKED STATUS ============
+        if p.get('locked') == 1:
+            lock_time = p.get('lock_time') or "9:00 PM IST"
+            lock_status = f"🔒 *Bidding will start at {lock_time}*"
+        else:
+            lock_status = "🔓 *Bidding open*"
+
         # ============ CAPTION ============
         caption = (
             f"🏏 *PLAYER #{p['id']}*\n"
@@ -6450,11 +6458,12 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🔥 *Current Bid:* {p['current_bid']:,}\n"
             f"👑 *Highest Bidder:* {bidder_name}\n"
             f"{time_left}\n"
+            f"{lock_status}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"💡 `/bid {p['id']} <amount>` to bid"
         )
 
-        # ============ SEND WITH PHOTO ============
+        # ============ SEND ============
         if p['photo']:
             try:
                 await update.message.reply_photo(
@@ -6468,7 +6477,6 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(caption, parse_mode="Markdown")
 
     await db.close()
-
 
 # ============ FAV PLAYER ============
 async def fav(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6873,6 +6881,19 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
 
+    # ============ CHECK IF LOCKED ============
+    if player.get("locked") == 1:
+        lock_time = player.get("lock_time") or "9:00 PM IST"
+        await update.message.reply_text(
+            f"🔒 *BIDDING LOCKED*\n\n"
+            f"🏏 *Player:* {player['name']}\n\n"
+            f"⏰ *Bidding will start at {lock_time}*\n"
+            f"*Stay tuned!*",
+            parse_mode="Markdown"
+        )
+        await db.close()
+        return
+
     # ============ END TIME CHECK ============
     end_time = player["end_time"]
 
@@ -6939,15 +6960,18 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
 
+    # ============ SAVE PREVIOUS BIDDER ============
     previous_bidder = player["highest_bidder"]
     previous_bid = player["current_bid"]
 
+    # ============ DEDUCT BALANCE ============
     await db.execute(
         "UPDATE users SET balance = balance - $1 WHERE user_id = $2",
         amount,
         user_id
     )
 
+    # ============ UPDATE CURRENT BID ============
     await db.execute(
         "UPDATE auction_players SET current_bid = $1, highest_bidder = $2 WHERE id = $3",
         amount,
@@ -6955,6 +6979,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         player_id
     )
 
+    # ============ SAVE BID HISTORY ============
     await db.execute(
         "INSERT INTO bid_history (player_id, user_id, amount, bid_at) VALUES ($1, $2, $3, $4)",
         player_id,
@@ -6965,7 +6990,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await db.close()
 
-    # ============ OUTBID ALERT ============
+    # ============ SEND OUTBID ALERT (DM) ============
     if previous_bidder and previous_bidder != user_id:
         try:
             await context.bot.send_message(
@@ -6981,7 +7006,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
-    # ============ OUTPUT ============
+    # ============ OUTPUT WITH PHOTO ============
     caption = (
         f"✅ *BID PLACED!*\n\n"
         f"🏏 *Player:* {player['name']}\n"
@@ -8112,6 +8137,173 @@ async def transferstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         await db.close()
 
+# ============ LOCK BID (ADMIN) ============
+# ============ LOCK BID (ADMIN) ============
+async def lockbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("*❌ Admin only!*", parse_mode="Markdown")
+        return
+
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "*❌ Usage:* `/lockbid <player_id> <time>`\n\n"
+            "*Examples:*\n"
+            "`/lockbid 1 9PM` → Bidding starts at 9:00 PM IST\n"
+            "`/lockbid 1 3PM` → Bidding starts at 3:00 PM IST\n"
+            "`/lockbid 1 10AM` → Bidding starts at 10:00 AM IST",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        player_id = int(args[0])
+    except:
+        await update.message.reply_text("*❌ Invalid player ID!*", parse_mode="Markdown")
+        return
+
+    # 🔥 Parse time (e.g. 9PM, 3PM, 10AM)
+    time_input = args[1].upper().strip()
+
+    # Format time properly
+    import re as _re
+    match = _re.match(r'^(\d{1,2})(AM|PM)$', time_input)
+
+    if not match:
+        await update.message.reply_text(
+            "*❌ Invalid time format!*\n\n"
+            "*Use:* `9PM` / `3PM` / `10AM`\n"
+            "*Example:* `/lockbid 1 9PM`",
+            parse_mode="Markdown"
+        )
+        return
+
+    hour = int(match.group(1))
+    period = match.group(2)
+
+    if hour < 1 or hour > 12:
+        await update.message.reply_text(
+            "*❌ Hour must be between 1 and 12!*",
+            parse_mode="Markdown"
+        )
+        return
+
+    # Format display string
+    time_display = f"{hour}:00 {period} IST"
+
+    db = await get_db()
+
+    player = await db.fetchrow(
+        "SELECT name, status, locked FROM auction_players WHERE id = $1",
+        player_id
+    )
+
+    if not player:
+        await update.message.reply_text("*❌ Player not found!*", parse_mode="Markdown")
+        await db.close()
+        return
+
+    if player["status"] != "active":
+        await update.message.reply_text(
+            "*❌ Player is not active anymore!*",
+            parse_mode="Markdown"
+        )
+        await db.close()
+        return
+
+    if player["locked"] == 1:
+        await update.message.reply_text(
+            "*⚠️ Player is already locked!*\n"
+            f"*Current lock time:* {player.get('lock_time') or 'N/A'}",
+            parse_mode="Markdown"
+        )
+        await db.close()
+        return
+
+    await db.execute(
+        "UPDATE auction_players SET locked = 1, lock_time = $1 WHERE id = $2",
+        time_display,
+        player_id
+    )
+
+    await db.close()
+
+    await update.message.reply_text(
+        f"🔒 *BID LOCKED!*\n\n"
+        f"🏏 *Player:* {player['name']}\n"
+        f"🆔 *ID:* `{player_id}`\n\n"
+        f"⏰ *Bidding will start at {time_display}*\n\n"
+        f"*Use `/unlockbid {player_id}` to start bidding*",
+        parse_mode="Markdown"
+    )
+
+
+# ============ UNLOCK BID (ADMIN) ============
+async def unlockbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("*❌ Admin only!*", parse_mode="Markdown")
+        return
+
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text(
+            "*❌ Usage:* `/unlockbid <player_id>`\n\n"
+            "*Example:* `/unlockbid 1`",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        player_id = int(args[0])
+    except:
+        await update.message.reply_text("*❌ Invalid player ID!*", parse_mode="Markdown")
+        return
+
+    db = await get_db()
+
+    player = await db.fetchrow(
+        "SELECT name, status, locked, lock_time FROM auction_players WHERE id = $1",
+        player_id
+    )
+
+    if not player:
+        await update.message.reply_text("*❌ Player not found!*", parse_mode="Markdown")
+        await db.close()
+        return
+
+    if player["status"] != "active":
+        await update.message.reply_text(
+            "*❌ Player is not active anymore!*",
+            parse_mode="Markdown"
+        )
+        await db.close()
+        return
+
+    if player["locked"] == 0:
+        await update.message.reply_text(
+            "*⚠️ Player is already unlocked!*",
+            parse_mode="Markdown"
+        )
+        await db.close()
+        return
+
+    await db.execute(
+        "UPDATE auction_players SET locked = 0, lock_time = NULL WHERE id = $1",
+        player_id
+    )
+
+    await db.close()
+
+    await update.message.reply_text(
+        f"🔓 *BID UNLOCKED!*\n\n"
+        f"🏏 *Player:* {player['name']}\n"
+        f"🆔 *ID:* `{player_id}`\n\n"
+        f"*✅ Bidding is now open!*\n"
+        f"*Users can bid using `/bid {player_id} <amount>`*",
+        parse_mode="Markdown"
+    )
+
+
 # ============ MAIN ==========
 async def main():
     await init_db()
@@ -8205,6 +8397,8 @@ async def main():
     app.add_handler(CommandHandler("addhof", addhof))
     app.add_handler(CommandHandler("rmhof", rmhof))
     app.add_handler(CommandHandler("edithof", edithof))
+    app.add_handler(CommandHandler("lockbid", lockbid))
+    app.add_handler(CommandHandler("unlockbid", unlockbid))
 
     # ============ BANK ==========
     app.add_handler(CommandHandler("bank", bank))
