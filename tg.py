@@ -157,8 +157,19 @@ async def init_db():
         )
     ''')
 
+    # 🔥 Ensure columns exist (for old DB)
     await db.execute("ALTER TABLE user_players ADD COLUMN IF NOT EXISTS purchased_at TIMESTAMP")
     await db.execute("ALTER TABLE user_players ADD COLUMN IF NOT EXISTS type TEXT")
+
+    # 🔥 Ensure PRIMARY KEY exists (for ON CONFLICT)
+    try:
+        await db.execute("""
+            ALTER TABLE user_players 
+            ADD CONSTRAINT user_players_pkey 
+            PRIMARY KEY (user_id, player_id)
+        """)
+    except:
+        pass
 
 
     await db.execute('''
