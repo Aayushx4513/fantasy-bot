@@ -6813,6 +6813,7 @@ async def auction_auto_lock(app):
 
 
 # ============ BID ============
+# ============ BID ============
 async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_id = update.message.chat.id
@@ -6942,6 +6943,27 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
 
+    # ============ SAVE PREVIOUS INFO ============
+    previous_bidder = player["highest_bidder"]
+    previous_bid = player["current_bid"]
+
+    # ============ CALCULATE DEDUCTION ============
+    # Logic:
+    # - Same user re-bid → only pay difference
+    # - New user bid → refund previous, deduct full
+
+    if previous_bidder == user_id:
+        # 🔥 SAME USER — sirf difference
+        deduct_amount = amount - previous_bid
+        refund_amount = 0
+        refund_to = None
+    else:
+        # 🔥 NEW USER
+        deduct_amount = amount
+        refund_amount = previous_bid
+        refund_to = previous_bidder
+
+    # ============ CHECK BALANCE ============
     balance = await db.fetchval(
         "SELECT balance FROM users WHERE user_id = $1",
         user_id
@@ -6950,33 +6972,28 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if balance is None:
         balance = 0
 
-    if balance < amount:
+    if balance < deduct_amount:
         await update.message.reply_text(
             f"*❌ Insufficient balance!*\n\n"
             f"*Your Balance:* {balance:,}\n"
-            f"*Required:* {amount:,}",
+            f"*Required:* {deduct_amount:,}",
             parse_mode="Markdown"
         )
         await db.close()
         return
 
-    # ============ SAVE PREVIOUS BIDDER ============
-    previous_bidder = player["highest_bidder"]
-    previous_bid = player["current_bid"]
-
     # ============ REFUND PREVIOUS BIDDER ============
-    # Agar previous bidder hai aur wo naya bidder nahi hai
-    if previous_bidder and previous_bidder != user_id:
+    if refund_to and refund_amount > 0:
         await db.execute(
             "UPDATE users SET balance = balance + $1 WHERE user_id = $2",
-            previous_bid,
-            previous_bidder
+            refund_amount,
+            refund_to
         )
 
-    # ============ DEDUCT NEW BIDDER ============
+    # ============ DEDUCT FROM CURRENT BIDDER ============
     await db.execute(
         "UPDATE users SET balance = balance - $1 WHERE user_id = $2",
-        amount,
+        deduct_amount,
         user_id
     )
 
@@ -6997,7 +7014,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         datetime.now(IST).replace(tzinfo=None)
     )
 
-    # Get new balance after deduction
+    # ============ GET NEW BALANCE ============
     new_balance = await db.fetchval(
         "SELECT balance FROM users WHERE user_id = $1",
         user_id
@@ -7006,10 +7023,10 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.close()
 
     # ============ SEND OUTBID ALERT (DM) ============
-    if previous_bidder and previous_bidder != user_id:
+    if refund_to and refund_to != user_id:
         try:
             await context.bot.send_message(
-                previous_bidder,
+                refund_to,
                 f"⚠️ *YOU'VE BEEN OUTBID!*\n\n"
                 f"🏏 *Player:* {player['name']}\n"
                 f"💰 *Your Bid:* {previous_bid:,}\n"
