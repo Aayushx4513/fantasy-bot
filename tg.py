@@ -157,6 +157,10 @@ async def init_db():
         )
     ''')
 
+    await db.execute("ALTER TABLE user_players ADD COLUMN IF NOT EXISTS purchased_at TIMESTAMP")
+    await db.execute("ALTER TABLE user_players ADD COLUMN IF NOT EXISTS type TEXT")
+
+
     await db.execute('''
         CREATE TABLE IF NOT EXISTS bid_history (
             id SERIAL PRIMARY KEY,
