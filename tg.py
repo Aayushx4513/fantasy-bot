@@ -84,6 +84,23 @@ async def init_db():
     ''')
     
     await db.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id BIGINT PRIMARY KEY,
+            name TEXT,
+            balance BIGINT DEFAULT 1000,
+            points INT DEFAULT 0,
+            won INT DEFAULT 0,
+            total INT DEFAULT 0,
+            photo TEXT,
+            bio TEXT
+        )
+    ''')
+
+    # 🔥 Fav player column
+    await db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS fav_player INT DEFAULT 0")
+
+
+    await db.execute('''
         CREATE TABLE IF NOT EXISTS auction_players (
             id SERIAL PRIMARY KEY,
             name TEXT,
@@ -6369,8 +6386,8 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
 
-    # 🔥 NAIVE now
-    now = datetime.now(IST).replace(tzinfo=None)
+    # 🔥 Naive IST now
+    now_naive_ist = datetime.now(IST).replace(tzinfo=None)
 
     for p in players_data:
         # ============ COUNTDOWN ============
@@ -6379,11 +6396,11 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if isinstance(end_time, str):
                 end_time = datetime.fromisoformat(end_time)
 
-            # Ensure naive
+            # Ensure naive (both in IST)
             if end_time.tzinfo is not None:
                 end_time = end_time.replace(tzinfo=None)
 
-            remaining = int((end_time - now).total_seconds())
+            remaining = int((end_time - now_naive_ist).total_seconds())
 
             if remaining <= 0:
                 time_left = "⌛ *ENDED*"
@@ -6437,6 +6454,88 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await db.close()
 
+
+# ============ FAV PLAYER ============
+async def fav(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if not await is_registered(user_id):
+        await update.message.reply_text('*❌ Send /start first!*', parse_mode="Markdown")
+        return
+
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text(
+            "*❌ Usage:* `/fav <player_id>`\n\n"
+            "*Example:* `/fav 1`\n\n"
+            "*💡 Use /myteam to see your players*",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        player_id = int(args[0])
+    except:
+        await update.message.reply_text("*❌ Invalid player ID!*", parse_mode="Markdown")
+        return
+
+    db = await get_db()
+
+    # Check if user owns this player
+    owns = await db.fetchval("""
+        SELECT player_id FROM user_players
+        WHERE user_id = $1 AND player_id = $2
+    """, user_id, player_id)
+
+    if not owns:
+        await update.message.reply_text(
+            "*❌ You don't own this player!*\n\n"
+            "*💡 Use /myteam to see your players*",
+            parse_mode="Markdown"
+        )
+        await db.close()
+        return
+
+    # Get player name
+    player_name = await db.fetchval(
+        "SELECT name FROM auction_players WHERE id = $1",
+        player_id
+    )
+
+    # Save as fav
+    await db.execute(
+        "UPDATE users SET fav_player = $1 WHERE user_id = $2",
+        player_id, user_id
+    )
+
+    await db.close()
+
+    await update.message.reply_text(
+        f"⭐ *FAV PLAYER SET!*\n\n"
+        f"🏏 *{player_name}*\n"
+        f"🆔 ID: `{player_id}`\n\n"
+        f"💡 Use `/myteam` to see your fav player's photo",
+        parse_mode="Markdown"
+    )
+
+
+# ============ UNFAV PLAYER ============
+async def unfav(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if not await is_registered(user_id):
+        await update.message.reply_text('*❌ Send /start first!*', parse_mode="Markdown")
+        return
+
+    db = await get_db()
+    await db.execute("UPDATE users SET fav_player = 0 WHERE user_id = $1", user_id)
+    await db.close()
+
+    await update.message.reply_text(
+        "✅ *Favourite player removed!*",
+        parse_mode="Markdown"
+    )
+
 # ============ SET AUCTION TIME ============
 async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
@@ -6449,9 +6548,9 @@ async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "*❌ Usage:* `/settime <player_id> <time>`\n\n"
             "*Examples:*\n"
-            "`/settime 1 30M` → 30 minutes\n"
+            "`/settime 1 30S` → 30 seconds\n"
+            "`/settime 1 5M` → 5 minutes\n"
             "`/settime 1 2H` → 2 hours\n"
-            "`/settime 1 45S` → 45 seconds\n"
             "`/settime 1 1D` → 1 day",
             parse_mode="Markdown"
         )
@@ -6476,7 +6575,7 @@ async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
             seconds = int(time_str[:-1]) * 86400
         else:
             await update.message.reply_text(
-                "*❌ Invalid time format!*\nUse: `30S` / `30M` / `2H` / `1D`",
+                "*❌ Invalid time format!*\nUse: `30S` / `5M` / `2H` / `1D`",
                 parse_mode="Markdown"
             )
             return
@@ -6508,17 +6607,23 @@ async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
 
-    # 🔥 NAIVE DATETIME (DB compatible)
-    end_time = datetime.now(IST).replace(tzinfo=None) + timedelta(seconds=seconds)
+    # 🔥 FIX: Calculate end_time properly
+    # Current IST time (aware)
+    now_ist = datetime.now(IST)
+    # end_time in IST (aware) — for display
+    end_time_ist = now_ist + timedelta(seconds=seconds)
+    # end_time naive IST — for DB (strips timezone info, keeps IST clock time)
+    end_time_db = end_time_ist.replace(tzinfo=None)
 
     await db.execute(
         "UPDATE auction_players SET end_time = $1 WHERE id = $2",
-        end_time,
+        end_time_db,
         player_id
     )
 
     await db.close()
 
+    # 🔥 Pretty duration display
     if seconds >= 86400:
         pretty = f"{seconds // 86400}D"
     elif seconds >= 3600:
@@ -6528,14 +6633,12 @@ async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         pretty = f"{seconds}S"
 
-    # Display IST (add 5:30)
-    display_time = end_time + timedelta(hours=5, minutes=30)
-
+    # 🔥 Display IST time directly (NO extra add)
     await update.message.reply_text(
         f"*✅ TIME SET!*\n\n"
         f"*🏏 Player:* {player['name']} (ID: `{player_id}`)\n"
-        f"*⏰ Duration:* {pretty}\n"
-        f"*📅 Ends at:* {display_time.strftime('%d %b %Y, %I:%M %p')} IST\n\n"
+        f"*⏰ Duration:* {pretty} ({seconds}s)\n"
+        f"*📅 Ends at:* {end_time_ist.strftime('%d %b %Y, %I:%M:%S %p')} IST\n\n"
         f"*🔒 Player will auto-lock when timer ends*\n"
         f"*📩 Admin will be notified*",
         parse_mode="Markdown"
@@ -6612,26 +6715,41 @@ async def setplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============ AUCTION AUTO-LOCK BACKGROUND TASK ============
 async def auction_auto_lock(app):
     """
-    Runs every 30 seconds.
-    Checks all active auction players with end_time.
-    If end_time passed, auto-locks player and notifies admin.
+    Runs every 15 seconds.
+    Auto-locks player when end_time passed and notifies admins.
     """
     while True:
         try:
-            await asyncio.sleep(30)
+            await asyncio.sleep(15)   # 🔥 15 sec for faster detection
 
             db = await get_db()
 
-            # SQL side comparison (works for both naive/aware)
+            # 🔥 Current IST time (naive) for comparison
+            now_naive_ist = datetime.now(IST).replace(tzinfo=None)
+
             expired = await db.fetch("""
                 SELECT id, name, current_bid, highest_bidder, end_time
                 FROM auction_players
                 WHERE status = 'active'
                   AND end_time IS NOT NULL
-                  AND end_time <= NOW()
             """)
 
             for player in expired:
+                end_time = player["end_time"]
+
+                if end_time is None:
+                    continue
+
+                if isinstance(end_time, str):
+                    end_time = datetime.fromisoformat(end_time)
+
+                if end_time.tzinfo is not None:
+                    end_time = end_time.replace(tzinfo=None)
+
+                # 🔥 Check if expired
+                if now_naive_ist < end_time:
+                    continue
+
                 player_id = player["id"]
                 player_name = player["name"]
                 current_bid = player["current_bid"]
@@ -6649,6 +6767,7 @@ async def auction_auto_lock(app):
                         highest_bidder
                     ) or "Unknown"
 
+                # 🔥 Notify all admins
                 for admin_id in ADMIN_IDS:
                     try:
                         await app.bot.send_message(
@@ -6746,13 +6865,12 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         end_time = datetime.fromisoformat(end_time)
 
     if end_time is not None:
-        # Ensure naive
         if end_time.tzinfo is not None:
             end_time = end_time.replace(tzinfo=None)
 
-        now_naive = datetime.now(IST).replace(tzinfo=None)
+        now_naive_ist = datetime.now(IST).replace(tzinfo=None)
 
-        if now_naive > end_time:
+        if now_naive_ist > end_time:
             await update.message.reply_text(
                 "*⏰ Auction for this player has ended!*",
                 parse_mode="Markdown"
@@ -6760,7 +6878,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await db.close()
             return
 
-        remaining_seconds = int((end_time - now_naive).total_seconds())
+        remaining_seconds = int((end_time - now_naive_ist).total_seconds())
         if remaining_seconds < 0:
             remaining_seconds = 0
 
@@ -6806,18 +6924,15 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
 
-    # ============ SAVE PREVIOUS ============
     previous_bidder = player["highest_bidder"]
     previous_bid = player["current_bid"]
 
-    # ============ DEDUCT ============
     await db.execute(
         "UPDATE users SET balance = balance - $1 WHERE user_id = $2",
         amount,
         user_id
     )
 
-    # ============ UPDATE ============
     await db.execute(
         "UPDATE auction_players SET current_bid = $1, highest_bidder = $2 WHERE id = $3",
         amount,
@@ -6825,7 +6940,6 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         player_id
     )
 
-    # ============ HISTORY ============
     await db.execute(
         "INSERT INTO bid_history (player_id, user_id, amount, bid_at) VALUES ($1, $2, $3, $4)",
         player_id,
@@ -6844,8 +6958,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"⚠️ *YOU'VE BEEN OUTBID!*\n\n"
                 f"🏏 *Player:* {player['name']}\n"
                 f"💰 *Your Bid:* {previous_bid:,}\n"
-                f"🔥 *New Bid:* {amount:,}\n"
-                f"👤 *New Highest Bidder:* Someone\n\n"
+                f"🔥 *New Bid:* {amount:,}\n\n"
                 f"💡 Bid again to reclaim!\n"
                 f"`/bid {player_id} {amount + 1000}`",
                 parse_mode="Markdown"
@@ -6872,7 +6985,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(caption, parse_mode="Markdown")
 
-# ============ RESULT AUCTION ==========
+# ============ RESULT AUCTION ============
 async def result_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in ADMIN_IDS:
@@ -6895,40 +7008,74 @@ async def result_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     db = await get_db()
 
-    player = await db.fetchrow("SELECT * FROM auction_players WHERE id = $1 AND status = 'active'", player_id)
+    # 🔥 FIX: Accept both 'active' and 'ended'
+    player = await db.fetchrow(
+        "SELECT * FROM auction_players WHERE id = $1 AND status IN ('active', 'ended')",
+        player_id
+    )
+
     if not player:
-        await update.message.reply_text("*❌ Player not found or already sold!*", parse_mode="Markdown")
+        await update.message.reply_text(
+            "*❌ Player not found or already sold!*",
+            parse_mode="Markdown"
+        )
         await db.close()
         return
 
     if not player['highest_bidder']:
-        await update.message.reply_text("*❌ No bids placed on this player!*", parse_mode="Markdown")
+        await update.message.reply_text(
+            "*❌ No bids placed on this player!*",
+            parse_mode="Markdown"
+        )
         await db.close()
         return
 
-    # 🔥 TIME CHECK HATAO - Admin manually result karega
     winner_id = player['highest_bidder']
     winner_name = await db.fetchval("SELECT name FROM users WHERE user_id = $1", winner_id)
     winning_bid = player['current_bid']
 
-    await db.execute("UPDATE auction_players SET status = 'sold' WHERE id = $1", player_id)
-
+    # 🔥 Mark as sold
     await db.execute(
-        "INSERT INTO user_players (user_id, player_id, purchased_at) VALUES ($1, $2, $3)",
-        winner_id, player_id, datetime.now().isoformat()
+        "UPDATE auction_players SET status = 'sold' WHERE id = $1",
+        player_id
+    )
+
+    # 🔥 Add to user_players
+    await db.execute(
+        """
+        INSERT INTO user_players (user_id, player_id, purchased_at)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (user_id, player_id) DO NOTHING
+        """,
+        winner_id, player_id, datetime.now(IST).replace(tzinfo=None)
     )
 
     await db.close()
 
+    # 🔥 DM winner
+    try:
+        await context.bot.send_message(
+            winner_id,
+            f"🎉 *CONGRATULATIONS!*\n\n"
+            f"🏏 You won *{player['name']}*!\n"
+            f"💰 Winning Bid: *{winning_bid:,}*\n\n"
+            f"💡 Check your team with /myteam",
+            parse_mode="Markdown"
+        )
+    except:
+        pass
+
+    # 🔥 Public announcement
     await update.message.reply_text(
-        f"*🏆 AUCTION RESULT!*\n\n"
-        f"*🏏 Player:* {player['name']}\n"
-        f"*👤 Winner:* {winner_name} 🎉\n"
-        f"*💰 Winning Bid:* {winning_bid:,}\n\n"
-        f"*✅ Player added to {winner_name}'s team!*",
+        f"🏆 *AUCTION RESULT!*\n\n"
+        f"🏏 *Player:* {player['name']}\n"
+        f"👤 *Winner:* {winner_name} 🎉\n"
+        f"💰 *Winning Bid:* {winning_bid:,}\n\n"
+        f"✅ *Player added to {winner_name}'s team!*",
         parse_mode="Markdown"
     )
 
+# ============ MY TEAM ============
 async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
@@ -6937,8 +7084,15 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     db = await get_db()
 
+    # Get fav player
+    fav_id = await db.fetchval(
+        "SELECT fav_player FROM users WHERE user_id = $1",
+        user_id
+    )
+
+    # Get all players owned
     players = await db.fetch("""
-        SELECT p.id, p.name, p.current_bid
+        SELECT p.id, p.name, p.base_price, p.current_bid, p.photo, up.purchased_at
         FROM user_players up
         JOIN auction_players p ON up.player_id = p.id
         WHERE up.user_id = $1
@@ -6954,15 +7108,75 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
 
-    msg = "*🏏 MY CRICKET TEAM*\n\n"
-    total = 0
-    for i, p in enumerate(players, 1):
-        msg += f"*{i}. {p['name']} - {p['current_bid']:,} 💰*\n"
-        total += p['current_bid']
+    total = sum(p['current_bid'] for p in players)
+    count = len(players)
 
-    msg += f"\n*━━━━━━━━━━━━━━━━━━━━━━*\n"
-    msg += f"*💰 Total Value: {total:,} 💰*\n"
-    msg += f"*🏆 Total Players: {len(players)}*"
+    user = update.effective_user
+    name = user.first_name if user.first_name else (user.username or "User")
+
+    # ============ FAV PLAYER PHOTO ============
+    fav_player = None
+    if fav_id:
+        for p in players:
+            if p['id'] == fav_id:
+                fav_player = p
+                break
+
+    # Send fav player's photo first (if exists)
+    if fav_player and fav_player['photo']:
+        fav_caption = (
+            f"⭐ *FAV PLAYER*\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"🏏 *{fav_player['name']}*\n"
+            f"💰 *Bought:* {fav_player['current_bid']:,}\n"
+            f"📊 *Base Price:* {fav_player['base_price']:,}"
+        )
+        try:
+            await update.message.reply_photo(
+                photo=fav_player['photo'],
+                caption=fav_caption,
+                parse_mode="Markdown"
+            )
+        except:
+            pass
+
+    # ============ TEXT LIST ============
+    msg = (
+        f"🏏 *{name}'s CRICKET TEAM*\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+    )
+
+    for i, p in enumerate(players, 1):
+        # Purchased date
+        try:
+            purchased_date = p['purchased_at']
+            if purchased_date:
+                if hasattr(purchased_date, 'strftime'):
+                    date_str = purchased_date.strftime("%d %b %Y")
+                else:
+                    date_str = str(purchased_date)[:10]
+            else:
+                date_str = "N/A"
+        except:
+            date_str = "N/A"
+
+        # Star for fav player
+        star = "⭐ " if p['id'] == fav_id else ""
+
+        msg += (
+            f"{star}*{i}. {p['name']}*\n"
+            f"   💰 Bought: {p['current_bid']:,}\n"
+            f"   📊 Base: {p['base_price']:,}\n"
+            f"   📅 {date_str}\n\n"
+        )
+
+    msg += (
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🏆 *Total Players:* {count}\n"
+        f"💰 *Total Value:* {total:,}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"💡 `/fav <id>` to set favourite player"
+    )
 
     await update.message.reply_text(msg, parse_mode="Markdown")
     await db.close()
@@ -7943,6 +8157,8 @@ async def main():
     app.add_handler(CommandHandler("rmachieve", rmachieve))
     app.add_handler(CommandHandler("unlockmatch", unlockmatch))
     app.add_handler(CallbackQueryHandler(allbets_callback, pattern="^allbets_"))
+    app.add_handler(CommandHandler("fav", fav))
+    app.add_handler(CommandHandler("unfav", unfav))
 
     # ============ CLCRICKET ==========
     app.add_handler(CommandHandler("CLcricket", clcricket))
