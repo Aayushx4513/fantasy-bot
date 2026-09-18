@@ -6964,7 +6964,16 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     previous_bidder = player["highest_bidder"]
     previous_bid = player["current_bid"]
 
-    # ============ DEDUCT BALANCE ============
+    # ============ REFUND PREVIOUS BIDDER ============
+    # Agar previous bidder hai aur wo naya bidder nahi hai
+    if previous_bidder and previous_bidder != user_id:
+        await db.execute(
+            "UPDATE users SET balance = balance + $1 WHERE user_id = $2",
+            previous_bid,
+            previous_bidder
+        )
+
+    # ============ DEDUCT NEW BIDDER ============
     await db.execute(
         "UPDATE users SET balance = balance - $1 WHERE user_id = $2",
         amount,
@@ -6988,6 +6997,12 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         datetime.now(IST).replace(tzinfo=None)
     )
 
+    # Get new balance after deduction
+    new_balance = await db.fetchval(
+        "SELECT balance FROM users WHERE user_id = $1",
+        user_id
+    )
+
     await db.close()
 
     # ============ SEND OUTBID ALERT (DM) ============
@@ -6999,6 +7014,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🏏 *Player:* {player['name']}\n"
                 f"💰 *Your Bid:* {previous_bid:,}\n"
                 f"🔥 *New Bid:* {amount:,}\n\n"
+                f"✅ *Refunded:* {previous_bid:,} credits\n\n"
                 f"💡 Bid again to reclaim!\n"
                 f"`/bid {player_id} {amount + 1000}`",
                 parse_mode="Markdown"
@@ -7013,7 +7029,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💰 *Your Bid:* {amount:,}\n"
         f"👤 *Current Highest:* You\n"
         f"⏰ *Time left:* {remaining_time}\n\n"
-        f"💳 *Your balance:* {balance - amount:,}"
+        f"💳 *Your balance:* {new_balance:,}"
     )
 
     if player["photo"]:
