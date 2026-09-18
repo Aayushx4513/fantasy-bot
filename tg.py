@@ -97,6 +97,9 @@ async def init_db():
         )
     ''')
 
+    # Photo column for auction players
+    await db.execute("ALTER TABLE auction_players ADD COLUMN IF NOT EXISTS photo TEXT")
+
     await db.execute('''
         CREATE TABLE IF NOT EXISTS cricket_stats (
             user_id BIGINT PRIMARY KEY,
@@ -6292,7 +6295,7 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-# ============ PLAYERS LIST ==========
+# ============ PLAYERS LIST ============
 async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
@@ -6313,29 +6316,297 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
 
+    now = datetime.now(IST)
+
     msg = "*🏏 AVAILABLE PLAYERS*\n\n"
     for p in players_data:
-        # 🔥 TIME HATAO - Sirf "TBD" dikhao
-        time_left = "⏰ TBD"
+        if p['end_time']:
+            end_time = p['end_time']
+            if isinstance(end_time, str):
+                end_time = datetime.fromisoformat(end_time)
+            if end_time.tzinfo is None:
+                end_time = end_time.replace(tzinfo=IST)
+
+            remaining = int((end_time - now).total_seconds())
+
+            if remaining <= 0:
+                time_left = "⌛ *ENDED*"
+            else:
+                h = remaining // 3600
+                m = (remaining % 3600) // 60
+                s = remaining % 60
+                if h > 0:
+                    time_left = f"⏰ *{h}h {m}m {s}s*"
+                elif m > 0:
+                    time_left = f"⏰ *{m}m {s}s*"
+                else:
+                    time_left = f"⏰ *{s}s*"
+        else:
+            time_left = "*⏰ TBD*"
 
         bidder_name = "No bids"
         if p['highest_bidder']:
-            bidder = await db.fetchval("SELECT name FROM users WHERE user_id = $1", p['highest_bidder'])
+            bidder = await db.fetchval(
+                "SELECT name FROM users WHERE user_id = $1",
+                p['highest_bidder']
+            )
             bidder_name = bidder if bidder else "Unknown"
 
         msg += f"*🆔 {p['id']}. {p['name']}*\n"
         msg += f"   *💰 Base:* {p['base_price']:,} | *Current:* {p['current_bid']:,}\n"
         msg += f"   *👤 Highest Bidder:* {bidder_name}\n"
-        msg += f"   *{time_left}*\n\n"
+        msg += f"   {time_left}\n\n"
 
     msg += "*💡 /bid <id> <amount> to place bid*"
 
     await update.message.reply_text(msg, parse_mode="Markdown")
     await db.close()
 
-# ============ BID ==========
+# ============ SET AUCTION TIME ============
+async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("*❌ Admin only!*", parse_mode="Markdown")
+        return
+
+    args = context.args
+
+    if len(args) < 2:
+        await update.message.reply_text(
+            "*❌ Usage:* `/settime <player_id> <time>`\n\n"
+            "*Examples:*\n"
+            "`/settime 1 30M` → 30 minutes\n"
+            "`/settime 1 2H` → 2 hours\n"
+            "`/settime 1 45S` → 45 seconds\n"
+            "`/settime 1 1D` → 1 day",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        player_id = int(args[0])
+    except:
+        await update.message.reply_text("*❌ Invalid player ID!*", parse_mode="Markdown")
+        return
+
+    time_str = args[1].upper().strip()
+
+    try:
+        if time_str.endswith("S"):
+            seconds = int(time_str[:-1])
+        elif time_str.endswith("M"):
+            seconds = int(time_str[:-1]) * 60
+        elif time_str.endswith("H"):
+            seconds = int(time_str[:-1]) * 3600
+        elif time_str.endswith("D"):
+            seconds = int(time_str[:-1]) * 86400
+        else:
+            await update.message.reply_text(
+                "*❌ Invalid time format!*\nUse: `30S` / `30M` / `2H` / `1D`",
+                parse_mode="Markdown"
+            )
+            return
+    except:
+        await update.message.reply_text("*❌ Invalid time!*", parse_mode="Markdown")
+        return
+
+    if seconds <= 0:
+        await update.message.reply_text("*❌ Time must be greater than 0!*", parse_mode="Markdown")
+        return
+
+    db = await get_db()
+
+    player = await db.fetchrow(
+        "SELECT name, status FROM auction_players WHERE id = $1",
+        player_id
+    )
+
+    if not player:
+        await update.message.reply_text("*❌ Player not found!*", parse_mode="Markdown")
+        await db.close()
+        return
+
+    if player["status"] != "active":
+        await update.message.reply_text(
+            "*❌ Player is not active anymore!*",
+            parse_mode="Markdown"
+        )
+        await db.close()
+        return
+
+    end_time = datetime.now(IST) + timedelta(seconds=seconds)
+
+    await db.execute(
+        "UPDATE auction_players SET end_time = $1 WHERE id = $2",
+        end_time,
+        player_id
+    )
+
+    await db.close()
+
+    if seconds >= 86400:
+        pretty = f"{seconds // 86400}D"
+    elif seconds >= 3600:
+        pretty = f"{seconds // 3600}H"
+    elif seconds >= 60:
+        pretty = f"{seconds // 60}M"
+    else:
+        pretty = f"{seconds}S"
+
+    await update.message.reply_text(
+        f"*✅ TIME SET!*\n\n"
+        f"*🏏 Player:* {player['name']} (ID: `{player_id}`)\n"
+        f"*⏰ Duration:* {pretty}\n"
+        f"*📅 Ends at:* {end_time.strftime('%d %b %Y, %I:%M %p')} IST\n\n"
+        f"*🔒 Player will auto-lock when timer ends*\n"
+        f"*📩 Admin will be notified*",
+        parse_mode="Markdown"
+    )
+# ============ SET PLAYER PHOTO ============
+async def setplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("*❌ Admin only!*", parse_mode="Markdown")
+        return
+
+    if not update.message.reply_to_message:
+        await update.message.reply_text(
+            "*❌ Reply to a photo with:* `/setplayer <player_id>`\n\n"
+            "*Example:*\n"
+            "1. Reply to player's photo\n"
+            "2. Send: `/setplayer 1`",
+            parse_mode="Markdown"
+        )
+        return
+
+    if not update.message.reply_to_message.photo:
+        await update.message.reply_text(
+            "*❌ Reply must be to a PHOTO!*",
+            parse_mode="Markdown"
+        )
+        return
+
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text(
+            "*❌ Usage:* `/setplayer <player_id>`",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        player_id = int(args[0])
+    except:
+        await update.message.reply_text("*❌ Invalid player ID!*", parse_mode="Markdown")
+        return
+
+    photo_file_id = update.message.reply_to_message.photo[-1].file_id
+
+    db = await get_db()
+
+    player = await db.fetchrow(
+        "SELECT name, status FROM auction_players WHERE id = $1",
+        player_id
+    )
+
+    if not player:
+        await update.message.reply_text("*❌ Player not found!*", parse_mode="Markdown")
+        await db.close()
+        return
+
+    await db.execute(
+        "UPDATE auction_players SET photo = $1 WHERE id = $2",
+        photo_file_id,
+        player_id
+    )
+
+    await db.close()
+
+    await update.message.reply_text(
+        f"*✅ PLAYER PHOTO SET!*\n\n"
+        f"*🏏 Player:* {player['name']}\n"
+        f"*🆔 ID:* `{player_id}`\n\n"
+        f"*💡 Photo will now appear in /players and /bid*",
+        parse_mode="Markdown"
+    )
+
+# ============ AUCTION AUTO-LOCK BACKGROUND TASK ============
+async def auction_auto_lock(app):
+    """
+    Runs every 30 seconds.
+    Checks all active auction players with end_time.
+    If end_time passed, auto-locks player and notifies admin.
+    """
+    while True:
+        try:
+            await asyncio.sleep(30)
+
+            db = await get_db()
+
+            expired = await db.fetch("""
+                SELECT id, name, current_bid, highest_bidder, end_time
+                FROM auction_players
+                WHERE status = 'active'
+                  AND end_time IS NOT NULL
+                  AND end_time <= NOW()
+            """)
+
+            for player in expired:
+                player_id = player["id"]
+                player_name = player["name"]
+                current_bid = player["current_bid"]
+                highest_bidder = player["highest_bidder"]
+
+                await db.execute(
+                    "UPDATE auction_players SET status = 'ended' WHERE id = $1",
+                    player_id
+                )
+
+                winner_name = "No bids"
+                if highest_bidder:
+                    winner_name = await db.fetchval(
+                        "SELECT name FROM users WHERE user_id = $1",
+                        highest_bidder
+                    ) or "Unknown"
+
+                for admin_id in ADMIN_IDS:
+                    try:
+                        await app.bot.send_message(
+                            admin_id,
+                            f"🔔 *AUCTION ENDED!*\n\n"
+                            f"🏏 *Player:* {player_name}\n"
+                            f"🆔 *ID:* `{player_id}`\n"
+                            f"💰 *Final Bid:* {current_bid:,}\n"
+                            f"👤 *Highest Bidder:* {winner_name}\n\n"
+                            f"💡 Use `/result_auction {player_id}` to declare winner",
+                            parse_mode="Markdown"
+                        )
+                    except:
+                        pass
+
+            await db.close()
+
+        except Exception as e:
+            print(f"❌ AUTO-LOCK ERROR: {e}")
+
+
+
+# ============ BID ============
 async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    chat_id = update.message.chat.id
+    chat_type = update.message.chat.type
+
+    # 🔥 ONLY ALLOWED IN CL PLAYZONE GROUP
+    CL_PLAYZONE_GC_ID = -1001234567890   # ← REPLACE WITH ACTUAL ID
+
+    if chat_type not in ['group', 'supergroup'] or chat_id != CL_PLAYZONE_GC_ID:
+        await update.message.reply_text(
+            "*🚫 BID ONLY IN CL PLAYZONE!*\n\n"
+            "*Join here to bid:*\n"
+            "https://t.me/clbotplayzone",
+            parse_mode="Markdown",
+            disable_web_page_preview=True
+        )
+        return
 
     if not await is_registered(user_id):
         await update.message.reply_text(
@@ -6349,8 +6620,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(args) < 2:
         await update.message.reply_text(
             "*❌ Usage:* `/bid <player_id> <amount>`\n\n"
-            "*Example:* `/bid 1 60000`\n\n"
-            "*💡 Use /players to see available players.*",
+            "*Example:* `/bid 1 60000`",
             parse_mode="Markdown"
         )
         return
@@ -6375,8 +6645,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
 
     player = await db.fetchrow(
-        "SELECT * FROM auction_players "
-        "WHERE id = $1 AND status = 'active'",
+        "SELECT * FROM auction_players WHERE id = $1 AND status = 'active'",
         player_id
     )
 
@@ -6388,14 +6657,13 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
 
-    # ============ END TIME ==========
+    # ============ END TIME ============
     end_time = player["end_time"]
 
     if end_time is not None and isinstance(end_time, str):
         end_time = datetime.fromisoformat(end_time)
 
     if end_time is not None:
-        # Handle timezone-naive DB datetime safely
         if end_time.tzinfo is None:
             end_time = end_time.replace(tzinfo=IST)
 
@@ -6407,10 +6675,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await db.close()
             return
 
-        remaining_seconds = int(
-            (end_time - datetime.now(IST)).total_seconds()
-        )
-
+        remaining_seconds = int((end_time - datetime.now(IST)).total_seconds())
         if remaining_seconds < 0:
             remaining_seconds = 0
 
@@ -6425,9 +6690,9 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             remaining_time = f"{seconds}s"
     else:
-        remaining_time = "No time limit"
+        remaining_time = "TBD"
 
-    # ============ BID CHECK ==========
+    # ============ BID CHECK ============
     if amount <= player["current_bid"]:
         await update.message.reply_text(
             f"*❌ Bid must be higher than current bid!*\n\n"
@@ -6456,28 +6721,28 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
 
-    # ============ DEDUCT BALANCE ==========
+    # ============ SAVE PREVIOUS BIDDER ============
+    previous_bidder = player["highest_bidder"]
+    previous_bid = player["current_bid"]
+
+    # ============ DEDUCT BALANCE ============
     await db.execute(
         "UPDATE users SET balance = balance - $1 WHERE user_id = $2",
         amount,
         user_id
     )
 
-    # ============ UPDATE CURRENT BID ==========
+    # ============ UPDATE CURRENT BID ============
     await db.execute(
-        "UPDATE auction_players "
-        "SET current_bid = $1, highest_bidder = $2 "
-        "WHERE id = $3",
+        "UPDATE auction_players SET current_bid = $1, highest_bidder = $2 WHERE id = $3",
         amount,
         user_id,
         player_id
     )
 
-    # ============ SAVE BID HISTORY ==========
+    # ============ SAVE BID HISTORY ============
     await db.execute(
-        "INSERT INTO bid_history "
-        "(player_id, user_id, amount, bid_at) "
-        "VALUES ($1, $2, $3, $4)",
+        "INSERT INTO bid_history (player_id, user_id, amount, bid_at) VALUES ($1, $2, $3, $4)",
         player_id,
         user_id,
         amount,
@@ -6486,14 +6751,41 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await db.close()
 
-    await update.message.reply_text(
-        f"*✅ BID PLACED!*\n\n"
-        f"*🏏 Player:* {player['name']}\n"
-        f"*💰 Your Bid:* {amount:,}\n"
-        f"*👤 Current Highest:* You\n"
-        f"*⏰ Time left:* {remaining_time}",
-        parse_mode="Markdown"
+    # ============ SEND OUTBID ALERT (DM) ============
+    if previous_bidder and previous_bidder != user_id:
+        try:
+            await context.bot.send_message(
+                previous_bidder,
+                f"⚠️ *YOU'VE BEEN OUTBID!*\n\n"
+                f"🏏 *Player:* {player['name']}\n"
+                f"💰 *Your Bid:* {previous_bid:,}\n"
+                f"🔥 *New Bid:* {amount:,}\n"
+                f"👤 *New Highest Bidder:* Someone\n\n"
+                f"💡 Bid again to reclaim!\n"
+                f"`/bid {player_id} {amount + 1000}`",
+                parse_mode="Markdown"
+            )
+        except:
+            pass
+
+    # ============ OUTPUT WITH PHOTO ============
+    caption = (
+        f"✅ *BID PLACED!*\n\n"
+        f"🏏 *Player:* {player['name']}\n"
+        f"💰 *Your Bid:* {amount:,}\n"
+        f"👤 *Current Highest:* You\n"
+        f"⏰ *Time left:* {remaining_time}\n\n"
+        f"💳 *Your balance:* {balance - amount:,}"
     )
+
+    if player["photo"]:
+        await update.message.reply_photo(
+            photo=player["photo"],
+            caption=caption,
+            parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text(caption, parse_mode="Markdown")
 
 # ============ RESULT AUCTION ==========
 async def result_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -7571,6 +7863,8 @@ async def main():
     app.add_handler(CallbackQueryHandler(cricket_choice_callback, pattern="^cricket_choice_"))
     app.add_handler(CallbackQueryHandler(cricket_bowl_callback, pattern="^cricket_bowl_"))
     app.add_handler(CallbackQueryHandler(cricket_bat_callback, pattern="^cricket_bat_"))
+    app.add_handler(CommandHandler("settime", settime))
+    app.add_handler(CommandHandler("setplayer", setplayer))
 
     # ============ MINES ==========
     app.add_handler(CommandHandler("mines", mines))
