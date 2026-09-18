@@ -6369,7 +6369,8 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
 
-    now = datetime.now(IST)
+    # 🔥 NAIVE now
+    now = datetime.now(IST).replace(tzinfo=None)
 
     for p in players_data:
         # ============ COUNTDOWN ============
@@ -6377,8 +6378,10 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
             end_time = p['end_time']
             if isinstance(end_time, str):
                 end_time = datetime.fromisoformat(end_time)
-            if end_time.tzinfo is None:
-                end_time = end_time.replace(tzinfo=IST)
+
+            # Ensure naive
+            if end_time.tzinfo is not None:
+                end_time = end_time.replace(tzinfo=None)
 
             remaining = int((end_time - now).total_seconds())
 
@@ -6505,7 +6508,8 @@ async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
 
-    end_time = datetime.now(IST) + timedelta(seconds=seconds)
+    # 🔥 NAIVE DATETIME (DB compatible)
+    end_time = datetime.now(IST).replace(tzinfo=None) + timedelta(seconds=seconds)
 
     await db.execute(
         "UPDATE auction_players SET end_time = $1 WHERE id = $2",
@@ -6524,15 +6528,20 @@ async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         pretty = f"{seconds}S"
 
+    # Display IST (add 5:30)
+    display_time = end_time + timedelta(hours=5, minutes=30)
+
     await update.message.reply_text(
         f"*✅ TIME SET!*\n\n"
         f"*🏏 Player:* {player['name']} (ID: `{player_id}`)\n"
         f"*⏰ Duration:* {pretty}\n"
-        f"*📅 Ends at:* {end_time.strftime('%d %b %Y, %I:%M %p')} IST\n\n"
+        f"*📅 Ends at:* {display_time.strftime('%d %b %Y, %I:%M %p')} IST\n\n"
         f"*🔒 Player will auto-lock when timer ends*\n"
         f"*📩 Admin will be notified*",
         parse_mode="Markdown"
     )
+
+
 # ============ SET PLAYER PHOTO ============
 async def setplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
@@ -6613,6 +6622,7 @@ async def auction_auto_lock(app):
 
             db = await get_db()
 
+            # SQL side comparison (works for both naive/aware)
             expired = await db.fetch("""
                 SELECT id, name, current_bid, highest_bidder, end_time
                 FROM auction_players
@@ -6658,7 +6668,6 @@ async def auction_auto_lock(app):
 
         except Exception as e:
             print(f"❌ AUTO-LOCK ERROR: {e}")
-
 
 
 # ============ BID ============
@@ -6730,17 +6739,20 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
 
-    # ============ END TIME ============
+    # ============ END TIME CHECK ============
     end_time = player["end_time"]
 
     if end_time is not None and isinstance(end_time, str):
         end_time = datetime.fromisoformat(end_time)
 
     if end_time is not None:
-        if end_time.tzinfo is None:
-            end_time = end_time.replace(tzinfo=IST)
+        # Ensure naive
+        if end_time.tzinfo is not None:
+            end_time = end_time.replace(tzinfo=None)
 
-        if datetime.now(IST) > end_time:
+        now_naive = datetime.now(IST).replace(tzinfo=None)
+
+        if now_naive > end_time:
             await update.message.reply_text(
                 "*⏰ Auction for this player has ended!*",
                 parse_mode="Markdown"
@@ -6748,7 +6760,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await db.close()
             return
 
-        remaining_seconds = int((end_time - datetime.now(IST)).total_seconds())
+        remaining_seconds = int((end_time - now_naive).total_seconds())
         if remaining_seconds < 0:
             remaining_seconds = 0
 
@@ -6794,18 +6806,18 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.close()
         return
 
-    # ============ SAVE PREVIOUS BIDDER ============
+    # ============ SAVE PREVIOUS ============
     previous_bidder = player["highest_bidder"]
     previous_bid = player["current_bid"]
 
-    # ============ DEDUCT BALANCE ============
+    # ============ DEDUCT ============
     await db.execute(
         "UPDATE users SET balance = balance - $1 WHERE user_id = $2",
         amount,
         user_id
     )
 
-    # ============ UPDATE CURRENT BID ============
+    # ============ UPDATE ============
     await db.execute(
         "UPDATE auction_players SET current_bid = $1, highest_bidder = $2 WHERE id = $3",
         amount,
@@ -6813,18 +6825,18 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         player_id
     )
 
-    # ============ SAVE BID HISTORY ============
+    # ============ HISTORY ============
     await db.execute(
         "INSERT INTO bid_history (player_id, user_id, amount, bid_at) VALUES ($1, $2, $3, $4)",
         player_id,
         user_id,
         amount,
-        datetime.now()
+        datetime.now(IST).replace(tzinfo=None)
     )
 
     await db.close()
 
-    # ============ SEND OUTBID ALERT (DM) ============
+    # ============ OUTBID ALERT ============
     if previous_bidder and previous_bidder != user_id:
         try:
             await context.bot.send_message(
@@ -6841,7 +6853,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
-    # ============ OUTPUT WITH PHOTO ============
+    # ============ OUTPUT ============
     caption = (
         f"✅ *BID PLACED!*\n\n"
         f"🏏 *Player:* {player['name']}\n"
