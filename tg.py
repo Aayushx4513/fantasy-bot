@@ -6192,7 +6192,7 @@ async def fix_achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💡 Now /achievements will show correctly."
     )
 
-# ============ ADD PLAYER ==========
+# ============ ADD PLAYER ============
 async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -6214,7 +6214,6 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ============ PLAYER ID ==========
     try:
         player_id = int(args[0])
     except (ValueError, TypeError):
@@ -6224,7 +6223,6 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ============ NAME ==========
     name = " ".join(args[1:-1])
 
     if not name:
@@ -6234,7 +6232,6 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ============ BASE PRICE ==========
     try:
         base_price = int(args[-1])
     except (ValueError, TypeError):
@@ -6252,6 +6249,61 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     db = await get_db()
+
+    # 🔥 CHECK: SIRF 1 ACTIVE PLAYER ALLOWED
+    active_count = await db.fetchval(
+        "SELECT COUNT(*) FROM auction_players WHERE status = 'active'"
+    )
+
+    if active_count >= 1:
+        active_player = await db.fetchrow(
+            "SELECT id, name, end_time FROM auction_players WHERE status = 'active' LIMIT 1"
+        )
+
+        if active_player:
+            # Time remaining check
+            if active_player['end_time']:
+                end_time = active_player['end_time']
+                if isinstance(end_time, str):
+                    end_time = datetime.fromisoformat(end_time)
+                if end_time.tzinfo is None:
+                    end_time = end_time.replace(tzinfo=IST)
+
+                remaining = int((end_time - datetime.now(IST)).total_seconds())
+
+                if remaining > 0:
+                    h = remaining // 3600
+                    m = (remaining % 3600) // 60
+                    s = remaining % 60
+
+                    if h > 0:
+                        time_str = f"{h}h {m}m {s}s"
+                    elif m > 0:
+                        time_str = f"{m}m {s}s"
+                    else:
+                        time_str = f"{s}s"
+
+                    await update.message.reply_text(
+                        f"*⚠️ AUCTION ALREADY RUNNING!*\n\n"
+                        f"🏏 *Active Player:* {active_player['name']}\n"
+                        f"🆔 *ID:* `{active_player['id']}`\n"
+                        f"⏰ *Time left:* {time_str}\n\n"
+                        f"💡 Wait for auction to end or use `/result_auction {active_player['id']}` to end it manually.",
+                        parse_mode="Markdown"
+                    )
+                    await db.close()
+                    return
+
+        # Agar active player ka time khatam ho gaya hai
+        await update.message.reply_text(
+            f"*⚠️ Previous player is still active!*\n\n"
+            f"🏏 *Player:* {active_player['name']}\n"
+            f"🆔 *ID:* `{active_player['id']}`\n\n"
+            f"💡 Use `/result_auction {active_player['id']}` first.",
+            parse_mode="Markdown"
+        )
+        await db.close()
+        return
 
     # Check duplicate ID
     existing = await db.fetchval(
@@ -6291,7 +6343,8 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"*💰 Base Price:* {base_price:,}\n"
         f"*🆔 ID:* {player_id}\n"
         f"*⏰ Time:* TBD\n\n"
-        f"*💡 Use /players to see all players*",
+        f"*💡 Use /players to see player*\n"
+        f"*💡 Use /settime {player_id} 2H to set timer*",
         parse_mode="Markdown"
     )
 
@@ -6305,7 +6358,7 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
 
     players_data = await db.fetch("""
-        SELECT id, name, base_price, current_bid, highest_bidder, end_time
+        SELECT id, name, base_price, current_bid, highest_bidder, end_time, photo
         FROM auction_players
         WHERE status = 'active'
         ORDER BY id
@@ -6318,8 +6371,8 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     now = datetime.now(IST)
 
-    msg = "*🏏 AVAILABLE PLAYERS*\n\n"
     for p in players_data:
+        # ============ COUNTDOWN ============
         if p['end_time']:
             end_time = p['end_time']
             if isinstance(end_time, str):
@@ -6344,6 +6397,7 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             time_left = "*⏰ TBD*"
 
+        # ============ BIDDER NAME ============
         bidder_name = "No bids"
         if p['highest_bidder']:
             bidder = await db.fetchval(
@@ -6352,14 +6406,32 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             bidder_name = bidder if bidder else "Unknown"
 
-        msg += f"*🆔 {p['id']}. {p['name']}*\n"
-        msg += f"   *💰 Base:* {p['base_price']:,} | *Current:* {p['current_bid']:,}\n"
-        msg += f"   *👤 Highest Bidder:* {bidder_name}\n"
-        msg += f"   {time_left}\n\n"
+        # ============ CAPTION ============
+        caption = (
+            f"🏏 *PLAYER #{p['id']}*\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 *Name:* {p['name']}\n"
+            f"💰 *Base Price:* {p['base_price']:,}\n"
+            f"🔥 *Current Bid:* {p['current_bid']:,}\n"
+            f"👑 *Highest Bidder:* {bidder_name}\n"
+            f"{time_left}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"💡 `/bid {p['id']} <amount>` to bid"
+        )
 
-    msg += "*💡 /bid <id> <amount> to place bid*"
+        # ============ SEND WITH PHOTO ============
+        if p['photo']:
+            try:
+                await update.message.reply_photo(
+                    photo=p['photo'],
+                    caption=caption,
+                    parse_mode="Markdown"
+                )
+            except:
+                await update.message.reply_text(caption, parse_mode="Markdown")
+        else:
+            await update.message.reply_text(caption, parse_mode="Markdown")
 
-    await update.message.reply_text(msg, parse_mode="Markdown")
     await db.close()
 
 # ============ SET AUCTION TIME ============
@@ -6596,7 +6668,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_type = update.message.chat.type
 
     # 🔥 ONLY ALLOWED IN CL PLAYZONE GROUP
-    CL_PLAYZONE_GC_ID = -1001234567890   # ← REPLACE WITH ACTUAL ID
+    CL_PLAYZONE_GC_ID = -1003011263365
 
     if chat_type not in ['group', 'supergroup'] or chat_id != CL_PLAYZONE_GC_ID:
         await update.message.reply_text(
