@@ -7099,7 +7099,7 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     db = await get_db()
 
-    # Get fav player
+    # Get fav player ID
     fav_id = await db.fetchval(
         "SELECT fav_player FROM users WHERE user_id = $1",
         user_id
@@ -7129,7 +7129,7 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.first_name if user.first_name else (user.username or "User")
 
-    # ============ FAV PLAYER PHOTO ============
+    # ============ FAV PLAYER PHOTO (ONLY PHOTO, NO CAPTION) ============
     fav_player = None
     if fav_id:
         for p in players:
@@ -7137,20 +7137,11 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 fav_player = p
                 break
 
-    # Send fav player's photo first (if exists)
+    # Send fav player's photo WITHOUT caption
     if fav_player and fav_player['photo']:
-        fav_caption = (
-            f"⭐ *FAV PLAYER*\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"🏏 *{fav_player['name']}*\n"
-            f"💰 *Bought:* {fav_player['current_bid']:,}\n"
-            f"📊 *Base Price:* {fav_player['base_price']:,}"
-        )
         try:
             await update.message.reply_photo(
-                photo=fav_player['photo'],
-                caption=fav_caption,
-                parse_mode="Markdown"
+                photo=fav_player['photo']
             )
         except:
             pass
@@ -7162,7 +7153,7 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     for i, p in enumerate(players, 1):
-        # Purchased date
+        # Date
         try:
             purchased_date = p['purchased_at']
             if purchased_date:
@@ -7195,6 +7186,65 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(msg, parse_mode="Markdown")
     await db.close()
+
+# ============ RESET AUCTION (ADMIN) ============
+async def reset_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("*❌ Admin only!*", parse_mode="Markdown")
+        return
+
+    # Confirm with args
+    args = context.args
+    if len(args) < 1 or args[0].lower() != "confirm":
+        await update.message.reply_text(
+            "*⚠️ WARNING!*\n\n"
+            "Ye command **SAARA DATA** delete karegi:\n"
+            "• Saare auction players\n"
+            "• Saare bids\n"
+            "• Saare user teams (myteam)\n"
+            "• Saare fav players\n\n"
+            "*Confirm karne ke liye:*\n"
+            "`/reset_auction confirm`",
+            parse_mode="Markdown"
+        )
+        return
+
+    db = await get_db()
+
+    try:
+        # Delete all auction data
+        await db.execute("DELETE FROM bid_history")
+        await db.execute("DELETE FROM user_players")
+        await db.execute("DELETE FROM auction_players")
+
+        # Reset fav_player for all users
+        await db.execute("UPDATE users SET fav_player = 0")
+
+        await db.close()
+
+        await update.message.reply_text(
+            "*✅ AUCTION RESET COMPLETE!*\n\n"
+            "🗑️ Deleted:\n"
+            "• All auction players\n"
+            "• All bids\n"
+            "• All user teams\n"
+            "• All fav players\n\n"
+            "*💡 Ab aap naye player add kar sakte ho:*\n"
+            "`/add_player 1 Virat 5000`",
+            parse_mode="Markdown"
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        try:
+            await db.close()
+        except:
+            pass
+        await update.message.reply_text(
+            f"❌ Error: `{type(e).__name__}: {e}`",
+            parse_mode="Markdown"
+        )
 
 # ============ TOP COLLECTORS ==========
 async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -8174,7 +8224,7 @@ async def main():
     app.add_handler(CallbackQueryHandler(allbets_callback, pattern="^allbets_"))
     app.add_handler(CommandHandler("fav", fav))
     app.add_handler(CommandHandler("unfav", unfav))
-
+    app.add_handler(CommandHandler("reset_auction", reset_auction))
     # ============ CLCRICKET ==========
     app.add_handler(CommandHandler("CLcricket", clcricket))
     app.add_handler(CallbackQueryHandler(cricket_mode_callback, pattern="^cricket_mode_"))
