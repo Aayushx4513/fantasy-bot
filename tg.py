@@ -6601,10 +6601,11 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if chat_type not in ['group', 'supergroup'] or chat_id != CL_PLAYZONE_GC_ID:
         await update.message.reply_text(
             "*🚫 BID ONLY IN CL PLAYZONE!*\n\n"
-            "*Join here to bid:*\n"
-            "https://t.me/clbotplayzone",
+            "*Join here to bid:*",
             parse_mode="Markdown",
-            disable_web_page_preview=True
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("👥 JOIN CL PLAYZONE", url="https://t.me/clbotplayzone")]
+            ])
         )
         return
 
