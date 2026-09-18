@@ -7129,7 +7129,7 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.first_name if user.first_name else (user.username or "User")
 
-    # ============ FAV PLAYER PHOTO (ONLY PHOTO, NO CAPTION) ============
+    # ============ FIND FAV PLAYER ============
     fav_player = None
     if fav_id:
         for p in players:
@@ -7137,23 +7137,13 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 fav_player = p
                 break
 
-    # Send fav player's photo WITHOUT caption
-    if fav_player and fav_player['photo']:
-        try:
-            await update.message.reply_photo(
-                photo=fav_player['photo']
-            )
-        except:
-            pass
-
-    # ============ TEXT LIST ============
+    # ============ BUILD TEXT ============
     msg = (
         f"🏏 *{name}'s CRICKET TEAM*\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
     )
 
     for i, p in enumerate(players, 1):
-        # Date
         try:
             purchased_date = p['purchased_at']
             if purchased_date:
@@ -7166,7 +7156,6 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             date_str = "N/A"
 
-        # Star for fav player
         star = "⭐ " if p['id'] == fav_id else ""
 
         msg += (
@@ -7184,7 +7173,20 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💡 `/fav <id>` to set favourite player"
     )
 
-    await update.message.reply_text(msg, parse_mode="Markdown")
+    # ============ SEND ============
+    if fav_player and fav_player['photo']:
+        # Photo + caption (single message)
+        try:
+            await update.message.reply_photo(
+                photo=fav_player['photo'],
+                caption=msg,
+                parse_mode="Markdown"
+            )
+        except:
+            await update.message.reply_text(msg, parse_mode="Markdown")
+    else:
+        await update.message.reply_text(msg, parse_mode="Markdown")
+
     await db.close()
 
 # ============ RESET AUCTION (ADMIN) ============
