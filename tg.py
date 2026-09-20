@@ -8538,6 +8538,12 @@ async def font_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+# ============ DEBUG CALLBACK ============
+async def debug_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    print(f"🔍 CALLBACK RECEIVED: {query.data}")
+    await query.answer(f"Got: {query.data}", show_alert=True)
+
 
 # ============ MAIN ==========
 async def main():
@@ -8594,7 +8600,7 @@ async def main():
     app.add_handler(CommandHandler("result_auction", result_auction))
     app.add_handler(CommandHandler("rmplayer", rmplayer))
     app.add_handler(CommandHandler("balance", balance))
-
+    app.add_handler(CallbackQueryHandler(debug_callback))
     # ============ RPS GAME ==========
     app.add_handler(CommandHandler("rps", rps))
     app.add_handler(CallbackQueryHandler(rps_join_callback, pattern="^rps_join_"))
