@@ -24,7 +24,7 @@ import asyncpg
 IST = timezone(timedelta(hours=5, minutes=30))
 
 # ============ TOKEN & ADMINS ============
-TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAG1_1VOoX5hm87eQG7IP75_vD9aK2Yk9HI")
+TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAF_TWh8AWzn6Zj3syPFYfmhqyg4GnLqjUI")
 ADMIN_IDS = [7687078555, 1315564307, 7361215114]
 
 # ============ DATABASE URL ============
@@ -44,14 +44,29 @@ def run_flask():
 # ============ GLOBAL CONNECTION ============
 db_conn = None
 
+# ============ GLOBAL POOL ============
+db_pool = None
+
 async def get_db():
-    global db_conn
-    if db_conn is None or db_conn.is_closed():
-        db_conn = await asyncpg.connect(
+    """Get a connection from pool"""
+    global db_pool
+    if db_pool is None:
+        db_pool = await asyncpg.create_pool(
             DATABASE_URL,
-            statement_cache_size=0  # 🔥 YEH ADD KARO
+            min_size=1,
+            max_size=10,
+            statement_cache_size=0
         )
-    return db_conn
+    return await db_pool.acquire()
+
+async def close_db(db):
+    """Release connection back to pool"""
+    global db_pool
+    if db_pool and db:
+        try:
+            await db_pool.release(db)
+        except Exception as e:
+            print(f"⚠️ DB release error: {e}")
 
 # ============ DATABASE INIT ============
 async def init_db():
@@ -514,13 +529,13 @@ async def init_db():
     ''')
     
     print("✅ PostgreSQL tables created!")
-    await db.close()
+    await close_db(db)
 
 # ============ HELPER FUNCTIONS ============
 async def is_registered(user_id):
     db = await get_db()
     result = await db.fetchval("SELECT user_id FROM users WHERE user_id = $1", user_id)
-    await db.close()
+    await close_db(db)
     return result is not None
 
 async def get_user(user_id, name=""):
@@ -532,18 +547,18 @@ async def get_user(user_id, name=""):
             user_id, name
         )
         user = await db.fetchrow("SELECT * FROM users WHERE user_id = $1", user_id)
-    await db.close()
+    await close_db(db)
     return user
 
 async def update_balance(user_id, amount):
     db = await get_db()
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", amount, user_id)
-    await db.close()
+    await close_db(db)
 
 async def get_balance(user_id):
     db = await get_db()
     balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    await db.close()
+    await close_db(db)
     return balance if balance else 0
 
 # ============ LOTTERY GLOBALS ==========
@@ -673,7 +688,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
     
-    await db.close()
+    await close_db(db)
 
 
 import re
@@ -705,7 +720,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     if not data:
-        await db.close()
+        await close_db(db)
         await update.message.reply_text("❌ *Profile not found!*", parse_mode="Markdown")
         return
 
@@ -727,7 +742,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         win_rate = 0
 
-    await db.close()
+    await close_db(db)
 
     DEFAULT_BIO = "I Play With CL Bot!"
     bio_text = bio if bio else DEFAULT_BIO
@@ -793,7 +808,7 @@ async def setbio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     db = await get_db()
     await db.execute("UPDATE users SET bio = $1 WHERE user_id = $2", bio, user_id)
-    await db.close()
+    await close_db(db)
     
     bio_escaped = escape_markdown(bio)
     await update.message.reply_text(f"✅ *Bio updated!*\n\n{bio_escaped}", parse_mode="Markdown")
@@ -808,7 +823,7 @@ async def rmbio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     db = await get_db()
     await db.execute("UPDATE users SET bio = 'I Play With CL Bot!' WHERE user_id = $1", user_id)
-    await db.close()
+    await close_db(db)
     
     await update.message.reply_text("✅ *Bio reset to default!*\n\n*I Play With CL Bot!*", parse_mode="Markdown")
 
@@ -827,7 +842,7 @@ async def setpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo = update.message.reply_to_message.photo[-1].file_id
     db = await get_db()
     await db.execute("UPDATE users SET photo = $1 WHERE user_id = $2", photo, user_id)
-    await db.close()
+    await close_db(db)
     await update.message.reply_text('✅ Profile photo updated!')
 
 async def rmpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -837,7 +852,7 @@ async def rmpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     db = await get_db()
     await db.execute("UPDATE users SET photo = NULL WHERE user_id = $1", user_id)
-    await db.close()
+    await close_db(db)
     await update.message.reply_text('❌ Profile photo removed!')
 
 # ============ CLAIM ==========
@@ -862,7 +877,7 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if last:
         if last == today:
             await update.message.reply_text("*⚠️ Already claimed today!*\n*Come back tomorrow.*", parse_mode="Markdown")
-            await db.close()
+            await close_db(db)
             return
 
     if chat_type in ['group', 'supergroup'] and chat_id == CL_GROUP_ID:
@@ -881,7 +896,7 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", reward, user_id)
 
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    await db.close()
+    await close_db(db)
 
     await update.message.reply_text(
         f"*✅ Claimed Daily Rewards!*\n\n"
@@ -911,7 +926,7 @@ async def achieve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = update.message.reply_to_message.from_user
     db = await get_db()
     await db.execute("INSERT INTO achievements (user_id, achievement) VALUES ($1, $2)", target.id, achievement)
-    await db.close()
+    await close_db(db)
     await update.message.reply_text(f"✅ ACHIEVEMENT GIVEN!\n\nUser: {target.first_name}\nAchievement: {achievement} 🏆")
 
 # ============ RMACHIEVE COMMAND (ADMIN) ==========
@@ -935,11 +950,11 @@ async def rmachieve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     achievements = await db.fetch("SELECT row_number() OVER () as rowid, achievement FROM achievements WHERE user_id = $1", target_id)
     if num < 1 or num > len(achievements):
         await update.message.reply_text(f'❌ Choose 1-{len(achievements)}')
-        await db.close()
+        await close_db(db)
         return
     removed = achievements[num-1]
     await db.execute("DELETE FROM achievements WHERE user_id = $1 AND achievement = $2", target_id, removed['achievement'])
-    await db.close()
+    await close_db(db)
     await update.message.reply_text(f"✅ ACHIEVEMENT REMOVED!\n\nRemoved: {removed['achievement']} 🏆")
 
 
@@ -957,11 +972,11 @@ async def deletecode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     exists = await db.fetchval("SELECT code FROM claim_codes WHERE code = $1", code)
     if not exists:
         await update.message.reply_text(f"❌ Code '{code}' not found!")
-        await db.close()
+        await close_db(db)
         return
     await db.execute("DELETE FROM claim_codes WHERE code = $1", code)
     await db.execute("DELETE FROM code_claims WHERE code = $1", code)
-    await db.close()
+    await close_db(db)
     await update.message.reply_text(f"✅ Code '{code}' deleted!")
 
 async def codestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -974,7 +989,7 @@ async def codestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_claims = await db.fetchval("SELECT COUNT(*) FROM code_claims")
     total_given = await db.fetchval("SELECT COALESCE(SUM(amount), 0) FROM code_claims cc JOIN claim_codes c ON cc.code = c.code")
     unique_users = await db.fetchval("SELECT COUNT(DISTINCT user_id) FROM code_claims")
-    await db.close()
+    await close_db(db)
     await update.message.reply_text(f"📊 CODE STATS\n\n📝 Total codes: {total_codes}\n🟢 Active codes: {active_codes}\n🎯 Total claims: {total_claims}\n💰 Credits given: {total_given:,}\n👥 Unique users: {unique_users}")
 
 # ============ SPIN ==========
@@ -1010,7 +1025,7 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "*Come back tomorrow.*",
                     parse_mode="Markdown"
                 )
-                await db.close()
+                await close_db(db)
                 return
 
         except ValueError:
@@ -1050,7 +1065,7 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id
     )
 
-    await db.close()
+    await close_db(db)
 
     await update.message.reply_text(
         f"*✅ Claimed Daily Spin Rewards of {amount:,} Credits*\n"
@@ -1074,37 +1089,37 @@ async def dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if last_dice and (datetime.now() - last_dice).seconds < 4:
         await update.message.reply_text("⏰ You are on cooldown of few seconds.")
-        await db.close()
+        await close_db(db)
         return
 
     args = context.args
     if len(args) < 1:
         await update.message.reply_text('🎲 /dice <amount>\n\nMultipliers: 1(0x) 2(0.25x) 3(0.5x) 4(1.25x) 5(1.5x) 6(2.5x)\n💰 Min: 100 | Max: 20,000')
-        await db.close()
+        await close_db(db)
         return
 
     try:
         amount = int(args[0])
     except:
         await update.message.reply_text('❌ Invalid amount')
-        await db.close()
+        await close_db(db)
         return
 
     if amount < 100:
         await update.message.reply_text('❌ Minimum 100 credits')
-        await db.close()
+        await close_db(db)
         return
 
     if amount > 20000:
         await update.message.reply_text('❌ Maximum 20,000 credits')
-        await db.close()
+        await close_db(db)
         return
 
     balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
 
     if balance < amount:
         await update.message.reply_text(f'❌ Need {amount:,}, have {balance:,}')
-        await db.close()
+        await close_db(db)
         return
 
     roll = random.randint(1, 6)
@@ -1117,7 +1132,7 @@ async def dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # 🔥 UPDATE LAST USED TIME
     await db.execute("INSERT INTO user_cooldown (user_id, last_dice) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_dice = $2", user_id, datetime.now())
-    await db.close()
+    await close_db(db)
 
     if win > 0:
         await update.message.reply_text(f"🎲 DICE\n\n🎲 Rolled: {roll} {dice_emoji[roll]}\n✨ You won {win:,} 💰 ({multi[roll]}x)\n💰 New balance: {new_bal:,} 💰")
@@ -1138,43 +1153,43 @@ async def flip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if last_flip and (datetime.now() - last_flip).seconds < 4:
         await update.message.reply_text("⏰ You are on cooldown of few seconds.")
-        await db.close()
+        await close_db(db)
         return
     
     args = context.args
     if len(args) < 2:
         await update.message.reply_text('🪙 /flip heads/tails <amount>\nExample: /flip heads 1000\n\n💰 Min: 100 | Max: 20,000')
-        await db.close()
+        await close_db(db)
         return
 
     choice = args[0].lower()
     if choice not in ['heads', 'tails']:
         await update.message.reply_text('❌ Choose heads or tails')
-        await db.close()
+        await close_db(db)
         return
 
     try:
         amount = int(args[1])
     except:
         await update.message.reply_text('❌ Invalid amount')
-        await db.close()
+        await close_db(db)
         return
 
     if amount < 100:
         await update.message.reply_text('❌ Minimum 100 credits')
-        await db.close()
+        await close_db(db)
         return
 
     if amount > 20000:
         await update.message.reply_text('❌ Maximum 20,000 credits')
-        await db.close()
+        await close_db(db)
         return
 
     balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
 
     if balance < amount:
         await update.message.reply_text(f'❌ Need {amount:,}, have {balance:,}')
-        await db.close()
+        await close_db(db)
         return
 
     result = random.choice(['heads', 'tails'])
@@ -1185,13 +1200,13 @@ async def flip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.execute("UPDATE users SET balance = $1 WHERE user_id = $2", new_bal, user_id)
         # 🔥 UPDATE LAST USED TIME
         await db.execute("INSERT INTO user_cooldown (user_id, last_flip) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_flip = $2", user_id, datetime.now())
-        await db.close()
+        await close_db(db)
         await update.message.reply_text(f"🪙 {result.upper()}! You won {win:,} 💰\n💰 New balance: {new_bal:,} 💰")
     else:
         new_bal = balance - amount
         await db.execute("UPDATE users SET balance = $1 WHERE user_id = $2", new_bal, user_id)
         await db.execute("INSERT INTO user_cooldown (user_id, last_flip) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_flip = $2", user_id, datetime.now())
-        await db.close()
+        await close_db(db)
         await update.message.reply_text(f"😞 {result.upper()}! You lost {amount:,} 💰\n💰 New balance: {new_bal:,} 💰")
 
 # ============ HELP COMMAND ==========
@@ -1335,7 +1350,7 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += f"🪙 Total wealth : *{user_total:,}*"
 
     await update.message.reply_text(msg, parse_mode="Markdown")
-    await db.close()
+    await close_db(db)
 
 # ============ TOP FANTASY ==========
 async def top_fantasy(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1350,7 +1365,7 @@ async def top_fantasy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not users_data:
         await update.message.reply_text('📭 No fantasy points yet!')
-        await db.close()
+        await close_db(db)
         return
 
     msg = "🏆 FANTASY LEADERBOARD\n\n"
@@ -1368,7 +1383,7 @@ async def top_fantasy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 You are not registered yet!"
     
-    await db.close()
+    await close_db(db)
     await update.message.reply_text(msg)
 
 import re
@@ -1438,12 +1453,12 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if sender_bal is None:
         await msg.reply_text("❌ You are not registered! Send /start first.")
-        await db.close()
+        await close_db(db)
         return
 
     if sender_bal < amount:
         await msg.reply_text(f'❌ Need {amount:,}, have {sender_bal:,}')
-        await db.close()
+        await close_db(db)
         return
 
     fee = int(amount * 0.05)
@@ -1452,7 +1467,7 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", amount, sender.id)
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", receiver_amount, receiver.id)
     sender_new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", sender.id)
-    await db.close()
+    await close_db(db)
 
     sender_name = f"@{sender.username}" if sender.username else sender.first_name
     receiver_name = f"@{receiver.username}" if receiver.username else receiver.first_name
@@ -1478,7 +1493,7 @@ async def achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     db = await get_db()
     ach = await db.fetch("SELECT achievement FROM achievements WHERE user_id = $1", user_id)
-    await db.close()
+    await close_db(db)
 
     if not ach:
         await update.message.reply_text(
@@ -1633,7 +1648,7 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         if db is not None:
             try:
-                await db.close()
+                await close_db(db)
             except Exception:
                 pass
 
@@ -1665,7 +1680,7 @@ async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if wallet_bal < amount:
         await update.message.reply_text(f'❌ Insufficient wallet balance!\n\nNeed: {amount:,} 💰\nHave: {wallet_bal:,} 💰')
-        await db.close()
+        await close_db(db)
         return
     
     await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", amount, user_id)
@@ -1673,7 +1688,7 @@ async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     new_wallet = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     new_bank = await db.fetchval("SELECT balance FROM bank WHERE user_id = $1", user_id)
-    await db.close()
+    await close_db(db)
     
     await update.message.reply_text(f"✅ DEPOSITED!\n\nAmount: +{amount:,} 💰\nWallet: {wallet_bal:,} → {new_wallet:,} 💰\nBank: {new_bank - amount:,} → {new_bank:,} 💰")
 
@@ -1705,7 +1720,7 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if bank_bal < amount:
         await update.message.reply_text(f'❌ Insufficient bank balance!\n\nNeed: {amount:,} 💰\nHave: {bank_bal:,} 💰')
-        await db.close()
+        await close_db(db)
         return
     
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", amount, user_id)
@@ -1713,7 +1728,7 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     new_bank = await db.fetchval("SELECT balance FROM bank WHERE user_id = $1", user_id)
     new_wallet = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    await db.close()
+    await close_db(db)
     
     await update.message.reply_text(f"✅ WITHDRAWN!\n\nAmount: -{amount:,} 💰\nBank: {bank_bal:,} → {new_bank:,} 💰\nWallet: {new_wallet - amount:,} → {new_wallet:,} 💰")
 
@@ -1754,7 +1769,7 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
             '**❌ No bank account found! Use /bank first.**',
             parse_mode="Markdown"
         )
-        await db.close()
+        await close_db(db)
         return
 
     bank_bal = row['balance']
@@ -1783,7 +1798,7 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="Markdown"
             )
 
-            await db.close()
+            await close_db(db)
             return
 
     # ============ TIER SYSTEM ============
@@ -1819,7 +1834,7 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id
     )
 
-    await db.close()
+    await close_db(db)
 
     # ============ RESULT ============
     await update.message.reply_text(
@@ -1840,7 +1855,7 @@ async def lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     db = await get_db()
     balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    await db.close()
+    await close_db(db)
     
     user_tickets = lottery_tickets.get(user_id, [])
     status_text = "ACTIVE" if lottery_active else "NOT ACTIVE"
@@ -1894,7 +1909,7 @@ async def buy_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_tickets_count + quantity > 5:
         remaining = 5 - user_tickets_count
         await update.message.reply_text(f"❌ You can only buy maximum 5 tickets!\nYou already have {user_tickets_count} tickets.\nYou can buy {remaining} more.")
-        await db.close()
+        await close_db(db)
         return
     
     cost = quantity * 20000
@@ -1902,7 +1917,7 @@ async def buy_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if balance < cost:
         await update.message.reply_text(f"❌ Need {cost:,} credits! You have {balance:,}")
-        await db.close()
+        await close_db(db)
         return
     
     await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", cost, user_id)
@@ -1919,7 +1934,7 @@ async def buy_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_tickets = await db.fetchval("SELECT COUNT(*) FROM lottery_tickets")
     await db.execute("UPDATE lottery_data SET value = $1 WHERE key = 'total_tickets'", str(total_tickets))
     
-    await db.close()
+    await close_db(db)
     
     ticket_list = "\n".join([f"🎫 {t}" for t in new_tickets])
     
@@ -1942,7 +1957,7 @@ async def mytickets_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
     tickets = await db.fetch("SELECT ticket FROM lottery_tickets WHERE user_id = $1", user_id)
     total = await db.fetchval("SELECT COUNT(*) FROM lottery_tickets WHERE user_id = $1", user_id)
-    await db.close()
+    await close_db(db)
     
     if not tickets:
         await update.message.reply_text("🎫 You don't have any tickets!\nUse /buy_ticket to buy.")
@@ -1985,7 +2000,7 @@ async def lottery_info_command(update: Update, context: ContextTypes.DEFAULT_TYP
     win_chance = (user_tickets / total_tickets * 100) if total_tickets > 0 else 0
     status_text = "🟢 ACTIVE" if lottery_active else "🔴 NOT ACTIVE"
     
-    await db.close()
+    await close_db(db)
     
     msg = f"🎰 LOTTERY INFO\n\n"
     msg += f"Status: {status_text}\n"
@@ -2019,7 +2034,7 @@ async def start_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.execute("INSERT INTO lottery_data (key, value) VALUES ('active', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'")
     await db.execute("INSERT INTO lottery_data (key, value) VALUES ('total_tickets', '0') ON CONFLICT (key) DO UPDATE SET value = '0'")
     await db.execute("INSERT INTO lottery_data (key, value) VALUES ('start_time', $1) ON CONFLICT (key) DO UPDATE SET value = $1", datetime.now().isoformat())
-    await db.close()
+    await close_db(db)
     
     await update.message.reply_text(
         "✅ LOTTERY STARTED!\n\n"
@@ -2044,7 +2059,7 @@ async def draw_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if total_tickets == 0:
         await update.message.reply_text("❌ No tickets sold!")
-        await db.close()
+        await close_db(db)
         return
     
     all_tickets = await db.fetch("SELECT user_id, ticket FROM lottery_tickets")
@@ -2062,7 +2077,7 @@ async def draw_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.execute("DELETE FROM lottery_tickets")
     await db.execute("DELETE FROM lottery_participants")
     await db.execute("UPDATE lottery_data SET value = 'false' WHERE key = 'active'")
-    await db.close()
+    await close_db(db)
     
     lottery_active = False
     
@@ -2121,7 +2136,7 @@ async def lottery_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
     await db.execute("CREATE TABLE IF NOT EXISTS lottery_coupons (code TEXT PRIMARY KEY, quantity INT, used INT DEFAULT 0)")
     await db.execute("INSERT INTO lottery_coupons (code, quantity) VALUES ($1, $2)", coupon_code, quantity)
-    await db.close()
+    await close_db(db)
     
     await update.message.reply_text(
         f"✅ COUPON GENERATED!\n\n"
@@ -2149,26 +2164,26 @@ async def claim_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not coupon:
         await update.message.reply_text("❌ Invalid coupon code!")
-        await db.close()
+        await close_db(db)
         return
     
     quantity, used = coupon['quantity'], coupon['used']
     
     if used >= quantity:
         await update.message.reply_text("❌ This coupon has been fully used!")
-        await db.close()
+        await close_db(db)
         return
     
     await db.execute("CREATE TABLE IF NOT EXISTS coupon_used (code TEXT, user_id BIGINT, PRIMARY KEY (code, user_id))")
     already_used = await db.fetchval("SELECT code FROM coupon_used WHERE code = $1 AND user_id = $2", coupon_code, user_id)
     if already_used:
         await update.message.reply_text("❌ You already used this coupon!")
-        await db.close()
+        await close_db(db)
         return
     
     await db.execute("INSERT INTO coupon_used (code, user_id) VALUES ($1, $2)", coupon_code, user_id)
     await db.execute("UPDATE lottery_coupons SET used = used + 1 WHERE code = $1", coupon_code)
-    await db.close()
+    await close_db(db)
     
     if not lottery_active:
         await update.message.reply_text(f"✅ Coupon claimed! You got {quantity} free tickets.\nBut lottery is not active. Wait for /start_lottery")
@@ -2248,11 +2263,11 @@ async def hilo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if balance < bet:
         await update.message.reply_text(f"❌ Need {bet:,} credits! You have {balance:,}")
-        await db.close()
+        await close_db(db)
         return
     
     await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, user_id)
-    await db.close()
+    await close_db(db)
     
     first_card = get_random_card()
     
@@ -2299,7 +2314,7 @@ async def hilo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if win_amount > 0:
             db = await get_db()
             await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", win_amount, owner_id)
-            await db.close()
+            await close_db(db)
         
         log_str = "".join([f"|{c['suit']}{c['value']}" for c in game['logs']])
         msg = f"📈 HiLo Game 📉\n\n💰 Bet: {game['bet']:,}\n📈 Multiplier: {game['multiplier']:.3f}x\n🎉 You won: {win_amount:,} 💰\n\n📜 Logs: {log_str}|"
@@ -2412,11 +2427,11 @@ async def mines(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if balance < bet:
         await update.message.reply_text(f"❌ Need {bet:,}, you have {balance:,}")
-        await db.close()
+        await close_db(db)
         return
     
     await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, user_id)
-    await db.close()
+    await close_db(db)
     
     global mines_next_id
     game_id = mines_next_id
@@ -2498,7 +2513,7 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         current_balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
         new_balance = current_balance + win_amount
         await db.execute("UPDATE users SET balance = $1 WHERE user_id = $2", new_balance, user_id)
-        await db.close()
+        await close_db(db)
 
         await query.edit_message_text(
             f"💰 CASHOUT SUCCESSFUL!\n\n"
@@ -2595,7 +2610,7 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         current_balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
         new_balance = current_balance + cashout
         await db.execute("UPDATE users SET balance = $1 WHERE user_id = $2", new_balance, user_id)
-        await db.close()
+        await close_db(db)
 
         # Reveal all as 💎
         keyboard = []
@@ -2665,7 +2680,7 @@ async def update_cricket_stats_realtime(user_id, name, runs_added=0, wickets_add
             "INSERT INTO cricket_stats (user_id, name, runs, wickets, highest_score, ducks) VALUES ($1, $2, $3, $4, $5, $6)",
             user_id, name, runs_added, wickets_added, current_match_runs, ducks_added
         )
-    await db.close()
+    await close_db(db)
 
 async def update_wins_losses_realtime(user_id, name, won):
     db = await get_db()
@@ -2677,7 +2692,7 @@ async def update_wins_losses_realtime(user_id, name, won):
             await db.execute("UPDATE cricket_stats SET losses = losses + 1 WHERE user_id = $1", user_id)
     else:
         await db.execute("INSERT INTO cricket_stats (user_id, name, wins, losses) VALUES ($1, $2, $3, $4)", user_id, name, 1 if won else 0, 0 if won else 1)
-    await db.close()
+    await close_db(db)
 
 class CricketGame:
     def __init__(self, game_id, player1_id, player1_name, bet, chat_id, mode):
@@ -2794,7 +2809,7 @@ async def clcricket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if bet > 0:
         db = await get_db()
         balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-        await db.close()
+        await close_db(db)
         if balance < bet:
             await update.message.reply_text(f"*❌ You need {bet:,} credits to play!*", parse_mode="Markdown")
             return
@@ -2881,15 +2896,15 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 await query.edit_message_text("*❌ Send /start first!*", parse_mode="Markdown")
             except:
                 pass
-            await db.close()
+            await close_db(db)
             return
         if balance < bet:
             await query.answer(f"❌ Need {bet} credits!", show_alert=True)
-            await db.close()
+            await close_db(db)
             return
         await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, creator_id)
         await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, user_id)
-        await db.close()
+        await close_db(db)
 
     game = CricketGame(game_id, creator_id, creator_name, bet, chat_id, mode)
     game.player2_id = user_id
@@ -3071,7 +3086,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 await db.execute("UPDATE cricket_stats SET ducks = ducks + 1 WHERE user_id = $1", game.player1_id)
             else:
                 await db.execute("UPDATE cricket_stats SET ducks = ducks + 1 WHERE user_id = $1", game.player2_id)
-            await db.close()
+            await close_db(db)
         
         if game.current_bowler == game.player1_id:
             game.player1_wickets_taken += 1
@@ -3169,7 +3184,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 game.bet * 2,
                 winner_id
             )
-            await db.close()
+            await close_db(db)
 
         if winner_id == game.player1_id:
             margin = game.player1_match_runs - game.player2_match_runs
@@ -3215,7 +3230,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 game.bet * 2,
                 winner_id
             )
-            await db.close()
+            await close_db(db)
 
         runs_left = abs(game.player1_match_runs - game.player2_match_runs)
         player1_overs = game.get_overs(1)
@@ -3445,7 +3460,7 @@ async def numpuz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         keyboard = get_board_keyboard(board, level)
         size = len(board)
-        await db.close()
+        await close_db(db)
         
         await update.message.reply_text(
             f"🧩 NUMBER PUZZLE - LEVEL {level}\n"
@@ -3473,7 +3488,7 @@ async def numpuz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         VALUES ($1, $2, $3, $4, $5, $6)
     """, user_id, level, json.dumps(board), 0, chat_id, user_id)
     
-    await db.close()
+    await close_db(db)
     
     keyboard = get_board_keyboard(board, level)
     await update.message.reply_text(
@@ -3508,21 +3523,21 @@ async def numpuz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not saved:
         await query.answer("No active game! Use /numpuz", show_alert=True)
-        await db.close()
+        await close_db(db)
         return
     
     db_level, board_json, moves, owner_id = saved['level'], saved['board'], saved['moves'], saved['owner_id']
     
     if owner_id != user_id:
         await query.answer("❌ This is not your game!", show_alert=True)
-        await db.close()
+        await close_db(db)
         return
     
     board = json.loads(board_json)
     
     if db_level != level:
         await query.answer("Invalid move!", show_alert=True)
-        await db.close()
+        await close_db(db)
         return
     
     if move_tile(board, row, col):
@@ -3539,7 +3554,7 @@ async def numpuz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             await db.execute("UPDATE numpuz_progress SET level = $1, board = $2, moves = $3, owner_id = $4 WHERE user_id = $5",
                              next_level, json.dumps(new_board), 0, user_id, user_id)
-            await db.close()
+            await close_db(db)
             
             keyboard = get_board_keyboard(new_board, next_level)
             await query.edit_message_text(
@@ -3552,7 +3567,7 @@ async def numpuz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await db.execute("UPDATE numpuz_progress SET board = $1, moves = $2 WHERE user_id = $3",
                          json.dumps(board), moves, user_id)
-        await db.close()
+        await close_db(db)
         
         keyboard = get_board_keyboard(board, db_level)
         await query.edit_message_text(
@@ -3561,7 +3576,7 @@ async def numpuz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard
         )
     else:
-        await db.close()
+        await close_db(db)
         await query.answer("Invalid move! Click tile adjacent to ⬜", show_alert=True)
 
 # ============ TIC TAC TOE ==========
@@ -3642,7 +3657,7 @@ async def ttt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if bet > 0:
         db = await get_db()
         balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-        await db.close()
+        await close_db(db)
         if balance < bet:
             await update.message.reply_text(f"❌ Need {bet:,} credits!")
             return
@@ -3686,11 +3701,11 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
             if balance < bet:
                 await query.edit_message_text(f"❌ Need {bet:,} credits!")
-                await db.close()
+                await close_db(db)
                 return
             await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, creator_id)
             await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, user_id)
-            await db.close()
+            await close_db(db)
         
         game = TicTacToe(game_id, creator_id, creator_name, user_name, bet, chat_id)
         game.player2_id = user_id
@@ -3731,7 +3746,7 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 current_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", winner_id)
                 new_bal = current_bal + (game.bet * 2)
                 await db.execute("UPDATE users SET balance = $1 WHERE user_id = $2", new_bal, winner_id)
-                await db.close()
+                await close_db(db)
                 result_text = f"🏆 WINNER: {winner_name.upper()} 🏆\n💰 +{game.bet*2:,} credits"
             else:
                 result_text = f"🏆 WINNER: {winner_name.upper()} 🏆"
@@ -3745,7 +3760,7 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 db = await get_db()
                 await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", game.bet, game.player1_id)
                 await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", game.bet, game.player2_id)
-                await db.close()
+                await close_db(db)
             
             await query.edit_message_text(f"🎯 TIC TAC TOE\n\n❌ {game.player1_name} vs ⭕ {game.player2_name}\n\n🤝 DRAW 🤝", reply_markup=game.get_keyboard())
             del ttt_games[game_id]
@@ -3816,7 +3831,7 @@ async def rps(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if bet > 0:
         db = await get_db()
         balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-        await db.close()
+        await close_db(db)
         if balance < bet:
             await update.message.reply_text(f"❌ Need {bet:,} credits!")
             return
@@ -3851,11 +3866,11 @@ async def rps_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
             if balance < bet:
                 await query.answer(f"❌ Need {bet} credits!", show_alert=True)
-                await db.close()
+                await close_db(db)
                 return
             await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, creator_id)
             await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, user_id)
-            await db.close()
+            await close_db(db)
         game = RPSGame(game_id, creator_id, creator_name, bet, chat_id)
         game.player2_id = user_id
         game.player2_name = user_name
@@ -3904,14 +3919,14 @@ async def rps_move_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if game.bet > 0 and winner != "draw":
             db = await get_db()
             await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", game.bet*2, winner)
-            await db.close()
+            await close_db(db)
             winner_name = game.player1_name if winner == game.player1_id else game.player2_name
             result_text += f"\n\n💰 Prize: {game.bet*2:,} credits\n🏆 {winner_name} +{game.bet*2:,}"
         elif game.bet > 0 and winner == "draw":
             db = await get_db()
             await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", game.bet, game.player1_id)
             await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", game.bet, game.player2_id)
-            await db.close()
+            await close_db(db)
             result_text += f"\n\n💰 Money returned: {game.bet:,} each"
         await query.edit_message_text(f"✊ RPS\n\n{result_text}")
         del rps_games[game_id]
@@ -4003,7 +4018,7 @@ async def addmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         date
     )
 
-    await db.close()
+    await close_db(db)
 
     await update.message.reply_text(
         f"✅ MATCH ADDED!\n\n"
@@ -4169,7 +4184,7 @@ async def deletematch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     finally:
-        await db.close()
+        await close_db(db)
 
 # ============ LOCK MATCH ============
 async def lockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4288,7 +4303,7 @@ async def lockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     finally:
-        await db.close()
+        await close_db(db)
 
 # ============ UNLOCKMATCH COMMAND (ADMIN) ============
 async def unlockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4393,7 +4408,7 @@ async def unlockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     finally:
-        await db.close()
+        await close_db(db)
 
 # ============ RESULT ==========
 async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4692,7 +4707,7 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     finally:
-        await db.close()
+        await close_db(db)
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         return  # ❌ SIRF CHUP RAHEGA, KUCH NAHI BOLEGA
@@ -4715,12 +4730,12 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     old = await db.fetchrow("SELECT balance, name FROM users WHERE user_id = $1", target.id)
     if not old:
         await update.message.reply_text('❌ User not found!')
-        await db.close()
+        await close_db(db)
         return
     
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", amount, target.id)
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", target.id)
-    await db.close()
+    await close_db(db)
     
     await update.message.reply_text(
         f"✅ ADDED {amount:,} to {old['name']}\n"
@@ -4752,20 +4767,20 @@ async def removew(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = await db.fetchrow("SELECT balance FROM users WHERE user_id = $1", target_id)
     if not user:
         await update.message.reply_text('❌ User not found!')
-        await db.close()
+        await close_db(db)
         return
     
     wallet_bal = user['balance']
     
     if wallet_bal < amount:
         await update.message.reply_text(f'❌ Insufficient wallet balance! Have: {wallet_bal:,}')
-        await db.close()
+        await close_db(db)
         return
     
     await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", amount, target_id)
     new_wallet = wallet_bal - amount
     
-    await db.close()
+    await close_db(db)
     
     await update.message.reply_text(
         f"❌ REMOVED {amount:,} from {target.first_name}'s WALLET\n\n"
@@ -4798,20 +4813,20 @@ async def removeb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bank = await db.fetchrow("SELECT balance FROM bank WHERE user_id = $1", target_id)
     if not bank:
         await update.message.reply_text('❌ No bank account found!')
-        await db.close()
+        await close_db(db)
         return
     
     bank_bal = bank['balance']
     
     if bank_bal < amount:
         await update.message.reply_text(f'❌ Insufficient bank balance! Have: {bank_bal:,}')
-        await db.close()
+        await close_db(db)
         return
     
     await db.execute("UPDATE bank SET balance = balance - $1 WHERE user_id = $2", amount, target_id)
     new_bank = bank_bal - amount
     
-    await db.close()
+    await close_db(db)
     
     await update.message.reply_text(
         f"❌ REMOVED {amount:,} from {target.first_name}'s BANK\n\n"
@@ -4826,7 +4841,7 @@ async def hof(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     db = await get_db()
     winners = await db.fetch("SELECT id, winner FROM hall_of_fame ORDER BY id ASC")
-    await db.close()
+    await close_db(db)
     if not winners:
         await update.message.reply_text("🏆 HALL OF FAME 🏆\n\nNo winners yet!")
         return
@@ -4848,7 +4863,7 @@ async def addhof(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
     await db.execute("INSERT INTO hall_of_fame (winner, added_by, added_at) VALUES ($1, $2, $3)", winner, update.effective_user.id, datetime.now().isoformat())
     count = await db.fetchval("SELECT COUNT(*) FROM hall_of_fame")
-    await db.close()
+    await close_db(db)
     await update.message.reply_text(f"✅ Added to Hall of Fame!\n\n🏆 {winner}\n\n📊 Total Winners: {count}")
 
 async def rmhof(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4868,13 +4883,13 @@ async def rmhof(update: Update, context: ContextTypes.DEFAULT_TYPE):
     winners = await db.fetch("SELECT id, winner FROM hall_of_fame ORDER BY id ASC")
     if num < 1 or num > len(winners):
         await update.message.reply_text(f"❌ Invalid! Choose 1-{len(winners)}")
-        await db.close()
+        await close_db(db)
         return
     winner_id = winners[num-1]['id']
     winner_text = winners[num-1]['winner']
     await db.execute("DELETE FROM hall_of_fame WHERE id = $1", winner_id)
     count = await db.fetchval("SELECT COUNT(*) FROM hall_of_fame")
-    await db.close()
+    await close_db(db)
     await update.message.reply_text(f"🗑️ Removed from Hall of Fame!\n\n❌ Removed: {winner_text}\n\n📊 Total Winners: {count}")
 
 async def edithof(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4895,12 +4910,12 @@ async def edithof(update: Update, context: ContextTypes.DEFAULT_TYPE):
     winners = await db.fetch("SELECT id, winner FROM hall_of_fame ORDER BY id ASC")
     if num < 1 or num > len(winners):
         await update.message.reply_text(f"❌ Invalid! Choose 1-{len(winners)}")
-        await db.close()
+        await close_db(db)
         return
     winner_id = winners[num-1]['id']
     old_text = winners[num-1]['winner']
     await db.execute("UPDATE hall_of_fame SET winner = $1 WHERE id = $2", new_text, winner_id)
-    await db.close()
+    await close_db(db)
     await update.message.reply_text(f"✏️ EDITED HALL OF FAME!\n\n❌ Old: {old_text}\n✅ New: {new_text}")
 
 
@@ -4927,12 +4942,12 @@ async def createcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     exists = await db.fetchval("SELECT code FROM claim_codes WHERE code = $1", code)
     if exists:
         await update.message.reply_text(f"❌ Code '{code}' already exists!")
-        await db.close()
+        await close_db(db)
         return
     now = datetime.now()
     expires_at = now + timedelta(hours=24)
     await db.execute("INSERT INTO claim_codes (code, amount, max_claims, created_by, created_at, expires_at) VALUES ($1, $2, 5, $3, $4, $5)", code, amount, update.effective_user.id, now.isoformat(), expires_at.isoformat())
-    await db.close()
+    await close_db(db)
     await update.message.reply_text(f"✅ CODE CREATED!\n\n🔑 Code: {code}\n💰 Amount: {amount:,} credits\n👥 Max claims: 5 users\n⏰ Expires: 24 hours\n\nClaim: /claimcode {code}")
 
 async def claimcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4949,28 +4964,28 @@ async def claimcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = await db.fetchrow("SELECT code, amount, max_claims, claimed_count, expires_at FROM claim_codes WHERE code = $1", code)
     if not result:
         await update.message.reply_text(f"❌ Code '{code}' not found!")
-        await db.close()
+        await close_db(db)
         return
     expires = datetime.fromisoformat(result['expires_at'])
     if datetime.now() > expires:
         await update.message.reply_text(f"❌ Code '{code}' expired!")
-        await db.close()
+        await close_db(db)
         return
     claimed = await db.fetchval("SELECT code FROM code_claims WHERE code = $1 AND user_id = $2", code, user_id)
     if claimed:
         await update.message.reply_text(f"❌ You already claimed '{code}'!")
-        await db.close()
+        await close_db(db)
         return
     if result['claimed_count'] >= result['max_claims']:
         await update.message.reply_text(f"❌ Code '{code}' max claims reached!")
-        await db.close()
+        await close_db(db)
         return
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", result['amount'], user_id)
     await db.execute("UPDATE claim_codes SET claimed_count = claimed_count + 1 WHERE code = $1", code)
     await db.execute("INSERT INTO code_claims (code, user_id, claimed_at) VALUES ($1, $2, $3)", code, user_id, datetime.now().isoformat())
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     remaining = result['max_claims'] - (result['claimed_count'] + 1)
-    await db.close()
+    await close_db(db)
     await update.message.reply_text(f"🎉 CODE CLAIMED!\n\n🔑 Code: {code}\n💰 +{result['amount']:,} credits\n💳 New balance: {new_bal:,}\n📊 Remaining: {remaining}/{result['max_claims']}")
 
 # ============ ACTIVECODES ==========
@@ -4993,7 +5008,7 @@ async def activecodes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         LIMIT 10
     """)
     
-    await db.close()
+    await close_db(db)
     
     if not codes:
         await update.message.reply_text(
@@ -5082,7 +5097,7 @@ async def ng(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg = f"🎉 FINALLY! +{reward} coins!"
         db = await get_db()
         await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", reward, user_id)
-        await db.close()
+        await close_db(db)
         del game_data[chat_id]
         await update.message.reply_text(msg)
     elif guess < target:
@@ -5116,7 +5131,7 @@ async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         group_name = update.message.chat.title or "Unknown Group"
         db = await get_db()
         await db.execute("INSERT INTO groups (group_id, group_name, added_at) VALUES ($1, $2, $3) ON CONFLICT (group_id) DO NOTHING", group_id, group_name, datetime.now().isoformat())
-        await db.close()
+        await close_db(db)
 
 # ============ BROADCAST ==========
 async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5127,7 +5142,7 @@ async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
     users = [row['user_id'] for row in await db.fetch("SELECT user_id FROM users")]
     groups = [row['group_id'] for row in await db.fetch("SELECT group_id FROM groups")]
-    await db.close()
+    await close_db(db)
     sent = 0
     if msg.reply_to_message and msg.reply_to_message.photo:
         photo = msg.reply_to_message.photo[-1].file_id
@@ -5168,7 +5183,7 @@ async def broadcast_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
     users = await db.fetchval("SELECT COUNT(*) FROM users")
     groups = await db.fetchval("SELECT COUNT(*) FROM groups")
-    await db.close()
+    await close_db(db)
     await update.message.reply_text(f"📊 BROADCAST STATS\n\n👤 Users: {users}\n👥 Groups: {groups}\n📡 Total: {users + groups}")
 
 # ============ STATS ==========
@@ -5285,7 +5300,7 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await query.edit_message_text("🏏 CRICKET STATS LEADERBOARD\n\nSelect stat to view:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-    await db.close()
+    await close_db(db)
 
 # ============ MYSTATS ==========
 async def mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5301,7 +5316,7 @@ async def mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stats = await db.fetchrow("SELECT runs, wickets, highest_score, wins, losses, ducks FROM cricket_stats WHERE user_id = $1", user_id)
 
     if not stats:
-        await db.close()
+        await close_db(db)
         await update.message.reply_text(
             f"*🏏 MY CRICKET STATS*\n\n"
             f"*👤 {name}*\n"
@@ -5332,7 +5347,7 @@ async def mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     losses_rank = await db.fetchval("SELECT COUNT(*) + 1 FROM cricket_stats WHERE losses > $1", losses) if losses > 0 else None
     ducks_rank = await db.fetchval("SELECT COUNT(*) + 1 FROM cricket_stats WHERE ducks > $1", ducks) if ducks > 0 else None
 
-    await db.close()
+    await close_db(db)
 
     msg = f"*🏏 MY CRICKET STATS*\n\n"
     msg += f"*👤 {name}*\n"
@@ -5361,7 +5376,7 @@ async def matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not matches_data:
         await update.message.reply_text('*📭 No matches found!*', parse_mode="Markdown")
-        await db.close()
+        await close_db(db)
         return
 
     msg = "*🏏 LIVE MATCHES*\n\n"
@@ -5379,7 +5394,7 @@ async def matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += f"━━━━━━━━━━━━━━━━━━━━━━\n*💰 Your balance: {user['balance']:,} 💰*"
     
     await update.message.reply_text(msg, parse_mode="Markdown")
-    await db.close()
+    await close_db(db)
 
 # ============ MYBETS ==========
 async def mybets(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5398,7 +5413,7 @@ async def mybets(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ORDER BY m.date DESC
     """, user_id)
     
-    await db.close()
+    await close_db(db)
     
     if not bets_data:
         await update.message.reply_text('📭 No bets placed yet!')
@@ -5466,7 +5481,7 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f'❌ Match with {team} not found!'
         )
-        await db.close()
+        await close_db(db)
         return
 
     if match['locked'] == 1:
@@ -5474,7 +5489,7 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f'🔒 Match is LOCKED!\n'
             f'Betting closed for {match["team1"]} vs {match["team2"]}'
         )
-        await db.close()
+        await close_db(db)
         return
 
     bet_count = await db.fetchval("""
@@ -5486,7 +5501,7 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "❌ You can only place up to 2 bets per match!"
         )
-        await db.close()
+        await close_db(db)
         return
 
     balance = await db.fetchval(
@@ -5498,14 +5513,14 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "❌ Your balance could not be found!"
         )
-        await db.close()
+        await close_db(db)
         return
 
     if balance < amount:
         await update.message.reply_text(
             f'❌ Need {amount:,}, have {balance:,}'
         )
-        await db.close()
+        await close_db(db)
         return
 
     # Determine selected team
@@ -5530,7 +5545,7 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id
     )
 
-    await db.close()
+    await close_db(db)
 
     team1_escaped = escape_markdown(match['team1'])
     team2_escaped = escape_markdown(match['team2'])
@@ -5577,7 +5592,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if bet_number < 1 or bet_number > len(bets_data):
         await update.message.reply_text(f'❌ Choose 1-{len(bets_data)}')
-        await db.close()
+        await close_db(db)
         return
     
     bet_to_cancel = bets_data[bet_number - 1]
@@ -5585,7 +5600,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.execute("DELETE FROM bets WHERE id = $1", bet_to_cancel['id'])
     await db.execute("UPDATE users SET total = total - 1 WHERE user_id = $1", user_id)
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    await db.close()
+    await close_db(db)
     
     await update.message.reply_text(f"✅ BET CANCELLED!\n\n🏏 {bet_to_cancel['team1']} vs {bet_to_cancel['team2']}\n💰 Refund: {bet_to_cancel['amount']:,} 💰\n📊 New balance: {new_bal:,} 💰")
 
@@ -5603,7 +5618,7 @@ async def allbets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not matches:
         await update.message.reply_text('📭 No matches found!')
-        await db.close()
+        await close_db(db)
         return
     
     # Summary message
@@ -5641,7 +5656,7 @@ async def allbets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 🔥 YEH LINE HATAO (BACK TO SUMMARY)
     # keyboard.append([InlineKeyboardButton("📊 BACK TO SUMMARY", callback_data="allbets_summary")])
     
-    await db.close()
+    await close_db(db)
     await update.message.reply_text(summary_msg, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def allbets_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5660,7 +5675,7 @@ async def allbets_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if not match:
             await query.edit_message_text("❌ Match not found!")
-            await db.close()
+            await close_db(db)
             return
         
         bets_data = await db.fetch("""
@@ -5705,7 +5720,7 @@ async def allbets_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # 🔥 NO BACK BUTTON - SIRF MESSAGE
         await query.edit_message_text(msg)
-        await db.close()
+        await close_db(db)
         return
     
     # 🔥 SUMMARY HANDLER HATAO (AB ZAROORAT NAHI)
@@ -5713,22 +5728,25 @@ async def allbets_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     #     ...
 
 async def track_all_activity(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message and update.message.from_user:
-        user_id = update.message.from_user.id
-        chat_id = update.message.chat.id
-        
-        if not await is_registered(user_id):
-            return
-        
-        db = await get_db()
-        await db.execute("""
-            INSERT INTO user_activity (user_id, chat_id, activity_score, last_active)
-            VALUES ($1, $2, 1, NOW())
-            ON CONFLICT (user_id, chat_id) DO UPDATE SET
-                activity_score = user_activity.activity_score + 1,
-                last_active = NOW()
-        """, user_id, chat_id)
-        await db.close()
+    try:
+        if update.message and update.message.from_user:
+            user_id = update.message.from_user.id
+            chat_id = update.message.chat.id
+
+            if not await is_registered(user_id):
+                return
+
+            db = await get_db()
+            await db.execute("""
+                INSERT INTO user_activity (user_id, chat_id, activity_score, last_active)
+                VALUES ($1, $2, 1, NOW())
+                ON CONFLICT (user_id, chat_id) DO UPDATE SET
+                    activity_score = user_activity.activity_score + 1,
+                    last_active = NOW()
+            """, user_id, chat_id)
+            await close_db(db)
+    except Exception as e:
+        print(f"⚠️ Activity tracking error: {e}")
 
 async def rain(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -5755,7 +5773,7 @@ async def rain(update: Update, context: ContextTypes.DEFAULT_TYPE):
             remaining = next_time - datetime.now()
             minutes = remaining.seconds // 60
             await update.message.reply_text(f"⏰ Next rain in {minutes} minutes!")
-            await db.close()
+            await close_db(db)
             return
 
     # Get active users (last 24 hours) - TOP 10 ONLY
@@ -5770,7 +5788,7 @@ async def rain(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not active_users:
         await update.message.reply_text("❌ No active users!")
-        await db.close()
+        await close_db(db)
         return
 
     # 🔥 HAR USER KO 1,000 CREDITS
@@ -5796,7 +5814,7 @@ async def rain(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", r['coins'], r['user_id'])
         msg += f"{i}. {r['name']} - 💰 {r['coins']:,} credits\n"
 
-    await db.close()
+    await close_db(db)
     await update.message.reply_text(msg)
 
 
@@ -5809,7 +5827,7 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     db = await get_db()
     user = await db.fetchrow("SELECT won, total, points FROM users WHERE user_id = $1", user_id)
-    await db.close()
+    await close_db(db)
     
     if not user:
         await update.message.reply_text('❌ User not found!')
@@ -5991,17 +6009,17 @@ async def tower(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if balance is None:
         await update.message.reply_text("❌ User not found! Send /start first!")
-        await db.close()
+        await close_db(db)
         return
     
     if balance < bet:
         await update.message.reply_text(f"❌ Need {bet:,} coins, have {balance:,}")
-        await db.close()
+        await close_db(db)
         return
     
     # Deduct bet
     await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, user_id)
-    await db.close()
+    await close_db(db)
     
     # Create game
     game = TowerGame(user_id, bet)
@@ -6063,7 +6081,7 @@ async def tower_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 db = await get_db()
                 current_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
                 await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", win_amount, user_id)
-                await db.close()
+                await close_db(db)
                 
                 await query.edit_message_text(
                     f"💰 **CASHOUT!**\n\n"
@@ -6099,7 +6117,7 @@ async def tower_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     db = await get_db()
                     current_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
                     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", win_amount, user_id)
-                    await db.close()
+                    await close_db(db)
                     
                     await query.edit_message_text(
                         f"🎉 **YOU CONQUERED THE TOWER!** 🎉\n\n"
@@ -6154,7 +6172,7 @@ async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     db = await get_db()
     balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    await db.close()
+    await close_db(db)
     
     if balance is None:
         await update.message.reply_text("❌ User not found! Send /start first.")
@@ -6190,7 +6208,7 @@ async def fix_duplicates(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not duplicates:
         await update.message.reply_text("✅ No duplicate players found!")
-        await db.close()
+        await close_db(db)
         return
     
     removed = 0
@@ -6212,7 +6230,7 @@ async def fix_duplicates(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         removed += count - 1
     
-    await db.close()
+    await close_db(db)
     
     await update.message.reply_text(
         f"✅ FIXED DUPLICATES!\n\n"
@@ -6247,7 +6265,7 @@ async def fix_achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # 3️⃣ GET FINAL COUNT
     count = await db.fetchval("SELECT COUNT(*) FROM achievements")
-    await db.close()
+    await close_db(db)
     
     await update.message.reply_text(
         f"✅ ACHIEVEMENTS FIXED!\n\n"
@@ -6355,7 +6373,7 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"💡 Wait for auction to end or use `/result_auction {active_player['id']}` to end it manually.",
                         parse_mode="Markdown"
                     )
-                    await db.close()
+                    await close_db(db)
                     return
 
         # Agar active player ka time khatam ho gaya hai
@@ -6366,7 +6384,7 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💡 Use `/result_auction {active_player['id']}` first.",
             parse_mode="Markdown"
         )
-        await db.close()
+        await close_db(db)
         return
 
     # Check duplicate ID
@@ -6376,7 +6394,7 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     if existing:
-        await db.close()
+        await close_db(db)
         await update.message.reply_text(
             f"*❌ Player ID `{player_id}` already exists!*",
             parse_mode="Markdown"
@@ -6399,7 +6417,7 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
         now
     )
 
-    await db.close()
+    await close_db(db)
 
     await update.message.reply_text(
         f"*✅ PLAYER ADDED!*\n\n"
@@ -6431,7 +6449,7 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not players_data:
         await update.message.reply_text("*📭 No players available right now!*", parse_mode="Markdown")
-        await db.close()
+        await close_db(db)
         return
 
     now_naive_ist = datetime.now(IST).replace(tzinfo=None)
@@ -6506,7 +6524,7 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(caption, parse_mode="Markdown")
 
-    await db.close()
+    await close_db(db)
 
 # ============ FAV PLAYER ============
 async def fav(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6546,7 +6564,7 @@ async def fav(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "*💡 Use /myteam to see your players*",
             parse_mode="Markdown"
         )
-        await db.close()
+        await close_db(db)
         return
 
     # Get player name
@@ -6561,7 +6579,7 @@ async def fav(update: Update, context: ContextTypes.DEFAULT_TYPE):
         player_id, user_id
     )
 
-    await db.close()
+    await close_db(db)
 
     await update.message.reply_text(
         f"⭐ *FAV PLAYER SET!*\n\n"
@@ -6582,7 +6600,7 @@ async def unfav(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     db = await get_db()
     await db.execute("UPDATE users SET fav_player = 0 WHERE user_id = $1", user_id)
-    await db.close()
+    await close_db(db)
 
     await update.message.reply_text(
         "✅ *Favourite player removed!*",
@@ -6649,7 +6667,7 @@ async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not player:
         await update.message.reply_text("*❌ Player not found!*", parse_mode="Markdown")
-        await db.close()
+        await close_db(db)
         return
 
     if player["status"] != "active":
@@ -6657,7 +6675,7 @@ async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "*❌ Player is not active anymore!*",
             parse_mode="Markdown"
         )
-        await db.close()
+        await close_db(db)
         return
 
     # 🔥 FIX: Calculate end_time properly
@@ -6674,7 +6692,7 @@ async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         player_id
     )
 
-    await db.close()
+    await close_db(db)
 
     # 🔥 Pretty duration display
     if seconds >= 86400:
@@ -6746,7 +6764,7 @@ async def setplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not player:
         await update.message.reply_text("*❌ Player not found!*", parse_mode="Markdown")
-        await db.close()
+        await close_db(db)
         return
 
     await db.execute(
@@ -6755,7 +6773,7 @@ async def setplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         player_id
     )
 
-    await db.close()
+    await close_db(db)
 
     await update.message.reply_text(
         f"*✅ PLAYER PHOTO SET!*\n\n"
@@ -6767,17 +6785,12 @@ async def setplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ============ AUCTION AUTO-LOCK BACKGROUND TASK ============
 async def auction_auto_lock(app):
-    """
-    Runs every 15 seconds.
-    Auto-locks player when end_time passed and notifies admins.
-    """
     while True:
         try:
-            await asyncio.sleep(15)   # 🔥 15 sec for faster detection
+            await asyncio.sleep(15)
 
             db = await get_db()
 
-            # 🔥 Current IST time (naive) for comparison
             now_naive_ist = datetime.now(IST).replace(tzinfo=None)
 
             expired = await db.fetch("""
@@ -6789,17 +6802,13 @@ async def auction_auto_lock(app):
 
             for player in expired:
                 end_time = player["end_time"]
-
                 if end_time is None:
                     continue
-
                 if isinstance(end_time, str):
                     end_time = datetime.fromisoformat(end_time)
-
                 if end_time.tzinfo is not None:
                     end_time = end_time.replace(tzinfo=None)
 
-                # 🔥 Check if expired
                 if now_naive_ist < end_time:
                     continue
 
@@ -6820,7 +6829,6 @@ async def auction_auto_lock(app):
                         highest_bidder
                     ) or "Unknown"
 
-                # 🔥 Notify all admins
                 for admin_id in ADMIN_IDS:
                     try:
                         await app.bot.send_message(
@@ -6836,11 +6844,14 @@ async def auction_auto_lock(app):
                     except:
                         pass
 
-            await db.close()
+            try:
+                await close_db(db)
+            except:
+                pass
 
         except Exception as e:
-            print(f"❌ AUTO-LOCK ERROR: {e}")
-
+            print(f"⚠️ Auto-lock error: {e}")
+            await asyncio.sleep(5)
 
 # ============ BID ============
 # ============ BID ============
@@ -6909,7 +6920,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "*❌ Player not found or auction ended!*",
             parse_mode="Markdown"
         )
-        await db.close()
+        await close_db(db)
         return
 
     # ============ CHECK IF LOCKED ============
@@ -6922,7 +6933,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"*Stay tuned!*",
             parse_mode="Markdown"
         )
-        await db.close()
+        await close_db(db)
         return
 
     # ============ END TIME CHECK ============
@@ -6942,7 +6953,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "*⏰ Auction for this player has ended!*",
                 parse_mode="Markdown"
             )
-            await db.close()
+            await close_db(db)
             return
 
         remaining_seconds = int((end_time - now_naive_ist).total_seconds())
@@ -6970,7 +6981,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"*Minimum Bid:* {player['current_bid'] + 1:,}",
             parse_mode="Markdown"
         )
-        await db.close()
+        await close_db(db)
         return
 
     # ============ SAVE PREVIOUS INFO ============
@@ -7009,7 +7020,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"*Required:* {deduct_amount:,}",
             parse_mode="Markdown"
         )
-        await db.close()
+        await close_db(db)
         return
 
     # ============ REFUND PREVIOUS BIDDER ============
@@ -7050,7 +7061,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id
     )
 
-    await db.close()
+    await close_db(db)
 
     # ============ SEND OUTBID ALERT (DM) ============
     if refund_to and refund_to != user_id:
@@ -7122,7 +7133,7 @@ async def result_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "*❌ Player not found or already sold!*",
             parse_mode="Markdown"
         )
-        await db.close()
+        await close_db(db)
         return
 
     if not player['highest_bidder']:
@@ -7130,7 +7141,7 @@ async def result_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "*❌ No bids placed on this player!*",
             parse_mode="Markdown"
         )
-        await db.close()
+        await close_db(db)
         return
 
     winner_id = player['highest_bidder']
@@ -7153,7 +7164,7 @@ async def result_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
         winner_id, player_id, datetime.now(IST).replace(tzinfo=None)
     )
 
-    await db.close()
+    await close_db(db)
 
     # 🔥 DM winner
     try:
@@ -7208,7 +7219,7 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "*💡 Bid on players using /players*",
             parse_mode="Markdown"
         )
-        await db.close()
+        await close_db(db)
         return
 
     total = sum(p['current_bid'] for p in players)
@@ -7275,7 +7286,7 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(msg, parse_mode="Markdown")
 
-    await db.close()
+    await close_db(db)
 
 # ============ RESET AUCTION (ADMIN) ============
 async def reset_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -7310,7 +7321,7 @@ async def reset_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Reset fav_player for all users
         await db.execute("UPDATE users SET fav_player = 0")
 
-        await db.close()
+        await close_db(db)
 
         await update.message.reply_text(
             "*✅ AUCTION RESET COMPLETE!*\n\n"
@@ -7328,7 +7339,7 @@ async def reset_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
         import traceback
         traceback.print_exc()
         try:
-            await db.close()
+            await close_db(db)
         except:
             pass
         await update.message.reply_text(
@@ -7357,7 +7368,7 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not tops:
         await update.message.reply_text("*🏆 TOP COLLECTORS*\n\n*No one has won any players yet!*", parse_mode="Markdown")
-        await db.close()
+        await close_db(db)
         return
 
     msg = "*🏆 TOP COLLECTORS*\n\n"
@@ -7367,7 +7378,7 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += f"*{medal} {t['name']} - {t['count']} players ({t['total']:,} 💰)*\n"
 
     await update.message.reply_text(msg, parse_mode="Markdown")
-    await db.close()
+    await close_db(db)
 
 # ============ REMOVE PLAYER WITH REFUND ==========
 async def rmplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -7397,7 +7408,7 @@ async def rmplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     player = await db.fetchrow("SELECT name, highest_bidder, current_bid FROM auction_players WHERE id = $1", player_id)
     if not player:
         await update.message.reply_text("*❌ Player not found!*", parse_mode="Markdown")
-        await db.close()
+        await close_db(db)
         return
 
     # 🔥 GET ALL BIDDERS
@@ -7421,7 +7432,7 @@ async def rmplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 🔥 DELETE BID HISTORY
     await db.execute("DELETE FROM bid_history WHERE player_id = $1", player_id)
 
-    await db.close()
+    await close_db(db)
 
     await update.message.reply_text(
         f"*🗑️ PLAYER REMOVED + REFUNDED!*\n\n"
@@ -7547,7 +7558,7 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     finally:
-        await db.close()
+        await close_db(db)
 
 # ============ DAILY PENALTY ============
 async def check_penalty():
@@ -7654,7 +7665,7 @@ async def check_penalty():
             )
 
     finally:
-        await db.close()
+        await close_db(db)
 
 
 # ============ DAILY PENALTY SCHEDULER ============
@@ -7754,7 +7765,7 @@ async def login_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += f"🪙 Total wealth : {user_total:,}"
 
     await update.message.reply_text(msg)
-    await db.close()
+    await close_db(db)
 
 
 # ============ PENALTY HISTORY (ADMIN) ==========
@@ -7780,7 +7791,7 @@ async def penalty_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not penalties:
         await update.message.reply_text("✅ No pending penalties! All Top 10 users have logged in today.")
-        await db.close()
+        await close_db(db)
         return
     
     msg = f"📊 PENALTY HISTORY (Pending - Not Logged In Today)\n"
@@ -7793,7 +7804,7 @@ async def penalty_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += f"   📅 {p['penalty_date'].strftime('%d %b %Y')}\n\n"
     
     await update.message.reply_text(msg)
-    await db.close()
+    await close_db(db)
 
 # ============ PART 5 — OPTIONAL: PENALTY SETTINGS ============
 # Is part se penalty ko easily control kar sakte ho.
@@ -7854,7 +7865,7 @@ async def penalty_preview(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if total_wealth <= MIN_WEALTH_FOR_PENALTY:
 
-        await db.close()
+        await close_db(db)
 
         await update.message.reply_text(
             "🛡️ *PENALTY PREVIEW*\n\n"
@@ -7868,7 +7879,7 @@ async def penalty_preview(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rate = get_penalty_rate(total_wealth)
     penalty = max(1, int(total_wealth * rate))
 
-    await db.close()
+    await close_db(db)
 
     await update.message.reply_text(
         "⚠️ *PENALTY PREVIEW*\n\n"
@@ -7912,7 +7923,7 @@ async def penalty_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         WHERE penalty_date = $1
     """, today)
 
-    await db.close()
+    await close_db(db)
 
     await update.message.reply_text(
         "📊 *DAILY PENALTY STATUS*\n"
@@ -8076,7 +8087,7 @@ async def transferstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     finally:
-        await db.close()
+        await close_db(db)
 
 
 # ============ TRANSFER CRICKET STATS ============
@@ -8198,7 +8209,7 @@ async def transferstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     finally:
-        await db.close()
+        await close_db(db)
 
 # ============ LOCK BID (ADMIN) ============
 # ============ LOCK BID (ADMIN) ============
@@ -8263,7 +8274,7 @@ async def lockbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not player:
         await update.message.reply_text("*❌ Player not found!*", parse_mode="Markdown")
-        await db.close()
+        await close_db(db)
         return
 
     if player["status"] != "active":
@@ -8271,7 +8282,7 @@ async def lockbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "*❌ Player is not active anymore!*",
             parse_mode="Markdown"
         )
-        await db.close()
+        await close_db(db)
         return
 
     if player["locked"] == 1:
@@ -8280,7 +8291,7 @@ async def lockbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"*Current lock time:* {player.get('lock_time') or 'N/A'}",
             parse_mode="Markdown"
         )
-        await db.close()
+        await close_db(db)
         return
 
     await db.execute(
@@ -8289,7 +8300,7 @@ async def lockbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         player_id
     )
 
-    await db.close()
+    await close_db(db)
 
     await update.message.reply_text(
         f"🔒 *BID LOCKED!*\n\n"
@@ -8331,7 +8342,7 @@ async def unlockbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not player:
         await update.message.reply_text("*❌ Player not found!*", parse_mode="Markdown")
-        await db.close()
+        await close_db(db)
         return
 
     if player["status"] != "active":
@@ -8339,7 +8350,7 @@ async def unlockbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "*❌ Player is not active anymore!*",
             parse_mode="Markdown"
         )
-        await db.close()
+        await close_db(db)
         return
 
     if player["locked"] == 0:
@@ -8347,7 +8358,7 @@ async def unlockbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "*⚠️ Player is already unlocked!*",
             parse_mode="Markdown"
         )
-        await db.close()
+        await close_db(db)
         return
 
     await db.execute(
@@ -8355,7 +8366,7 @@ async def unlockbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         player_id
     )
 
-    await db.close()
+    await close_db(db)
 
     await update.message.reply_text(
         f"🔓 *BID UNLOCKED!*\n\n"
@@ -8492,7 +8503,7 @@ async def font_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Show font menu
         db = await get_db()
         current = await db.fetchval("SELECT font FROM users WHERE user_id = $1", user_id)
-        await db.close()
+        await close_db(db)
         current = current or "1"
 
         current_name = FONT_NAMES.get(current, "Normal")
@@ -8523,7 +8534,7 @@ async def font_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         db = await get_db()
         await db.execute("UPDATE users SET font = $1 WHERE user_id = $2", font_id, user_id)
-        await db.close()
+        await close_db(db)
 
         font_name = FONT_NAMES[font_id]
         preview = apply_font("Font Changed!", font_id)
@@ -8538,11 +8549,6 @@ async def font_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-# ============ DEBUG CALLBACK ============
-async def debug_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    print(f"🔍 CALLBACK RECEIVED: {query.data}")
-    await query.answer(f"Got: {query.data}", show_alert=True)
 
 
 # ============ MAIN ==========
@@ -8564,6 +8570,7 @@ async def main():
     app.add_handler(CommandHandler("refer", refer))
     app.add_handler(CommandHandler("help", help))
     app.add_handler(CommandHandler("profile", profile))
+    app.add_handler(CallbackQueryHandler(font_callback, pattern="^font_"))
     app.add_handler(CommandHandler("setbio", setbio))
     app.add_handler(CommandHandler("rmbio", rmbio))
     app.add_handler(CommandHandler("setpfp", setpfp))
@@ -8600,7 +8607,6 @@ async def main():
     app.add_handler(CommandHandler("result_auction", result_auction))
     app.add_handler(CommandHandler("rmplayer", rmplayer))
     app.add_handler(CommandHandler("balance", balance))
-    app.add_handler(CallbackQueryHandler(debug_callback))
     # ============ RPS GAME ==========
     app.add_handler(CommandHandler("rps", rps))
     app.add_handler(CallbackQueryHandler(rps_join_callback, pattern="^rps_join_"))
