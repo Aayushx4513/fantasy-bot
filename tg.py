@@ -98,6 +98,7 @@ async def init_db():
 
     # 🔥 Fav player column
     await db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS fav_player INT DEFAULT 0")
+    await db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS font TEXT DEFAULT '1'")
 
 
     await db.execute('''
@@ -687,6 +688,7 @@ def escape_markdown(text):
     return re.sub(special_chars, r'\\\1', text)
 
 # ============ PROFILE ==========
+# ============ PROFILE ============
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
@@ -697,7 +699,10 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = user.first_name if user.first_name else (user.username or "User")
 
     db = await get_db()
-    data = await db.fetchrow("SELECT balance, points, won, total, photo, bio FROM users WHERE user_id = $1", user_id)
+    data = await db.fetchrow(
+        "SELECT balance, points, won, total, photo, bio, font FROM users WHERE user_id = $1",
+        user_id
+    )
 
     if not data:
         await db.close()
@@ -706,7 +711,9 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     bank_bal = await db.fetchval("SELECT balance FROM bank WHERE user_id = $1", user_id) or 0
 
-    wallet_bal, points, won, total, photo, bio = data
+    wallet_bal, points, won, total, photo, bio, font = data
+    font = font or "1"
+
     total_wealth = wallet_bal + bank_bal
 
     if won > total:
@@ -723,26 +730,49 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.close()
 
     DEFAULT_BIO = "I Play With CL Bot!"
+    bio_text = bio if bio else DEFAULT_BIO
 
-    # 🔥 ESCAPE NAMES (DOT ESCAPE NAHI HOGA)
+    # Apply font to labels only
+    profile_label = apply_font("PROFILE", font)
+    name_label = apply_font("Name", font)
+    bio_label = apply_font("Bio", font)
+    wallet_label = apply_font("Wallet", font)
+    bank_label = apply_font("Bank", font)
+    total_label = apply_font("Total", font)
+    points_label = apply_font("Points", font)
+    bets_label = apply_font("Bets", font)
+    winrate_label = apply_font("Win Rate", font)
+
     name_escaped = escape_markdown(name)
-    bio_escaped = escape_markdown(bio) if bio else DEFAULT_BIO
 
-    profile_text = f"👤 *PROFILE*\n\n"
-    profile_text += f"*Name:* {name_escaped}\n"
-    profile_text += f"*Bio:* {bio_escaped}\n"
-    profile_text += f"\n💰 *Wallet:* {wallet_bal:,}\n"
-    profile_text += f"🏦 *Bank:* {bank_bal:,}\n"
-    profile_text += f"💎 *Total:* {total_wealth:,}\n\n"
-    profile_text += f"🏆 *Points:* {points}\n"
-    profile_text += f"📊 *Bets:* {won}/{total}\n"
-    profile_text += f"📈 *Win Rate:* {win_rate}%"
+    profile_text = f"👤 *{profile_label}*\n\n"
+    profile_text += f"*{name_label}:* {name_escaped}\n"
+    profile_text += f"*{bio_label}:* {bio_text}\n\n"
+    profile_text += f"💰 *{wallet_label}:* {wallet_bal:,}\n"
+    profile_text += f"🏦 *{bank_label}:* {bank_bal:,}\n"
+    profile_text += f"💎 *{total_label}:* {total_wealth:,}\n\n"
+    profile_text += f"🏆 *{points_label}:* {points}\n"
+    profile_text += f"📊 *{bets_label}:* {won}/{total}\n"
+    profile_text += f"📈 *{winrate_label}:* {win_rate}%"
+
+    keyboard = [
+        [InlineKeyboardButton("🎨 Change Font", callback_data="font_menu")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
 
     if photo:
-        await update.message.reply_photo(photo=photo, caption=profile_text, parse_mode="Markdown")
+        await update.message.reply_photo(
+            photo=photo,
+            caption=profile_text,
+            parse_mode="Markdown",
+            reply_markup=reply_markup
+        )
     else:
-        await update.message.reply_text(profile_text, parse_mode="Markdown")
-
+        await update.message.reply_text(
+            profile_text,
+            parse_mode="Markdown",
+            reply_markup=reply_markup
+        )
 
 # ============ SETBIO ==========
 async def setbio(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -8335,6 +8365,178 @@ async def unlockbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"*Users can bid using `/bid {player_id} <amount>`*",
         parse_mode="Markdown"
     )
+
+# ============ UNICODE FONT CONVERTER ============
+FONT_MAPS = {
+    "1": {},  # Normal (no change)
+    "2": {  # Bold
+        'a':'𝗮','b':'𝗯','c':'𝗰','d':'𝗱','e':'𝗲','f':'𝗳','g':'𝗴','h':'𝗵','i':'𝗶','j':'𝗷',
+        'k':'𝗸','l':'𝗹','m':'𝗺','n':'𝗻','o':'𝗼','p':'𝗽','q':'𝗾','r':'𝗿','s':'𝘀','t':'𝘁',
+        'u':'𝘂','v':'𝘃','w':'𝘄','x':'𝘅','y':'𝘆','z':'𝘇',
+        'A':'𝗔','B':'𝗕','C':'𝗖','D':'𝗗','E':'𝗘','F':'𝗙','G':'𝗚','H':'𝗛','I':'𝗜','J':'𝗝',
+        'K':'𝗞','L':'𝗟','M':'𝗠','N':'𝗡','O':'𝗢','P':'𝗣','Q':'𝗤','R':'𝗥','S':'𝗦','T':'𝗧',
+        'U':'𝗨','V':'𝗩','W':'𝗪','X':'𝗫','Y':'𝗬','Z':'𝗭',
+        '0':'𝟬','1':'𝟭','2':'𝟮','3':'𝟯','4':'𝟰','5':'𝟱','6':'𝟲','7':'𝟳','8':'𝟴','9':'𝟵',
+    },
+    "3": {  # Italic
+        'a':'𝑎','b':'𝑏','c':'𝑐','d':'𝑑','e':'𝑒','f':'𝑓','g':'𝑔','h':'ℎ','i':'𝑖','j':'𝑗',
+        'k':'𝑘','l':'𝑙','m':'𝑚','n':'𝑛','o':'𝑜','p':'𝑝','q':'𝑞','r':'𝑟','s':'𝑠','t':'𝑡',
+        'u':'𝑢','v':'𝑣','w':'𝑤','x':'𝑥','y':'𝑦','z':'𝑧',
+        'A':'𝐴','B':'𝐵','C':'𝐶','D':'𝐷','E':'𝐸','F':'𝐹','G':'𝐺','H':'𝐻','I':'𝐼','J':'𝐽',
+        'K':'𝐾','L':'𝐿','M':'𝑀','N':'𝑁','O':'𝑂','P':'𝑃','Q':'𝑄','R':'𝑅','S':'𝑆','T':'𝑇',
+        'U':'𝑈','V':'𝑉','W':'𝑊','X':'𝑋','Y':'𝑌','Z':'𝑍',
+    },
+    "4": {  # Bold Italic
+        'a':'𝒂','b':'𝒃','c':'𝒄','d':'𝒅','e':'𝒆','f':'𝒇','g':'𝒈','h':'𝒉','i':'𝒊','j':'𝒋',
+        'k':'𝒌','l':'𝒍','m':'𝒎','n':'𝒏','o':'𝒐','p':'𝒑','q':'𝒒','r':'𝒓','s':'𝒔','t':'𝒕',
+        'u':'𝒖','v':'𝒗','w':'𝒘','x':'𝒙','y':'𝒚','z':'𝒛',
+        'A':'𝑨','B':'𝑩','C':'𝑪','D':'𝑫','E':'𝑬','F':'𝑭','G':'𝑮','H':'𝑯','I':'𝑰','J':'𝑱',
+        'K':'𝑲','L':'𝑳','M':'𝑴','N':'𝑵','O':'𝑶','P':'𝑷','Q':'𝑸','R':'𝑹','S':'𝑺','T':'𝑻',
+        'U':'𝑼','V':'𝑽','W':'𝑾','X':'𝑿','Y':'𝒀','Z':'𝒁',
+    },
+    "5": {  # Double-Struck
+        'a':'𝕒','b':'𝕓','c':'𝕔','d':'𝕕','e':'𝕖','f':'𝕗','g':'𝕘','h':'𝕙','i':'𝕚','j':'𝕛',
+        'k':'𝕜','l':'𝕝','m':'𝕞','n':'𝕟','o':'𝕠','p':'𝕡','q':'𝕢','r':'𝕣','s':'𝕤','t':'𝕥',
+        'u':'𝕦','v':'𝕧','w':'𝕨','x':'𝕩','y':'𝕪','z':'𝕫',
+        'A':'𝔸','B':'𝔹','C':'ℂ','D':'𝔻','E':'𝔼','F':'𝔽','G':'𝔾','H':'ℍ','I':'𝕀','J':'𝕁',
+        'K':'𝕂','L':'𝕃','M':'𝕄','N':'ℕ','O':'𝕆','P':'ℙ','Q':'ℚ','R':'ℝ','S':'𝕊','T':'𝕋',
+        'U':'𝕌','V':'𝕍','W':'𝕎','X':'𝕏','Y':'𝕐','Z':'ℤ',
+        '0':'𝟘','1':'𝟙','2':'𝟚','3':'𝟛','4':'𝟜','5':'𝟝','6':'𝟞','7':'𝟟','8':'𝟠','9':'𝟡',
+    },
+    "6": {  # Monospace
+        'a':'𝚊','b':'𝚋','c':'𝚌','d':'𝚍','e':'𝚎','f':'𝚏','g':'𝚐','h':'𝚑','i':'𝚒','j':'𝚓',
+        'k':'𝚔','l':'𝚕','m':'𝚖','n':'𝚗','o':'𝚘','p':'𝚙','q':'𝚚','r':'𝚛','s':'𝚜','t':'𝚝',
+        'u':'𝚞','v':'𝚟','w':'𝚠','x':'𝚡','y':'𝚢','z':'𝚣',
+        'A':'𝙰','B':'𝙱','C':'𝙲','D':'𝙳','E':'𝙴','F':'𝙵','G':'𝙶','H':'𝙷','I':'𝙸','J':'𝙹',
+        'K':'𝙺','L':'𝙻','M':'𝙼','N':'𝙽','O':'𝙾','P':'𝙿','Q':'𝚀','R':'𝚁','S':'𝚂','T':'𝚃',
+        'U':'𝚄','V':'𝚅','W':'𝚆','X':'𝚇','Y':'𝚈','Z':'𝚉',
+        '0':'𝟶','1':'𝟷','2':'𝟸','3':'𝟹','4':'𝟺','5':'𝟻','6':'𝟼','7':'𝟽','8':'𝟾','9':'𝟿',
+    },
+    "7": {  # Sans Bold
+        'a':'𝗮','b':'𝗯','c':'𝗰','d':'𝗱','e':'𝗲','f':'𝗳','g':'𝗴','h':'𝗵','i':'𝗶','j':'𝗷',
+        'k':'𝗸','l':'𝗹','m':'𝗺','n':'𝗻','o':'𝗼','p':'𝗽','q':'𝗾','r':'𝗿','s':'𝘀','t':'𝘁',
+        'u':'𝘂','v':'𝘃','w':'𝘄','x':'𝘅','y':'𝘆','z':'𝘇',
+        'A':'𝗔','B':'𝗕','C':'𝗖','D':'𝗗','E':'𝗘','F':'𝗙','G':'𝗚','H':'𝗛','I':'𝗜','J':'𝗝',
+        'K':'𝗞','L':'𝗟','M':'𝗠','N':'𝗡','O':'𝗢','P':'𝗣','Q':'𝗤','R':'𝗥','S':'𝗦','T':'𝗧',
+        'U':'𝗨','V':'𝗩','W':'𝗪','X':'𝗫','Y':'𝗬','Z':'𝗭',
+        '0':'𝟬','1':'𝟭','2':'𝟮','3':'𝟯','4':'𝟰','5':'𝟱','6':'𝟲','7':'𝟳','8':'𝟴','9':'𝟵',
+    },
+    "8": {  # Sans Italic
+        'a':'𝘢','b':'𝘣','c':'𝘤','d':'𝘥','e':'𝘦','f':'𝘧','g':'𝘨','h':'𝘩','i':'𝘪','j':'𝘫',
+        'k':'𝘬','l':'𝘭','m':'𝘮','n':'𝘯','o':'𝘰','p':'𝘱','q':'𝘲','r':'𝘳','s':'𝘴','t':'𝘵',
+        'u':'𝘶','v':'𝘷','w':'𝘸','x':'𝘹','y':'𝘺','z':'𝘻',
+        'A':'𝘈','B':'𝘉','C':'𝘊','D':'𝘋','E':'𝘌','F':'𝘍','G':'𝘎','H':'𝘏','I':'𝘐','J':'𝘑',
+        'K':'𝘒','L':'𝘓','M':'𝘔','N':'𝘕','O':'𝘖','P':'𝘗','Q':'𝘘','R':'𝘙','S':'𝘚','T':'𝘛',
+        'U':'𝘜','V':'𝘝','W':'𝘞','X':'𝘟','Y':'𝘠','Z':'𝘡',
+    },
+    "9": {  # Sans Bold Italic
+        'a':'𝙖','b':'𝙗','c':'𝙘','d':'𝙙','e':'𝙚','f':'𝙛','g':'𝙜','h':'𝙝','i':'𝙞','j':'𝙟',
+        'k':'𝙠','l':'𝙡','m':'𝙢','n':'𝙣','o':'𝙤','p':'𝙥','q':'𝙦','r':'𝙧','s':'𝙨','t':'𝙩',
+        'u':'𝙪','v':'𝙫','w':'𝙬','x':'𝙭','y':'𝙮','z':'𝙯',
+        'A':'𝘼','B':'𝘽','C':'𝘾','D':'𝘿','E':'𝙀','F':'𝙁','G':'𝙂','H':'𝙃','I':'𝙄','J':'𝙅',
+        'K':'𝙆','L':'𝙇','M':'𝙈','N':'𝙉','O':'𝙊','P':'𝙋','Q':'𝙌','R':'𝙍','S':'𝙎','T':'𝙏',
+        'U':'𝙐','V':'𝙑','W':'𝙒','X':'𝙓','Y':'𝙔','Z':'𝙕',
+    },
+    "10": {  # Small Caps
+        'a':'ᴀ','b':'ʙ','c':'ᴄ','d':'ᴅ','e':'ᴇ','f':'ꜰ','g':'ɢ','h':'ʜ','i':'ɪ','j':'ᴊ',
+        'k':'ᴋ','l':'ʟ','m':'ᴍ','n':'ɴ','o':'ᴏ','p':'ᴘ','q':'ǫ','r':'ʀ','s':'ꜱ','t':'ᴛ',
+        'u':'ᴜ','v':'ᴠ','w':'ᴡ','x':'x','y':'ʏ','z':'ᴢ',
+        'A':'ᴀ','B':'ʙ','C':'ᴄ','D':'ᴅ','E':'ᴇ','F':'ꜰ','G':'ɢ','H':'ʜ','I':'ɪ','J':'ᴊ',
+        'K':'ᴋ','L':'ʟ','M':'ᴍ','N':'ɴ','O':'ᴏ','P':'ᴘ','Q':'ǫ','R':'ʀ','S':'ꜱ','T':'ᴛ',
+        'U':'ᴜ','V':'ᴠ','W':'ᴡ','X':'x','Y':'ʏ','Z':'ᴢ',
+    },
+    "11": {  # Fullwidth
+        'a':'ａ','b':'ｂ','c':'ｃ','d':'ｄ','e':'ｅ','f':'ｆ','g':'ｇ','h':'ｈ','i':'ｉ','j':'ｊ',
+        'k':'ｋ','l':'ｌ','m':'ｍ','n':'ｎ','o':'ｏ','p':'ｐ','q':'ｑ','r':'ｒ','s':'ｓ','t':'ｔ',
+        'u':'ｕ','v':'ｖ','w':'ｗ','x':'ｘ','y':'ｙ','z':'ｚ',
+        'A':'Ａ','B':'Ｂ','C':'Ｃ','D':'Ｄ','E':'Ｅ','F':'Ｆ','G':'Ｇ','H':'Ｈ','I':'Ｉ','J':'Ｊ',
+        'K':'Ｋ','L':'Ｌ','M':'Ｍ','N':'Ｎ','O':'Ｏ','P':'Ｐ','Q':'Ｑ','R':'Ｒ','S':'Ｓ','T':'Ｔ',
+        'U':'Ｕ','V':'Ｖ','W':'Ｗ','X':'Ｘ','Y':'Ｙ','Z':'Ｚ',
+        '0':'０','1':'１','2':'２','3':'３','4':'４','5':'５','6':'６','7':'７','8':'８','9':'９',
+    },
+}
+
+FONT_NAMES = {
+    "1": "Normal",
+    "2": "Bold",
+    "3": "Italic",
+    "4": "Bold Italic",
+    "5": "Double",
+    "6": "Mono",
+    "7": "Sans Bold",
+    "8": "Sans Italic",
+    "9": "Sans Bold Italic",
+    "10": "Small Caps",
+    "11": "Fullwidth",
+}
+
+def apply_font(text, font_id):
+    """Apply unicode font to English letters and numbers only"""
+    font_map = FONT_MAPS.get(str(font_id), {})
+    if not font_map:
+        return text
+    result = ""
+    for char in text:
+        result += font_map.get(char, char)
+    return result
+
+# ============ FONT MENU ============
+async def font_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user_id = update.effective_user.id
+    data = query.data
+
+    if data == "font_menu":
+        # Show font menu
+        db = await get_db()
+        current = await db.fetchval("SELECT font FROM users WHERE user_id = $1", user_id)
+        await db.close()
+        current = current or "1"
+
+        current_name = FONT_NAMES.get(current, "Normal")
+
+        keyboard = [
+            [InlineKeyboardButton("1 Normal", callback_data="font_set_1"),
+             InlineKeyboardButton("2 Bold", callback_data="font_set_2"),
+             InlineKeyboardButton("3 Italic", callback_data="font_set_3")],
+            [InlineKeyboardButton("4 Bold Italic", callback_data="font_set_4"),
+             InlineKeyboardButton("5 Double", callback_data="font_set_5"),
+             InlineKeyboardButton("6 Mono", callback_data="font_set_6")],
+            [InlineKeyboardButton("7 Sans Bold", callback_data="font_set_7"),
+             InlineKeyboardButton("8 Sans Italic", callback_data="font_set_8")],
+            [InlineKeyboardButton("9 Sans Bold Italic", callback_data="font_set_9")],
+            [InlineKeyboardButton("10 Small Caps", callback_data="font_set_10"),
+             InlineKeyboardButton("11 Fullwidth", callback_data="font_set_11")],
+        ]
+
+        await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    if data.startswith("font_set_"):
+        font_id = data.split("_")[2]
+
+        if font_id not in FONT_NAMES:
+            await query.answer("❌ Invalid font!", show_alert=True)
+            return
+
+        db = await get_db()
+        await db.execute("UPDATE users SET font = $1 WHERE user_id = $2", font_id, user_id)
+        await db.close()
+
+        font_name = FONT_NAMES[font_id]
+        preview = apply_font("Font Changed!", font_id)
+
+        await query.answer(f"✅ {preview} → {font_name}", show_alert=True)
+
+        # Show preview of profile
+        await query.message.reply_text(
+            f"✅ *Font changed to {font_name}!*\n\n"
+            f"Use /profile to see new style.",
+            parse_mode="Markdown"
+        )
+        return
 
 
 # ============ MAIN ==========
