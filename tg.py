@@ -8494,13 +8494,16 @@ def apply_font(text, font_id):
 # ============ FONT MENU ============
 async def font_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+
+    try:
+        await query.answer()
+    except:
+        pass
 
     user_id = update.effective_user.id
     data = query.data
 
     if data == "font_menu":
-        # Show font menu
         db = await get_db()
         current = await db.fetchval("SELECT font FROM users WHERE user_id = $1", user_id)
         await close_db(db)
@@ -8529,7 +8532,6 @@ async def font_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         font_id = data.split("_")[2]
 
         if font_id not in FONT_NAMES:
-            await query.answer("❌ Invalid font!", show_alert=True)
             return
 
         db = await get_db()
@@ -8537,18 +8539,90 @@ async def font_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await close_db(db)
 
         font_name = FONT_NAMES[font_id]
-        preview = apply_font("Font Changed!", font_id)
 
-        await query.answer(f"✅ {preview} → {font_name}", show_alert=True)
+        # 🔥 Build preview profile with new font
+        user = update.effective_user
+        name = user.first_name if user.first_name else (user.username or "User")
 
-        # Show preview of profile
-        await query.message.reply_text(
-            f"✅ *Font changed to {font_name}!*\n\n"
-            f"Use /profile to see new style.",
-            parse_mode="Markdown"
+        db = await get_db()
+        data_row = await db.fetchrow(
+            "SELECT balance, points, won, total, photo, bio FROM users WHERE user_id = $1",
+            user_id
         )
-        return
+        bank_bal = await db.fetchval("SELECT balance FROM bank WHERE user_id = $1", user_id) or 0
+        await close_db(db)
 
+        if data_row:
+            wallet_bal, points, won, total, photo, bio = data_row
+            total_wealth = wallet_bal + bank_bal
+
+            if won > total:
+                total = won
+
+            if total > 0:
+                win_rate = int((won / total) * 100)
+                if win_rate > 100:
+                    win_rate = 100
+            else:
+                win_rate = 0
+
+            DEFAULT_BIO = "I Play With CL Bot!"
+            bio_text = bio if bio else DEFAULT_BIO
+
+            # Apply font
+            profile_label = apply_font("PROFILE", font_id)
+            name_label = apply_font("Name", font_id)
+            bio_label = apply_font("Bio", font_id)
+            wallet_label = apply_font("Wallet", font_id)
+            bank_label = apply_font("Bank", font_id)
+            total_label = apply_font("Total", font_id)
+            points_label = apply_font("Points", font_id)
+            bets_label = apply_font("Bets", font_id)
+            winrate_label = apply_font("Win Rate", font_id)
+
+            name_escaped = escape_markdown(name)
+
+            profile_text = f"👤 *{profile_label}*\n\n"
+            profile_text += f"*{name_label}:* {name_escaped}\n"
+            profile_text += f"*{bio_label}:* {bio_text}\n\n"
+            profile_text += f"💰 *{wallet_label}:* {wallet_bal:,}\n"
+            profile_text += f"🏦 *{bank_label}:* {bank_bal:,}\n"
+            profile_text += f"💎 *{total_label}:* {total_wealth:,}\n\n"
+            profile_text += f"🏆 *{points_label}:* {points}\n"
+            profile_text += f"📊 *{bets_label}:* {won}/{total}\n"
+            profile_text += f"📈 *{winrate_label}:* {win_rate}%"
+
+            # ✅ Font change hone ka message + button
+            keyboard = [
+                [InlineKeyboardButton("🎨 Change Font", callback_data="font_menu")]
+            ]
+
+            profile_text += f"\n\n✅ Font changed to *{font_name}*"
+
+            # Update the same message
+            try:
+                if photo:
+                    # Agar profile mein photo hai toh caption update karo
+                    await query.edit_message_caption(
+                        caption=profile_text,
+                        parse_mode="Markdown",
+                        reply_markup=InlineKeyboardMarkup(keyboard)
+                    )
+                else:
+                    # Sirf text hai
+                    await query.edit_message_text(
+                        text=profile_text,
+                        parse_mode="Markdown",
+                        reply_markup=InlineKeyboardMarkup(keyboard)
+                    )
+            except Exception as e:
+                # Agar edit fail ho toh sirf answer dikha
+                try:
+                    await query.answer(f"✅ Font changed to {font_name}!", show_alert=False)
+                except:
+                    pass
+
+        return
 
 
 # ============ MAIN ==========
