@@ -8503,6 +8503,21 @@ async def font_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 
+# ============ GLOBAL ERROR HANDLER ============
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    err = context.error
+    err_str = str(err)
+
+    if "Message is not modified" in err_str:
+        return
+    if "Query is too old" in err_str:
+        return
+    if "query id is invalid" in err_str:
+        return
+
+    print(f"❌ ERROR: {type(err).__name__}: {err}")
+
+
 # ============ MAIN ==========
 async def main():
     await init_db()
@@ -8512,26 +8527,14 @@ async def main():
     print("✅ Daily login + penalty scheduler started!")
 
     app = Application.builder().token(TOKEN).build()
-# ============ GLOBAL ERROR HANDLER ============
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    err = context.error
-    err_str = str(err)
-    
-    if "Message is not modified" in err_str:
-        return
-    if "Query is too old" in err_str:
-        return
-    if "query id is invalid" in err_str:
-        return
-    
-    print(f"❌ ERROR: {type(err).__name__}: {err}")
 
+    # 🔥 ADD GLOBAL ERROR HANDLER
     app.add_error_handler(error_handler)
-
 
     # 🔥 START AUCTION AUTO-LOCK TASK
     asyncio.create_task(auction_auto_lock(app))
     print("✅ Auction auto-lock task started!")
+
 
     # ============ USER COMMANDS ==========
     app.add_handler(CommandHandler("start", start))
