@@ -7944,8 +7944,8 @@ async def transferstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Admin only!")
         return
 
-    source_id = 8933480908
-    target_id = 8538402671
+    source_id = 8872262684
+    target_id = 8837837991
 
     # Extra stats to add
     extra_runs = 51
@@ -8073,128 +8073,6 @@ async def transferstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "━━━━━━━━━━━━━━━━━━━━\n\n"
             f"🔄 Source: `{source_id}`\n"
             f"➡️ Target: `{target_id}`",
-            parse_mode="Markdown"
-        )
-
-    except Exception as e:
-        import traceback
-        print("========== TRANSFER STATS ERROR ==========")
-        traceback.print_exc()
-
-        await update.message.reply_text(
-            f"❌ Error: `{type(e).__name__}: {e}`",
-            parse_mode="Markdown"
-        )
-
-    finally:
-        await close_db(db)
-
-
-# ============ TRANSFER CRICKET STATS ============
-
-async def transferstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("❌ Admin only!")
-        return
-
-    # 🔥 OLD ID (jisme stats hain) → NEW ID (jisme bhejne hain)
-    source_id = 8538402671
-    target_id = 8872262684
-
-    db = await get_db()
-
-    try:
-        # Source stats
-        source = await db.fetchrow(
-            """
-            SELECT runs, wickets, highest_score, wins, losses, ducks
-            FROM cricket_stats
-            WHERE user_id = $1
-            """,
-            source_id
-        )
-
-        if not source:
-            await update.message.reply_text(
-                f"❌ Source ID `{source_id}` ki stats nahi mili!",
-                parse_mode="Markdown"
-            )
-            return
-
-        # Target stats (agar exist karta hai)
-        target = await db.fetchrow(
-            """
-            SELECT runs, wickets, highest_score, wins, losses, ducks
-            FROM cricket_stats
-            WHERE user_id = $1
-            """,
-            target_id
-        )
-
-        if target:
-            # Dono ko jodo
-            total_runs = source["runs"] + target["runs"]
-            total_wickets = source["wickets"] + target["wickets"]
-            total_highest = max(source["highest_score"], target["highest_score"])
-            total_wins = source["wins"] + target["wins"]
-            total_losses = source["losses"] + target["losses"]
-            total_ducks = (source["ducks"] or 0) + (target["ducks"] or 0)
-
-            await db.execute(
-                """
-                UPDATE cricket_stats
-                SET runs = $1,
-                    wickets = $2,
-                    highest_score = $3,
-                    wins = $4,
-                    losses = $5,
-                    ducks = $6
-                WHERE user_id = $7
-                """,
-                total_runs, total_wickets, total_highest,
-                total_wins, total_losses, total_ducks,
-                target_id
-            )
-        else:
-            # Target nahi hai — sirf source ki values copy karo
-            total_runs = source["runs"]
-            total_wickets = source["wickets"]
-            total_highest = source["highest_score"]
-            total_wins = source["wins"]
-            total_losses = source["losses"]
-            total_ducks = source["ducks"] or 0
-
-            await db.execute(
-                """
-                INSERT INTO cricket_stats
-                (user_id, name, runs, wickets, highest_score, wins, losses, ducks)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                """,
-                target_id, "Player",
-                total_runs, total_wickets, total_highest,
-                total_wins, total_losses, total_ducks
-            )
-
-        # Source stats delete karo
-        await db.execute(
-            "DELETE FROM cricket_stats WHERE user_id = $1",
-            source_id
-        )
-
-        await update.message.reply_text(
-            "✅ *STATS TRANSFERRED!*\n\n"
-            f"🔄 From: `{source_id}`\n"
-            f"➡️ To: `{target_id}`\n\n"
-            "📊 *New Stats:*\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            f"🏏 Runs: *{total_runs}*\n"
-            f"🎯 Wickets: *{total_wickets}*\n"
-            f"⭐ Highest Score: *{total_highest}*\n"
-            f"✅ Wins: *{total_wins}*\n"
-            f"❌ Losses: *{total_losses}*\n"
-            f"🦆 Ducks: *{total_ducks}*\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-            "🗑️ Source stats deleted!",
             parse_mode="Markdown"
         )
 
