@@ -24,7 +24,7 @@ import asyncpg
 IST = timezone(timedelta(hours=5, minutes=30))
 
 # ============ TOKEN & ADMINS ============
-TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAF_TWh8AWzn6Zj3syPFYfmhqyg4GnLqjUI")
+TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAGsRsrA77Ju6kIsgIN0ii4GPwFbUndHZ4A")
 ADMIN_IDS = [7687078555, 1315564307, 7361215114]
 
 # ============ DATABASE URL ============
