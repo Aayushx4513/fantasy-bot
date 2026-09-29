@@ -659,7 +659,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await update.message.reply_text(
-            f"✨ WELCOME TO CL ZONE ✨\n\n"
+            f"✨ WELCOME TO CL BOT ✨\n\n"
             f"👑 {name}, you've joined the elite club!\n"
             f"🪙 1000 credits | 🏆 0 pts\n\n"
             f"🎯 /claim - Daily rewards\n"
@@ -677,7 +677,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await update.message.chat.send_message(
-            f"✨ WELCOME BACK TO CL ZONE ✨\n\n"
+            f"✨ WELCOME BACK TO CL BOT ✨\n\n"
             f"👑 {name}\n"
             f"🪙 {existing['balance']:,} credits | 🏆 {existing['points']} pts\n\n"
             f"🎯 /claim - Daily rewards\n"
