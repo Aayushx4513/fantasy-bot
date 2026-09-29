@@ -114,6 +114,8 @@ async def init_db():
     # 🔥 Fav player column
     await db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS fav_player INT DEFAULT 0")
     await db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS font TEXT DEFAULT '1'")
+    # 🔥 Gift/Sell columns
+    await db.execute("ALTER TABLE user_players ADD COLUMN IF NOT EXISTS purchased_price BIGINT DEFAULT 0")
 
 
     await db.execute('''
@@ -133,7 +135,7 @@ async def init_db():
     # Photo column for auction players
     await db.execute("ALTER TABLE auction_players ADD COLUMN IF NOT EXISTS photo TEXT")
 
-    await db.execute('''
+     mawait db.execute('''
         CREATE TABLE IF NOT EXISTS cricket_stats (
             user_id BIGINT PRIMARY KEY,
             name TEXT,
@@ -147,6 +149,29 @@ async def init_db():
     ''')
 
 
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS sell_history (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT,
+            player_id INT,
+            player_name TEXT,
+            bought_price BIGINT,
+            sold_price BIGINT,
+            fee BIGINT,
+            sold_at TIMESTAMP
+        )
+    ''')
+
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS gift_history (
+            id SERIAL PRIMARY KEY,
+            from_user BIGINT,
+            to_user BIGINT,
+            player_id INT,
+            player_name TEXT,
+            gifted_at TIMESTAMP
+        )
+    ''')
     await db.execute('''
         CREATE TABLE IF NOT EXISTS login_tracker (
             user_id BIGINT PRIMARY KEY,
@@ -612,29 +637,32 @@ async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
     await update.message.reply_text(f"👥 REFERRAL SYSTEM\n\nInvite friends and earn 1,000 credits each!\n\nYour Link: {ref_link}\n\nNew users get +500 bonus!")
 
-# ============ START COMMAND ==========
+# ============ START COMMAND ============
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.first_name if user.first_name else user.username or "User"
     user_id = user.id
-    
+
+    # 🔥 Escape name for Markdown
+    name_escaped = escape_markdown(name)
+
     referred_by = None
     if context.args and len(context.args) > 0 and context.args[0].startswith("ref_"):
         try:
             referred_by = int(context.args[0].split("_")[1])
         except:
             pass
-    
+
     db = await get_db()
-    
+
     existing = await db.fetchrow("SELECT * FROM users WHERE user_id = $1", user_id)
-    
+
     if not existing:
         await db.execute(
             "INSERT INTO users (user_id, name, balance, points, won, total) VALUES ($1, $2, 1000, 0, 0, 0)",
             user_id, name
         )
-        
+
         if referred_by and referred_by != user_id:
             ref_exists = await db.fetchval("SELECT user_id FROM users WHERE user_id = $1", referred_by)
             if ref_exists:
@@ -647,47 +675,60 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await db.execute("UPDATE users SET balance = balance + 1000 WHERE user_id = $1", referred_by)
                     await db.execute("UPDATE users SET balance = balance + 500 WHERE user_id = $1", user_id)
                     try:
-                        await context.bot.send_message(referred_by, f"🎉 REFERRAL REWARD!\n\n@{name} joined using your link!\n🪙 +1,000 credits!")
+                        await context.bot.send_message(
+                            referred_by,
+                            f"🎉 *REFERRAL REWARD!*\n\n"
+                            f"*@{name_escaped}* joined using your link!\n"
+                            f"🪙 *+1,000 credits!*",
+                            parse_mode="Markdown"
+                        )
                     except:
                         pass
-                    await update.message.reply_text("🎉 WELCOME!\n\nYou joined with a referral!\n🪙 +500 bonus credits!")
-        
+                    await update.message.reply_text(
+                        "🎉 *WELCOME!*\n\n"
+                        "*You joined with a referral!*\n"
+                        "🪙 *+500 bonus credits!*",
+                        parse_mode="Markdown"
+                    )
+
         keyboard = [
             [InlineKeyboardButton("📢 UPDATES", url="https://t.me/clbotofficial")],
             [InlineKeyboardButton("👥 MAIN GROUP", url="https://t.me/+eTD1m8Cjc_wyOTNl")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
+
         await update.message.reply_text(
-            f"✨ WELCOME TO CL BOT ✨\n\n"
-            f"👑 {name}, you've joined the elite club!\n"
-            f"🪙 1000 credits | 🏆 0 pts\n\n"
-            f"🎯 /claim - Daily rewards\n"
-            f"🎡 /spin - Daily spin\n"
-            f"👤 /profile - Your stats\n"
-            f"🏆 /leaderboard - Top players\n\n"
-            f"📌 Join our channels for exclusive updates!",
-            reply_markup=reply_markup
+            f"✨ *WELCOME TO CL BOT* ✨\n\n"
+            f"👑 *{name_escaped}*, you've joined the elite club!\n"
+            f"🪙 *1000* credits | 🏆 *0* pts\n\n"
+            f"🎯 */claim* — Daily rewards\n"
+            f"🎡 */spin* — Daily spin\n"
+            f"👤 */profile* — Your stats\n"
+            f"🏆 */leaderboard* — Top players\n\n"
+            f"📌 *Join our channels for exclusive updates!*",
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
         )
     else:
         keyboard = [
             [InlineKeyboardButton("📢 UPDATES", url="https://t.me/clbotofficial")],
             [InlineKeyboardButton("👥 MAIN GROUP", url="https://t.me/+eTD1m8Cjc_wyOTNl")]
-         ]
+        ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
+
         await update.message.chat.send_message(
-            f"✨ WELCOME BACK TO CL BOT ✨\n\n"
-            f"👑 {name}\n"
-            f"🪙 {existing['balance']:,} credits | 🏆 {existing['points']} pts\n\n"
-            f"🎯 /claim - Daily rewards\n"
-            f"🎡 /spin - Daily spin\n"
-            f"👤 /profile - Your stats\n"
-            f"🏆 /leaderboard - Top players\n\n"
-            f"📌 Stay connected with our community!",
-            reply_markup=reply_markup
+            f"✨ *WELCOME BACK TO CL BOT* ✨\n\n"
+            f"👑 *{name_escaped}*\n"
+            f"🪙 *{existing['balance']:,}* credits | 🏆 *{existing['points']}* pts\n\n"
+            f"🎯 */claim* — Daily rewards\n"
+            f"🎡 */spin* — Daily spin\n"
+            f"👤 */profile* — Your stats\n"
+            f"🏆 */leaderboard* — Top players\n\n"
+            f"📌 *Stay connected with our community!*",
+            reply_markup=reply_markup,
+            parse_mode="Markdown"
         )
-    
+
     await close_db(db)
 
 
@@ -8503,6 +8544,439 @@ async def font_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 
+# ============ SELL PLAYER ============
+async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    chat_id = update.message.chat.id
+    chat_type = update.message.chat.type
+
+    # 🔥 ONLY IN CL PLAYZONE GC
+    CL_PLAYZONE_GC_ID = -1003011263365
+
+    if chat_type not in ['group', 'supergroup'] or chat_id != CL_PLAYZONE_GC_ID:
+        await update.message.reply_text(
+            "*🚫 SELL ONLY IN CL PLAYZONE!*\n\n"
+            "*Join here:*",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("👥 JOIN CL PLAYZONE", url="https://t.me/clbotplayzone")]
+            ])
+        )
+        return
+
+    if not await is_registered(user_id):
+        await update.message.reply_text("*❌ Send /start first!*", parse_mode="Markdown")
+        return
+
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text(
+            "*❌ Usage:* `/sell <player_id>`\n\n"
+            "*Example:* `/sell 1`",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        player_id = int(args[0])
+    except:
+        await update.message.reply_text("*❌ Invalid player ID!*", parse_mode="Markdown")
+        return
+
+    db = await get_db()
+
+    # Check ownership
+    owned = await db.fetchrow(
+        """
+        SELECT up.player_id, up.purchased_price, p.name, p.current_bid
+        FROM user_players up
+        JOIN auction_players p ON up.player_id = p.id
+        WHERE up.user_id = $1 AND up.player_id = $2
+        """,
+        user_id, player_id
+    )
+
+    if not owned:
+        await update.message.reply_text(
+            "*❌ Player not found in your team!*",
+            parse_mode="Markdown"
+        )
+        await close_db(db)
+        return
+
+    # Check fav
+    fav_id = await db.fetchval("SELECT fav_player FROM users WHERE user_id = $1", user_id)
+
+    if fav_id == player_id:
+        await update.message.reply_text(
+            "*⚠️ Cannot sell fav player!*\n\n"
+            "*💡 Use /unfav first, then sell.*",
+            parse_mode="Markdown"
+        )
+        await close_db(db)
+        return
+
+    # Calculate
+    bought_price = owned['purchased_price'] or owned['current_bid']
+    sell_price = int(bought_price * 0.90)
+    fee = bought_price - sell_price
+
+    await close_db(db)
+
+    # Confirmation
+    keyboard = [
+        [InlineKeyboardButton("✅ SELL", callback_data=f"sell_confirm_{player_id}"),
+         InlineKeyboardButton("❌ CANCEL", callback_data=f"sell_cancel_{player_id}")]
+    ]
+
+    await update.message.reply_text(
+        f"💰 *SELL PLAYER*\n\n"
+        f"🏏 *Player:* {owned['name']}\n"
+        f"💰 *Bought:* {bought_price:,}\n"
+        f"💵 *You'll Get:* {sell_price:,} (90%)\n"
+        f"📊 *Fee:* {fee:,}\n\n"
+        f"⚠️ Player will be destroyed permanently!",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+# ============ SELL CALLBACK ============
+async def sell_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    try:
+        await query.answer()
+    except:
+        pass
+
+    user_id = update.effective_user.id
+    data = query.data
+
+    if data.startswith("sell_cancel_"):
+        await query.edit_message_text(
+            "❌ *Sell cancelled.*",
+            parse_mode="Markdown"
+        )
+        return
+
+    if data.startswith("sell_confirm_"):
+        player_id = int(data.split("_")[2])
+
+        db = await get_db()
+
+        # Re-check ownership
+        owned = await db.fetchrow(
+            """
+            SELECT up.player_id, up.purchased_price, p.name, p.current_bid
+            FROM user_players up
+            JOIN auction_players p ON up.player_id = p.id
+            WHERE up.user_id = $1 AND up.player_id = $2
+            """,
+            user_id, player_id
+        )
+
+        if not owned:
+            await query.edit_message_text("*❌ Player not found!*", parse_mode="Markdown")
+            await close_db(db)
+            return
+
+        bought_price = owned['purchased_price'] or owned['current_bid']
+        sell_price = int(bought_price * 0.90)
+        fee = bought_price - sell_price
+
+        # Add balance
+        await db.execute(
+            "UPDATE users SET balance = balance + $1 WHERE user_id = $2",
+            sell_price, user_id
+        )
+
+        # Delete from user_players
+        await db.execute(
+            "DELETE FROM user_players WHERE user_id = $1 AND player_id = $2",
+            user_id, player_id
+        )
+
+        # Delete player (destroy)
+        await db.execute("DELETE FROM auction_players WHERE id = $1", player_id)
+        await db.execute("DELETE FROM bid_history WHERE player_id = $1", player_id)
+
+        # Save history
+        await db.execute(
+            """
+            INSERT INTO sell_history (user_id, player_id, player_name, bought_price, sold_price, fee, sold_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            """,
+            user_id, player_id, owned['name'], bought_price, sell_price, fee,
+            datetime.now(IST).replace(tzinfo=None)
+        )
+
+        new_balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
+        await close_db(db)
+
+        # User message
+        await query.edit_message_text(
+            f"✅ *PLAYER SOLD!*\n\n"
+            f"🏏 *Player:* {owned['name']}\n"
+            f"💰 *You Received:* {sell_price:,}\n"
+            f"📊 *Fee:* {fee:,}\n"
+            f"💳 *New Balance:* {new_balance:,}",
+            parse_mode="Markdown"
+        )
+
+        # 🔥 Admin notification (silent)
+        user = update.effective_user
+        seller_name = user.first_name if user.first_name else (user.username or "User")
+        seller_username = f"@{user.username}" if user.username else "No username"
+
+        now_ist = datetime.now(IST).strftime("%d %b %Y, %I:%M %p IST")
+
+        for admin_id in ADMIN_IDS:
+            try:
+                await context.bot.send_message(
+                    admin_id,
+                    f"💰 *PLAYER SOLD!*\n\n"
+                    f"🏏 *Player:* {owned['name']} (ID: {player_id})\n"
+                    f"👤 *Seller:* {seller_name} ({seller_username})\n"
+                    f"🆔 *ID:* `{user_id}`\n"
+                    f"💰 *Sold For:* {sell_price:,}\n"
+                    f"📊 *Fee:* {fee:,}\n"
+                    f"💵 *New Balance:* {new_balance:,}\n"
+                    f"📅 {now_ist}",
+                    parse_mode="Markdown"
+                )
+            except:
+                pass
+
+        return
+
+# ============ GIFT PLAYER ============
+async def gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    chat_id = update.message.chat.id
+    chat_type = update.message.chat.type
+
+    CL_PLAYZONE_GC_ID = -1003011263365
+
+    # 🔥 ONLY IN GC
+    if chat_type not in ['group', 'supergroup'] or chat_id != CL_PLAYZONE_GC_ID:
+        await update.message.reply_text(
+            "*🚫 GIFT ONLY IN CL PLAYZONE!*\n\n"
+            "*Join here:*",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("👥 JOIN CL PLAYZONE", url="https://t.me/clbotplayzone")]
+            ])
+        )
+        return
+
+    if not await is_registered(user_id):
+        await update.message.reply_text("*❌ Send /start first!*", parse_mode="Markdown")
+        return
+
+    # 🔥 MUST REPLY
+    if not update.message.reply_to_message:
+        await update.message.reply_text(
+            "*❌ Reply to the user you want to gift!*\n\n"
+            "*Example:*\n"
+            "1. Reply to @friend's message\n"
+            "2. Send: `/gift 1`",
+            parse_mode="Markdown"
+        )
+        return
+
+    receiver = update.message.reply_to_message.from_user
+
+    if receiver.id == user_id:
+        await update.message.reply_text("*❌ Cannot gift to yourself!*", parse_mode="Markdown")
+        return
+
+    if receiver.is_bot:
+        await update.message.reply_text("*❌ Cannot gift to a bot!*", parse_mode="Markdown")
+        return
+
+    # Check receiver registered
+    if not await is_registered(receiver.id):
+        await update.message.reply_text(
+            f"*⚠️ {receiver.first_name} hasn't started the bot!*\n\n"
+            f"*💡 Ask them to /start first.*",
+            parse_mode="Markdown"
+        )
+        return
+
+    args = context.args
+    if len(args) < 1:
+        await update.message.reply_text(
+            "*❌ Usage:* `/gift <player_id>` (reply to user)",
+            parse_mode="Markdown"
+        )
+        return
+
+    try:
+        player_id = int(args[0])
+    except:
+        await update.message.reply_text("*❌ Invalid player ID!*", parse_mode="Markdown")
+        return
+
+    db = await get_db()
+
+    # Check ownership
+    owned = await db.fetchrow(
+        """
+        SELECT up.player_id, up.purchased_price, p.name, p.current_bid
+        FROM user_players up
+        JOIN auction_players p ON up.player_id = p.id
+        WHERE up.user_id = $1 AND up.player_id = $2
+        """,
+        user_id, player_id
+    )
+
+    if not owned:
+        await update.message.reply_text(
+            "*❌ Player not found in your team!*",
+            parse_mode="Markdown"
+        )
+        await close_db(db)
+        return
+
+    # Check fav
+    fav_id = await db.fetchval("SELECT fav_player FROM users WHERE user_id = $1", user_id)
+
+    if fav_id == player_id:
+        await update.message.reply_text(
+            "*⚠️ Cannot gift fav player!*\n\n"
+            "*💡 Use /unfav first, then gift.*",
+            parse_mode="Markdown"
+        )
+        await close_db(db)
+        return
+
+    bought_price = owned['purchased_price'] or owned['current_bid']
+
+    await close_db(db)
+
+    # Confirmation
+    keyboard = [
+        [InlineKeyboardButton("✅ GIFT", callback_data=f"gift_confirm_{player_id}_{receiver.id}"),
+         InlineKeyboardButton("❌ CANCEL", callback_data=f"gift_cancel_{player_id}")]
+    ]
+
+    await update.message.reply_text(
+        f"🎁 *GIFT PLAYER*\n\n"
+        f"🏏 *Player:* {owned['name']}\n"
+        f"💰 *Value:* {bought_price:,}\n"
+        f"📊 *Fee:* FREE\n"
+        f"👤 *To:* {receiver.first_name}\n\n"
+        f"⚠️ Player will be transferred permanently!\n\n"
+        f"*Confirm?*",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+# ============ GIFT CALLBACK ============
+async def gift_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    try:
+        await query.answer()
+    except:
+        pass
+
+    user_id = update.effective_user.id
+    data = query.data
+
+    if data.startswith("gift_cancel_"):
+        await query.edit_message_text("❌ *Gift cancelled.*", parse_mode="Markdown")
+        return
+
+    if data.startswith("gift_confirm_"):
+        parts = data.split("_")
+        player_id = int(parts[2])
+        receiver_id = int(parts[3])
+
+        db = await get_db()
+
+        # Re-check ownership
+        owned = await db.fetchrow(
+            """
+            SELECT up.player_id, up.purchased_price, p.name, p.current_bid
+            FROM user_players up
+            JOIN auction_players p ON up.player_id = p.id
+            WHERE up.user_id = $1 AND up.player_id = $2
+            """,
+            user_id, player_id
+        )
+
+        if not owned:
+            await query.edit_message_text("*❌ Player not found!*", parse_mode="Markdown")
+            await close_db(db)
+            return
+
+        # Transfer ownership
+        await db.execute(
+            "UPDATE user_players SET user_id = $1 WHERE user_id = $2 AND player_id = $3",
+            receiver_id, user_id, player_id
+        )
+
+        # Save history
+        await db.execute(
+            """
+            INSERT INTO gift_history (from_user, to_user, player_id, player_name, gifted_at)
+            VALUES ($1, $2, $3, $4, $5)
+            """,
+            user_id, receiver_id, player_id, owned['name'],
+            datetime.now(IST).replace(tzinfo=None)
+        )
+
+        # Get receiver name
+        receiver_name = await db.fetchval("SELECT name FROM users WHERE user_id = $1", receiver_id)
+        await close_db(db)
+
+        # Sender message
+        await query.edit_message_text(
+            f"✅ *PLAYER GIFTED!*\n\n"
+            f"🏏 *Player:* {owned['name']}\n"
+            f"👤 *To:* {receiver_name}\n"
+            f"📊 *Fee:* FREE",
+            parse_mode="Markdown"
+        )
+
+        # Receiver DM
+        try:
+            await context.bot.send_message(
+                receiver_id,
+                f"🎁 *YOU RECEIVED A GIFT!*\n\n"
+                f"🏏 *Player:* {owned['name']}\n"
+                f"👤 *From:* {update.effective_user.first_name}\n\n"
+                f"💡 Check /myteam",
+                parse_mode="Markdown"
+            )
+        except:
+            pass
+
+        # 🔥 Admin notification
+        sender = update.effective_user
+        sender_name = sender.first_name if sender.first_name else (sender.username or "User")
+        sender_username = f"@{sender.username}" if sender.username else "No username"
+
+        now_ist = datetime.now(IST).strftime("%d %b %Y, %I:%M %p IST")
+
+        for admin_id in ADMIN_IDS:
+            try:
+                await context.bot.send_message(
+                    admin_id,
+                    f"🎁 *PLAYER GIFTED!*\n\n"
+                    f"🏏 *Player:* {owned['name']} (ID: {player_id})\n"
+                    f"👤 *From:* {sender_name} ({sender_username}) — `{user_id}`\n"
+                    f"👤 *To:* {receiver_name} — `{receiver_id}`\n"
+                    f"📊 *Fee:* FREE\n"
+                    f"📅 {now_ist}",
+                    parse_mode="Markdown"
+                )
+            except:
+                pass
+
+        return
+
+
+
 # ============ GLOBAL ERROR HANDLER ============
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     err = context.error
@@ -8583,6 +9057,11 @@ async def main():
     app.add_handler(CallbackQueryHandler(rps_join_callback, pattern="^rps_join_"))
     app.add_handler(CallbackQueryHandler(rps_move_callback, pattern="^rps_move_"))
     app.add_handler(CallbackQueryHandler(rps_none_callback, pattern="^rps_none"))
+    # ============ SELL / GIFT ============
+    app.add_handler(CommandHandler("sell", sell))
+    app.add_handler(CallbackQueryHandler(sell_callback, pattern="^sell_"))
+    app.add_handler(CommandHandler("gift", gift))
+    app.add_handler(CallbackQueryHandler(gift_callback, pattern="^gift_"))
 
     # ============ LOGIN / PENALTY ==========
     app.add_handler(CommandHandler("login", login))
