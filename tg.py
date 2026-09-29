@@ -135,7 +135,7 @@ async def init_db():
     # Photo column for auction players
     await db.execute("ALTER TABLE auction_players ADD COLUMN IF NOT EXISTS photo TEXT")
 
-     mawait db.execute('''
+    await db.execute('''
         CREATE TABLE IF NOT EXISTS cricket_stats (
             user_id BIGINT PRIMARY KEY,
             name TEXT,
