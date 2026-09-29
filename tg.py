@@ -647,10 +647,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await db.execute("UPDATE users SET balance = balance + 1000 WHERE user_id = $1", referred_by)
                     await db.execute("UPDATE users SET balance = balance + 500 WHERE user_id = $1", user_id)
                     try:
-                        await context.bot.send_message(referred_by, f"🎉 REFERRAL REWARD!\n\n@{name} joined using your link!\n💰 +1,000 credits!")
+                        await context.bot.send_message(referred_by, f"🎉 REFERRAL REWARD!\n\n@{name} joined using your link!\n🪙 +1,000 credits!")
                     except:
                         pass
-                    await update.message.reply_text("🎉 WELCOME!\n\nYou joined with a referral!\n💰 +500 bonus credits!")
+                    await update.message.reply_text("🎉 WELCOME!\n\nYou joined with a referral!\n🪙 +500 bonus credits!")
         
         keyboard = [
             [InlineKeyboardButton("📢 UPDATES", url="https://t.me/clbotofficial")],
@@ -661,7 +661,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"✨ WELCOME TO CL ZONE ✨\n\n"
             f"👑 {name}, you've joined the elite club!\n"
-            f"💰 1000 credits | 🏆 0 pts\n\n"
+            f"🪙 1000 credits | 🏆 0 pts\n\n"
             f"🎯 /claim - Daily rewards\n"
             f"🎡 /spin - Daily spin\n"
             f"👤 /profile - Your stats\n"
@@ -679,7 +679,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.chat.send_message(
             f"✨ WELCOME BACK TO CL ZONE ✨\n\n"
             f"👑 {name}\n"
-            f"💰 {existing['balance']:,} credits | 🏆 {existing['points']} pts\n\n"
+            f"🪙 {existing['balance']:,} credits | 🏆 {existing['points']} pts\n\n"
             f"🎯 /claim - Daily rewards\n"
             f"🎡 /spin - Daily spin\n"
             f"👤 /profile - Your stats\n"
@@ -763,7 +763,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     profile_text = f"👤 *{profile_label}*\n\n"
     profile_text += f"*{name_label}:* {name_escaped}\n"
     profile_text += f"*{bio_label}:* {bio_text}\n\n"
-    profile_text += f"💰 *{wallet_label}:* {wallet_bal:,}\n"
+    profile_text += f"🪙 *{wallet_label}:* {wallet_bal:,}\n"
     profile_text += f"🏦 *{bank_label}:* {bank_bal:,}\n"
     profile_text += f"💎 *{total_label}:* {total_wealth:,}\n\n"
     profile_text += f"🏆 *{points_label}:* {points}\n"
@@ -900,7 +900,7 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"*✅ Claimed Daily Rewards!*\n\n"
-        f"*💰 +{reward} credits*\n"
+        f"*🪙 +{reward} credits*\n"
         f"*📅 {today_str}*\n"
         f"*💳 New balance: {new_bal:,}*"
         f"{extra_note}\n\n"
@@ -990,7 +990,7 @@ async def codestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_given = await db.fetchval("SELECT COALESCE(SUM(amount), 0) FROM code_claims cc JOIN claim_codes c ON cc.code = c.code")
     unique_users = await db.fetchval("SELECT COUNT(DISTINCT user_id) FROM code_claims")
     await close_db(db)
-    await update.message.reply_text(f"📊 CODE STATS\n\n📝 Total codes: {total_codes}\n🟢 Active codes: {active_codes}\n🎯 Total claims: {total_claims}\n💰 Credits given: {total_given:,}\n👥 Unique users: {unique_users}")
+    await update.message.reply_text(f"📊 CODE STATS\n\n📝 Total codes: {total_codes}\n🟢 Active codes: {active_codes}\n🎯 Total claims: {total_claims}\n🪙 Credits given: {total_given:,}\n👥 Unique users: {unique_users}")
 
 # ============ SPIN ==========
 async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1049,7 +1049,7 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         now_str
     )
 
-    # 💰 Add reward
+    # 🪙 Add reward
     await db.execute(
         """
         UPDATE users
@@ -1070,7 +1070,7 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"*✅ Claimed Daily Spin Rewards of {amount:,} Credits*\n"
         f"*at {today_str}*\n\n"
-        f"*💰 New balance: {new_bal:,} 💰*\n"
+        f"*🪙 New balance: {new_bal:,} 🪙*\n"
         f"*🎡 Next spin: tomorrow*",
         parse_mode="Markdown"
     )
@@ -1094,7 +1094,7 @@ async def dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     args = context.args
     if len(args) < 1:
-        await update.message.reply_text('🎲 /dice <amount>\n\nMultipliers: 1(0x) 2(0.25x) 3(0.5x) 4(1.25x) 5(1.5x) 6(2.5x)\n💰 Min: 100 | Max: 20,000')
+        await update.message.reply_text('🎲 /dice <amount>\n\nMultipliers: 1(0x) 2(0.25x) 3(0.5x) 4(1.25x) 5(1.5x) 6(2.5x)\n🪙 Min: 100 | Max: 20,000')
         await close_db(db)
         return
 
@@ -1135,9 +1135,9 @@ async def dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await close_db(db)
 
     if win > 0:
-        await update.message.reply_text(f"🎲 DICE\n\n🎲 Rolled: {roll} {dice_emoji[roll]}\n✨ You won {win:,} 💰 ({multi[roll]}x)\n💰 New balance: {new_bal:,} 💰")
+        await update.message.reply_text(f"🎲 DICE\n\n🎲 Rolled: {roll} {dice_emoji[roll]}\n✨ You won {win:,} 🪙 ({multi[roll]}x)\n🪙 New balance: {new_bal:,} 🪙")
     else:
-        await update.message.reply_text(f"🎲 DICE\n\n🎲 Rolled: {roll} {dice_emoji[roll]}\n💀 You lost {amount:,} 💰\n💰 New balance: {new_bal:,} 💰")
+        await update.message.reply_text(f"🎲 DICE\n\n🎲 Rolled: {roll} {dice_emoji[roll]}\n💀 You lost {amount:,} 🪙\n🪙 New balance: {new_bal:,} 🪙")
 
 # ============ FLIP ==========
 async def flip(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1158,7 +1158,7 @@ async def flip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     args = context.args
     if len(args) < 2:
-        await update.message.reply_text('🪙 /flip heads/tails <amount>\nExample: /flip heads 1000\n\n💰 Min: 100 | Max: 20,000')
+        await update.message.reply_text('🪙 /flip heads/tails <amount>\nExample: /flip heads 1000\n\n🪙 Min: 100 | Max: 20,000')
         await close_db(db)
         return
 
@@ -1201,13 +1201,13 @@ async def flip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 🔥 UPDATE LAST USED TIME
         await db.execute("INSERT INTO user_cooldown (user_id, last_flip) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_flip = $2", user_id, datetime.now())
         await close_db(db)
-        await update.message.reply_text(f"🪙 {result.upper()}! You won {win:,} 💰\n💰 New balance: {new_bal:,} 💰")
+        await update.message.reply_text(f"🪙 {result.upper()}! You won {win:,} 🪙\n🪙 New balance: {new_bal:,} 🪙")
     else:
         new_bal = balance - amount
         await db.execute("UPDATE users SET balance = $1 WHERE user_id = $2", new_bal, user_id)
         await db.execute("INSERT INTO user_cooldown (user_id, last_flip) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_flip = $2", user_id, datetime.now())
         await close_db(db)
-        await update.message.reply_text(f"😞 {result.upper()}! You lost {amount:,} 💰\n💰 New balance: {new_bal:,} 💰")
+        await update.message.reply_text(f"😞 {result.upper()}! You lost {amount:,} 🪙\n🪙 New balance: {new_bal:,} 🪙")
 
 # ============ HELP COMMAND ==========
 # ============ HELP COMMAND ==========
@@ -1228,7 +1228,7 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /rmbio - Remove bio\n"
         "• /setpfp - Set photo (reply to pic)\n"
         "• /rmpfp - Remove photo\n\n"
-        "*💰 EARN CREDITS*\n"
+        "*🪙 EARN CREDITS*\n"
         "• /claim - 500 daily\n"
         "• /spin - 1,000-10,000 daily\n"
         "• /dice <amount> - 0x to 2.5x\n"
@@ -1476,10 +1476,10 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💝 TIP SENT!\n\n"
         f"FROM: {sender_name}\n"
         f"TO: {receiver_name}\n"
-        f"💰 Amount: {amount:,}\n"
+        f"🪙 Amount: {amount:,}\n"
         f"💸 Fee (5%): {fee:,}\n"
         f"📥 Received: {receiver_amount:,}\n\n"
-        f"📊 Your balance: {sender_new_bal:,} 💰"
+        f"📊 Your balance: {sender_new_bal:,} 🪙"
     )
 
     await msg.reply_text(caption)
@@ -1620,8 +1620,8 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
             f"🏦 *MY BANK ACCOUNT*\n\n"
-            f"💰 Bank Balance: *{bank_bal:,}* 💰\n"
-            f"👛 Wallet Balance: *{wallet_bal:,}* 💰\n"
+            f"🪙 Bank Balance: *{bank_bal:,}* 🪙\n"
+            f"👛 Wallet Balance: *{wallet_bal:,}* 🪙\n"
             f"📈 Interest Rate: *5% daily*\n"
             f"⏰ Next interest: *{next_time_str}*\n\n"
             f"━━━━━━━━━━━━━━━━━━━━",
@@ -1679,7 +1679,7 @@ async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     wallet_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     
     if wallet_bal < amount:
-        await update.message.reply_text(f'❌ Insufficient wallet balance!\n\nNeed: {amount:,} 💰\nHave: {wallet_bal:,} 💰')
+        await update.message.reply_text(f'❌ Insufficient wallet balance!\n\nNeed: {amount:,} 🪙\nHave: {wallet_bal:,} 🪙')
         await close_db(db)
         return
     
@@ -1690,7 +1690,7 @@ async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_bank = await db.fetchval("SELECT balance FROM bank WHERE user_id = $1", user_id)
     await close_db(db)
     
-    await update.message.reply_text(f"✅ DEPOSITED!\n\nAmount: +{amount:,} 💰\nWallet: {wallet_bal:,} → {new_wallet:,} 💰\nBank: {new_bank - amount:,} → {new_bank:,} 💰")
+    await update.message.reply_text(f"✅ DEPOSITED!\n\nAmount: +{amount:,} 🪙\nWallet: {wallet_bal:,} → {new_wallet:,} 🪙\nBank: {new_bank - amount:,} → {new_bank:,} 🪙")
 
 async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -1719,7 +1719,7 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bank_bal = await db.fetchval("SELECT balance FROM bank WHERE user_id = $1", user_id)
     
     if bank_bal < amount:
-        await update.message.reply_text(f'❌ Insufficient bank balance!\n\nNeed: {amount:,} 💰\nHave: {bank_bal:,} 💰')
+        await update.message.reply_text(f'❌ Insufficient bank balance!\n\nNeed: {amount:,} 🪙\nHave: {bank_bal:,} 🪙')
         await close_db(db)
         return
     
@@ -1730,7 +1730,7 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_wallet = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     await close_db(db)
     
-    await update.message.reply_text(f"✅ WITHDRAWN!\n\nAmount: -{amount:,} 💰\nBank: {bank_bal:,} → {new_bank:,} 💰\nWallet: {new_wallet - amount:,} → {new_wallet:,} 💰")
+    await update.message.reply_text(f"✅ WITHDRAWN!\n\nAmount: -{amount:,} 🪙\nBank: {bank_bal:,} → {new_bank:,} 🪙\nWallet: {new_wallet - amount:,} → {new_wallet:,} 🪙")
 
 # ============ CLAIM INTEREST (SIMPLE) ==========
 async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1838,10 +1838,10 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ============ RESULT ============
     await update.message.reply_text(
-        f"**💰 INTEREST CLAIMED!**\n\n"
+        f"**🪙 INTEREST CLAIMED!**\n\n"
         f"**Rate: {rate * 100:g}%**\n"
-        f"**Interest: +{interest:,} 💰**\n"
-        f"**New Bank Balance: {new_bank:,} 💰**\n\n"
+        f"**Interest: +{interest:,} 🪙**\n"
+        f"**New Bank Balance: {new_bank:,} 🪙**\n\n"
         f"**⏰ Next interest: 24h**",
         parse_mode="Markdown"
     )
@@ -1861,7 +1861,7 @@ async def lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status_text = "ACTIVE" if lottery_active else "NOT ACTIVE"
     
     msg = f"🎰 LOTTERY SYSTEM\n\n"
-    msg += f"💰 Balance: {balance:,}\n"
+    msg += f"🪙 Balance: {balance:,}\n"
     msg += f"🎫 Your tickets: {len(user_tickets)}\n"
     msg += f"📊 Status: {status_text}\n\n"
     msg += f"🎟️ Ticket price: 20,000 credits\n"
@@ -1940,7 +1940,7 @@ async def buy_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         f"✅ BOUGHT {quantity} TICKETS!\n\n"
-        f"💰 Cost: {cost:,} credits\n"
+        f"🪙 Cost: {cost:,} credits\n"
         f"🎫 Your tickets:\n{ticket_list}\n\n"
         f"📊 Total tickets you have: {user_tickets_count + quantity}/5\n"
         f"📊 Total tickets sold: {total_tickets}\n\n"
@@ -2086,7 +2086,7 @@ async def draw_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
             winner_id,
             f"🎉 YOU WON THE LOTTERY! 🎉\n\n"
             f"🏆 Ticket: {winner_ticket}\n"
-            f"💰 Prize: {prize_pool:,}\n"
+            f"🪙 Prize: {prize_pool:,}\n"
             f"💳 New balance: {current_bal + prize_pool:,}"
         )
     except:
@@ -2096,7 +2096,7 @@ async def draw_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎉 LOTTERY WINNER! 🎉\n\n"
         f"🏆 Winner: {winner_name}\n"
         f"🎫 Ticket: {winner_ticket}\n"
-        f"💰 Prize: {prize_pool:,}\n\n"
+        f"🪙 Prize: {prize_pool:,}\n\n"
         f"💡 /reset_lottery - Start new lottery"
     )
 
@@ -2282,10 +2282,10 @@ async def hilo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🔼 HIGH", callback_data=f"hilo_H_{user_id}"),
          InlineKeyboardButton("🔽 LOW", callback_data=f"hilo_L_{user_id}")],
-        [InlineKeyboardButton("💰 CASHOUT", callback_data=f"hilo_C_{user_id}")]
+        [InlineKeyboardButton("🪙 CASHOUT", callback_data=f"hilo_C_{user_id}")]
     ]
     
-    msg = f"📈 HiLo Game 📉\n\n💰 Bet: {bet:,}\n📈 Multiplier: None\n\n🃏 Your card: {first_card['suit']}{first_card['value']}"
+    msg = f"📈 HiLo Game 📉\n\n🪙 Bet: {bet:,}\n📈 Multiplier: None\n\n🃏 Your card: {first_card['suit']}{first_card['value']}"
     await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def hilo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2317,7 +2317,7 @@ async def hilo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await close_db(db)
         
         log_str = "".join([f"|{c['suit']}{c['value']}" for c in game['logs']])
-        msg = f"📈 HiLo Game 📉\n\n💰 Bet: {game['bet']:,}\n📈 Multiplier: {game['multiplier']:.3f}x\n🎉 You won: {win_amount:,} 💰\n\n📜 Logs: {log_str}|"
+        msg = f"📈 HiLo Game 📉\n\n🪙 Bet: {game['bet']:,}\n📈 Multiplier: {game['multiplier']:.3f}x\n🎉 You won: {win_amount:,} 🪙\n\n📜 Logs: {log_str}|"
         await query.edit_message_text(msg)
         del hilo_games[owner_id]
         return
@@ -2340,18 +2340,18 @@ async def hilo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         win_amount = int(game['bet'] * game['multiplier'])
         log_str = "".join([f"|{c['suit']}{c['value']}" for c in game['logs']])
         
-        msg = f"📈 HiLo Game 📉\n\n💰 Bet: {game['bet']:,}\n📈 Multiplier: {game['multiplier']:.3f}x\n🏆 Winning: {win_amount:,} 💰\n\n✅ Card: {new_card['suit']}{new_card['value']} ({guess} won!)\n🃏 Your card: {game['current_card']['suit']}{game['current_card']['value']}\n\n📜 Logs: {log_str}|"
+        msg = f"📈 HiLo Game 📉\n\n🪙 Bet: {game['bet']:,}\n📈 Multiplier: {game['multiplier']:.3f}x\n🏆 Winning: {win_amount:,} 🪙\n\n✅ Card: {new_card['suit']}{new_card['value']} ({guess} won!)\n🃏 Your card: {game['current_card']['suit']}{game['current_card']['value']}\n\n📜 Logs: {log_str}|"
         
         keyboard = [
             [InlineKeyboardButton("🔼 HIGH", callback_data=f"hilo_H_{owner_id}"),
              InlineKeyboardButton("🔽 LOW", callback_data=f"hilo_L_{owner_id}")],
-            [InlineKeyboardButton("💰 CASHOUT", callback_data=f"hilo_C_{owner_id}")]
+            [InlineKeyboardButton("🪙 CASHOUT", callback_data=f"hilo_C_{owner_id}")]
         ]
         
         await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
     else:
         log_str = "".join([f"|{c['suit']}{c['value']}" for c in game['logs']])
-        msg = f"📈 HiLo Game 📉\n\n💰 Bet: {game['bet']:,}\n📈 Multiplier: 0x\n\n💀 Game Over!\n❌ You bet {guess} on {new_card['suit']}{new_card['value']} and lost!\n\n📜 Logs: {log_str}|"
+        msg = f"📈 HiLo Game 📉\n\n🪙 Bet: {game['bet']:,}\n📈 Multiplier: 0x\n\n💀 Game Over!\n❌ You bet {guess} on {new_card['suit']}{new_card['value']} and lost!\n\n📜 Logs: {log_str}|"
         
         await query.edit_message_text(msg)
         del hilo_games[owner_id]
@@ -2461,11 +2461,11 @@ async def mines(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pos = i * 5 + j
             row.append(InlineKeyboardButton("❓", callback_data=f"mine_{game_id}_{pos}"))
         keyboard.append(row)
-    keyboard.append([InlineKeyboardButton("💰 CASHOUT", callback_data=f"mine_cashout_{game_id}")])
+    keyboard.append([InlineKeyboardButton("🪙 CASHOUT", callback_data=f"mine_cashout_{game_id}")])
     
     await update.message.reply_text(
         f"💣 MINES\n\n"
-        f"💰 Bet: {bet:,}\n"
+        f"🪙 Bet: {bet:,}\n"
         f"📈 Multiplier: 1.00x\n"
         f"💎 Cashout: {bet:,}\n\n"
         f"Click tiles to reveal safe spots. Don't hit a bomb!",
@@ -2516,8 +2516,8 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await close_db(db)
 
         await query.edit_message_text(
-            f"💰 CASHOUT SUCCESSFUL!\n\n"
-            f"💰 Bet: {game['bet']:,}\n"
+            f"🪙 CASHOUT SUCCESSFUL!\n\n"
+            f"🪙 Bet: {game['bet']:,}\n"
             f"📈 Multiplier: {multiplier:.2f}x\n"
             f"💎 Won: {win_amount:,}\n"
             f"💳 New balance: {new_balance:,}"
@@ -2570,7 +2570,7 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.edit_message_text(
             f"💣 BOOM! GAME OVER!\n\n"
-            f"💰 Bet: {game['bet']:,}\n"
+            f"🪙 Bet: {game['bet']:,}\n"
             f"💣 You hit a bomb!\n\n"
             f"Use /mines to play again!",
             reply_markup=InlineKeyboardMarkup(keyboard)
@@ -2600,7 +2600,7 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 row.append(InlineKeyboardButton("❓", callback_data=f"mine_{game_id}_{pos}"))
         keyboard.append(row)
-    keyboard.append([InlineKeyboardButton("💰 CASHOUT", callback_data=f"mine_cashout_{game_id}")])
+    keyboard.append([InlineKeyboardButton("🪙 CASHOUT", callback_data=f"mine_cashout_{game_id}")])
 
     total_safe = 25 - game['bomb_count']
 
@@ -2626,7 +2626,7 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.edit_message_text(
             f"🎉 PERFECT WIN! 🎉\n\n"
-            f"💰 Bet: {game['bet']:,}\n"
+            f"🪙 Bet: {game['bet']:,}\n"
             f"📈 Multiplier: {multiplier:.2f}x\n"
             f"💎 Won: {cashout:,}\n\n"
             f"All safe tiles revealed!",
@@ -2638,7 +2638,7 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text(
         f"💣 MINES\n\n"
-        f"💰 Bet: {game['bet']:,}\n"
+        f"🪙 Bet: {game['bet']:,}\n"
         f"📈 Multiplier: {multiplier:.2f}x\n"
         f"💎 Cashout: {cashout:,}\n\n"
         f"✅ Safe tiles: {safe_count}/{total_safe}\n"
@@ -2817,7 +2817,7 @@ async def clcricket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game_id = cricket_next_id
     cricket_next_id += 1
     cricket_lobby[game_id] = {"creator_id": user_id, "creator_name": user_name, "bet": bet, "chat_id": chat_id}
-    bet_text = f"💰 Bet: {bet} | Prize: {bet*2}" if bet > 0 else "🎮 Normal Game"
+    bet_text = f"🪙 Bet: {bet} | Prize: {bet*2}" if bet > 0 else "🎮 Normal Game"
 
     await update.message.reply_text(
         f"*🏏 CRICKET GAME*\n\n"
@@ -2850,7 +2850,7 @@ async def cricket_mode_callback(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     lobby["mode"] = mode
-    bet_text = f"💰 Bet: {lobby['bet']} | Prize: {lobby['bet']*2}" if lobby['bet'] > 0 else "🎮 Normal Game"
+    bet_text = f"🪙 Bet: {lobby['bet']} | Prize: {lobby['bet']*2}" if lobby['bet'] > 0 else "🎮 Normal Game"
 
     await query.edit_message_text(
         f"*🏏 CRICKET GAME*\n\n"
@@ -2916,7 +2916,7 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
     await query.edit_message_text(
         f"*🏏 CRICKET GAME*\n\n"
         f"*{creator_name}* vs *{user_name}*\n"
-        + (f"💰 Bet: {bet} | Prize: {bet*2}\n" if bet > 0 else "")
+        + (f"🪙 Bet: {bet} | Prize: {bet*2}\n" if bet > 0 else "")
         + f"\n*🪙 TOSS TIME!*\n\n"
         f"*{creator_name}, choose:*",
         reply_markup=InlineKeyboardMarkup([
@@ -3209,7 +3209,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         summary += f"*🏆 {winner_name} won by {abs(margin)} runs!*\n"
 
         if game.bet > 0:
-            summary += f"*💰 Prize: {game.bet * 2:,}*"
+            summary += f"*🪙 Prize: {game.bet * 2:,}*"
 
         await query.edit_message_text(summary, parse_mode="Markdown")
         del cricket_games[game_id]
@@ -3255,7 +3255,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             summary += f"*🏆 {winner_name} won by {runs_left} runs!*\n"
 
         if game.bet > 0:
-            summary += f"*💰 Prize: {game.bet * 2:,}*"
+            summary += f"*🪙 Prize: {game.bet * 2:,}*"
 
         await query.edit_message_text(summary, parse_mode="Markdown")
         del cricket_games[game_id]
@@ -3667,7 +3667,7 @@ async def ttt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ttt_next_id += 1
     
     ttt_lobby[game_id] = {"creator_id": user_id, "creator_name": user_name, "bet": bet, "chat_id": chat_id}
-    bet_text = f"💰 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Normal Game"
+    bet_text = f"🪙 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Normal Game"
     await update.message.reply_text(
         f"🎯 TIC TAC TOE\n\n👑 {user_name} (❌)\n{bet_text}\n\n⚡ Waiting for opponent...",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔵 JOIN", callback_data=f"ttt_join_{game_id}")]])
@@ -3713,7 +3713,7 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ttt_games[game_id] = game
         del ttt_lobby[game_id]
         
-        bet_text = f"💰 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Normal Game"
+        bet_text = f"🪙 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Normal Game"
         await query.edit_message_text(f"🎯 TIC TAC TOE\n❌ {creator_name} vs ⭕ {user_name}\n{bet_text}\n🎯 {creator_name}'s Turn", reply_markup=game.get_keyboard())
         return
     
@@ -3747,7 +3747,7 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 new_bal = current_bal + (game.bet * 2)
                 await db.execute("UPDATE users SET balance = $1 WHERE user_id = $2", new_bal, winner_id)
                 await close_db(db)
-                result_text = f"🏆 WINNER: {winner_name.upper()} 🏆\n💰 +{game.bet*2:,} credits"
+                result_text = f"🏆 WINNER: {winner_name.upper()} 🏆\n🪙 +{game.bet*2:,} credits"
             else:
                 result_text = f"🏆 WINNER: {winner_name.upper()} 🏆"
             
@@ -3769,7 +3769,7 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             turn_name = game.player1_name if game.current_turn == game.player1_id else game.player2_name
             turn_symbol = "❌" if game.current_turn == game.player1_id else "⭕"
-            bet_text = f"💰 Bet: {game.bet:,} | Prize: {game.bet*2:,}" if game.bet > 0 else "🎮 Normal Game"
+            bet_text = f"🪙 Bet: {game.bet:,} | Prize: {game.bet*2:,}" if game.bet > 0 else "🎮 Normal Game"
             await query.edit_message_text(f"🎯 TIC TAC TOE\n❌ {game.player1_name} vs ⭕ {game.player2_name}\n{bet_text}\n🎯 {turn_name}'s Turn ({turn_symbol})", reply_markup=game.get_keyboard())
 
 # ============ RPS GAME ==========
@@ -3839,7 +3839,7 @@ async def rps(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game_id = rps_next_id
     rps_next_id += 1
     rps_lobby[game_id] = {"creator_id": user_id, "creator_name": user_name, "bet": bet, "chat_id": chat_id}
-    bet_text = f"💰 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Free Play"
+    bet_text = f"🪙 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Free Play"
     await update.message.reply_text(f"✊ ROCK PAPER SCISSORS\n\n👑 Host: {user_name}\n{bet_text}\n\n⚡ Waiting for opponent...", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔵 JOIN", callback_data=f"rps_join_{game_id}")]]))
 
 async def rps_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3882,7 +3882,7 @@ async def rps_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("📄 PAPER", callback_data=f"rps_move_{game_id}_paper")],
             [InlineKeyboardButton("✂️ SCISSORS", callback_data=f"rps_move_{game_id}_scissors")]
         ]
-        bet_text = f"💰 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Free Play"
+        bet_text = f"🪙 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Free Play"
         await query.edit_message_text(f"✊ RPS\n\n{creator_name} vs {user_name}\n{bet_text}\n🎯 {creator_name}'s turn!", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def rps_move_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3908,7 +3908,7 @@ async def rps_move_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("📄 PAPER", callback_data=f"rps_move_{game_id}_paper")],
             [InlineKeyboardButton("✂️ SCISSORS", callback_data=f"rps_move_{game_id}_scissors")]
         ]
-        bet_text = f"💰 Bet: {game.bet:,} | Prize: {game.bet*2:,}" if game.bet > 0 else "🎮 Free Play"
+        bet_text = f"🪙 Bet: {game.bet:,} | Prize: {game.bet*2:,}" if game.bet > 0 else "🎮 Free Play"
         await query.edit_message_text(f"✊ RPS\n\n{game.player1_name} vs {game.player2_name}\n{bet_text}\n✅ {game.player1_name} chose!\n🎯 {game.player2_name}'s turn!", reply_markup=InlineKeyboardMarkup(keyboard))
     else:
         game.player2_choice = choice
@@ -3921,13 +3921,13 @@ async def rps_move_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", game.bet*2, winner)
             await close_db(db)
             winner_name = game.player1_name if winner == game.player1_id else game.player2_name
-            result_text += f"\n\n💰 Prize: {game.bet*2:,} credits\n🏆 {winner_name} +{game.bet*2:,}"
+            result_text += f"\n\n🪙 Prize: {game.bet*2:,} credits\n🏆 {winner_name} +{game.bet*2:,}"
         elif game.bet > 0 and winner == "draw":
             db = await get_db()
             await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", game.bet, game.player1_id)
             await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", game.bet, game.player2_id)
             await close_db(db)
-            result_text += f"\n\n💰 Money returned: {game.bet:,} each"
+            result_text += f"\n\n🪙 Money returned: {game.bet:,} each"
         await query.edit_message_text(f"✊ RPS\n\n{result_text}")
         del rps_games[game_id]
 
@@ -4172,7 +4172,7 @@ async def deletematch(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🗑️ *MATCH DELETED + REFUNDED!*\n\n"
             f"🏏 {match['team1']} vs {match['team2']}\n"
             f"👥 Refunded: {refund_count} users\n"
-            f"💰 Total refund: {refund_total:,} credits",
+            f"🪙 Total refund: {refund_total:,} credits",
             parse_mode="Markdown"
         )
 
@@ -4290,7 +4290,7 @@ async def lockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🔒 *MATCH LOCKED!*\n\n"
             f"🏏 {match['team1']} vs {match['team2']}\n"
             f"📊 Bets: {count}\n"
-            f"💰 Pool: {total:,} 💰\n"
+            f"🪙 Pool: {total:,} 🪙\n"
             f"❌ No more bets accepted!",
             parse_mode="Markdown"
         )
@@ -4397,7 +4397,7 @@ async def unlockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🔓 MATCH UNLOCKED!\n\n"
             f"🏏 {match['team1']} vs {match['team2']}\n"
             f"📊 Current Bets: {count}\n"
-            f"💰 Current Pool: {total:,} 💰\n"
+            f"🪙 Current Pool: {total:,} 🪙\n"
             f"✅ New bets are now accepted again!"
         )
 
@@ -4695,7 +4695,7 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🏆 *WINNER:* {winner.upper()}\n\n"
             f"✅ *WINNERS (+10 pts):* {winners_count} users\n"
             f"❌ *LOSERS (-5 pts):* {losers_count} users\n\n"
-            f"💰 *TOTAL PAYOUT:* {total_paid:,} 💰",
+            f"🪙 *TOTAL PAYOUT:* {total_paid:,} 🪙",
             parse_mode="Markdown"
         )
 
@@ -4739,7 +4739,7 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         f"✅ ADDED {amount:,} to {old['name']}\n"
-        f"💰 Balance: {old['balance']:,} → {new_bal:,} 💰"
+        f"🪙 Balance: {old['balance']:,} → {new_bal:,} 🪙"
     )
 
 # ============ REMOVE FROM WALLET ONLY ==========
@@ -4784,7 +4784,7 @@ async def removew(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         f"❌ REMOVED {amount:,} from {target.first_name}'s WALLET\n\n"
-        f"💰 Wallet: {wallet_bal:,} → {new_wallet:,}"
+        f"🪙 Wallet: {wallet_bal:,} → {new_wallet:,}"
     )
 
 
@@ -4948,7 +4948,7 @@ async def createcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     expires_at = now + timedelta(hours=24)
     await db.execute("INSERT INTO claim_codes (code, amount, max_claims, created_by, created_at, expires_at) VALUES ($1, $2, 5, $3, $4, $5)", code, amount, update.effective_user.id, now.isoformat(), expires_at.isoformat())
     await close_db(db)
-    await update.message.reply_text(f"✅ CODE CREATED!\n\n🔑 Code: {code}\n💰 Amount: {amount:,} credits\n👥 Max claims: 5 users\n⏰ Expires: 24 hours\n\nClaim: /claimcode {code}")
+    await update.message.reply_text(f"✅ CODE CREATED!\n\n🔑 Code: {code}\n🪙 Amount: {amount:,} credits\n👥 Max claims: 5 users\n⏰ Expires: 24 hours\n\nClaim: /claimcode {code}")
 
 async def claimcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -4986,7 +4986,7 @@ async def claimcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     remaining = result['max_claims'] - (result['claimed_count'] + 1)
     await close_db(db)
-    await update.message.reply_text(f"🎉 CODE CLAIMED!\n\n🔑 Code: {code}\n💰 +{result['amount']:,} credits\n💳 New balance: {new_bal:,}\n📊 Remaining: {remaining}/{result['max_claims']}")
+    await update.message.reply_text(f"🎉 CODE CLAIMED!\n\n🔑 Code: {code}\n🪙 +{result['amount']:,} credits\n💳 New balance: {new_bal:,}\n📊 Remaining: {remaining}/{result['max_claims']}")
 
 # ============ ACTIVECODES ==========
 # ============ ACTIVECODES ==========
@@ -5022,7 +5022,7 @@ async def activecodes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for code in codes:
         remaining = code['max_claims'] - code['claimed_count']
         msg += f"🔑 Code: `{code['code']}`\n"
-        msg += f"💰 Amount: {code['amount']:,} credits\n"
+        msg += f"🪙 Amount: {code['amount']:,} credits\n"
         msg += f"👥 Remaining: {remaining}/{code['max_claims']} claims\n"
         msg += f"💡 /claimcode {code['code']}\n\n"
     
@@ -5385,13 +5385,13 @@ async def matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += f"*🔥 {m['team1']} vs {m['team2']}*\n"
         msg += f"*📅 {m['date']} | {status}*\n"
         if m['locked'] == 0:
-            msg += f"*💰 /bet {m['team1']} <amount> | /bet {m['team2']} <amount>*\n"
+            msg += f"*🪙 /bet {m['team1']} <amount> | /bet {m['team2']} <amount>*\n"
         else:
             msg += f"*⚠️ Betting closed!*\n"
         msg += "\n"
 
     user = await get_user(user_id)
-    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n*💰 Your balance: {user['balance']:,} 💰*"
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n*🪙 Your balance: {user['balance']:,} 🪙*"
     
     await update.message.reply_text(msg, parse_mode="Markdown")
     await close_db(db)
@@ -5423,7 +5423,7 @@ async def mybets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i, bet in enumerate(bets_data, 1):
         status = "🔒 LOCKED" if bet['locked'] == 1 else "🔓 OPEN"
         msg += f"{i}️⃣ {bet['team1']} vs {bet['team2']}\n"
-        msg += f"   🎯 {bet['team']} | 💰 {bet['amount']:,}\n"
+        msg += f"   🎯 {bet['team']} | 🪙 {bet['amount']:,}\n"
         msg += f"   📅 {bet['date']} | {status}\n\n"
     
     msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -5444,7 +5444,7 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             '❌ Usage: /bet TEAM AMOUNT\n'
             'Example: /bet Sri Lanka 1000\n\n'
-            '💰 Min: 100 | Max: 35,000'
+            '🪙 Min: 100 | Max: 35,000'
         )
         return
 
@@ -5555,10 +5555,10 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ *BET PLACED\\! \\(PENDING\\)*\n\n"
         f"🏏 *{team1_escaped}* vs *{team2_escaped}*\n"
         f"🎯 *{bet_team_escaped}*\n"
-        f"💰 *{amount:,}* 💰\n\n"
+        f"🪙 *{amount:,}* 🪙\n\n"
         f"📊 Status: ⏳ *PENDING*\n"
         f"💡 Result will be announced after match ends\\!\n\n"
-        f"📊 Current balance: *{new_bal:,}* 💰",
+        f"📊 Current balance: *{new_bal:,}* 🪙",
         parse_mode="MarkdownV2"
     )
 
@@ -5602,7 +5602,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     await close_db(db)
     
-    await update.message.reply_text(f"✅ BET CANCELLED!\n\n🏏 {bet_to_cancel['team1']} vs {bet_to_cancel['team2']}\n💰 Refund: {bet_to_cancel['amount']:,} 💰\n📊 New balance: {new_bal:,} 💰")
+    await update.message.reply_text(f"✅ BET CANCELLED!\n\n🏏 {bet_to_cancel['team1']} vs {bet_to_cancel['team2']}\n🪙 Refund: {bet_to_cancel['amount']:,} 🪙\n📊 New balance: {new_bal:,} 🪙")
 
 # ============ ALLBETS WITH BUTTONS ============
 async def allbets(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5639,11 +5639,11 @@ async def allbets(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         status = "🔓 OPEN" if m['locked'] == 0 else "🔒 LOCKED"
         summary_msg += f"{i}️⃣ {m['team1']} vs {m['team2']} [{status}]\n"
-        summary_msg += f"💰 {m['team1']}: {team1_total:,} | {m['team2']}: {team2_total:,}\n"
+        summary_msg += f"🪙 {m['team1']}: {team1_total:,} | {m['team2']}: {team2_total:,}\n"
         summary_msg += f"👥 Users: {unique_users} | Pool: {team1_total + team2_total:,}\n\n"
     
     summary_msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
-    summary_msg += f"💰 Total Pool: {total_pool:,}\n"
+    summary_msg += f"🪙 Total Pool: {total_pool:,}\n"
     summary_msg += f"👥 Total Bets: {len(total_users)} users"
     
     # 🔥 BUTTONS - SIRF MATCHES KE (NO BACK TO SUMMARY)
@@ -5704,19 +5704,19 @@ async def allbets_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = f"📊 MATCH DETAILS\n\n"
         msg += f"🏏 {match['team1']} vs {match['team2']} [{status}]\n\n"
         
-        msg += f"🎯 {match['team1']} (Total: {team1_amount:,} 💰):\n"
+        msg += f"🎯 {match['team1']} (Total: {team1_amount:,} 🪙):\n"
         if team1_users:
             msg += "\n".join(team1_users) + "\n"
         else:
             msg += "   No bets\n"
         
-        msg += f"\n🎯 {match['team2']} (Total: {team2_amount:,} 💰):\n"
+        msg += f"\n🎯 {match['team2']} (Total: {team2_amount:,} 🪙):\n"
         if team2_users:
             msg += "\n".join(team2_users) + "\n"
         else:
             msg += "   No bets\n"
         
-        msg += f"\n💣 Total Pool: {team1_amount + team2_amount:,} 💰"
+        msg += f"\n💣 Total Pool: {team1_amount + team2_amount:,} 🪙"
         
         # 🔥 NO BACK BUTTON - SIRF MESSAGE
         await query.edit_message_text(msg)
@@ -5808,11 +5808,11 @@ async def rain(update: Update, context: ContextTypes.DEFAULT_TYPE):
                      chat_id, datetime.now())
 
     # Send message and update balances
-    msg = "🌧️💰 THE COIN RAIN HAS FALLEN! 💰🌧️\n\n"
+    msg = "🌧️🪙 THE COIN RAIN HAS FALLEN! 🪙🌧️\n\n"
 
     for i, r in enumerate(results, 1):
         await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", r['coins'], r['user_id'])
-        msg += f"{i}. {r['name']} - 💰 {r['coins']:,} credits\n"
+        msg += f"{i}. {r['name']} - 🪙 {r['coins']:,} credits\n"
 
     await close_db(db)
     await update.message.reply_text(msg)
@@ -5960,7 +5960,7 @@ def get_tower_keyboard(game):
             InlineKeyboardButton("🚪 2", callback_data=f"tower_door_{game.user_id}_1"),
             InlineKeyboardButton("🚪 3", callback_data=f"tower_door_{game.user_id}_2")
         ],
-        [InlineKeyboardButton("💰 CASHOUT", callback_data=f"tower_cashout_{game.user_id}")]
+        [InlineKeyboardButton("🪙 CASHOUT", callback_data=f"tower_cashout_{game.user_id}")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -5984,7 +5984,7 @@ async def tower(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "⚡ Max bet: 7,000\n"
             "🎯 Climb 6 floors to win 5x!\n"
             "💀 One wrong door = lose all!\n"
-            "💰 Cashout anytime!",
+            "🪙 Cashout anytime!",
             parse_mode="Markdown"
         )
         return
@@ -6030,7 +6030,7 @@ async def tower(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         f"🏰 **TOWER CLIMB**\n\n"
-        f"💰 Bet: {bet:,} coins\n"
+        f"🪙 Bet: {bet:,} coins\n"
         f"📊 {floor_display}\n"
         f"💎 Win: {game.win_amount:,} coins\n\n"
         f"Choose a door:",
@@ -6084,7 +6084,7 @@ async def tower_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await close_db(db)
                 
                 await query.edit_message_text(
-                    f"💰 **CASHOUT!**\n\n"
+                    f"🪙 **CASHOUT!**\n\n"
                     f"🛗 Climbed {game.current_floor}/6 floors\n"
                     f"📈 Multiplier: {game.multiplier}x\n"
                     f"💎 You won: {win_amount:,} coins\n"
@@ -6138,7 +6138,7 @@ async def tower_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.edit_message_text(
                     f"🏰 **TOWER CLIMB**\n\n"
                     f"✅ **SAFE!** Floor {game.current_floor}/{len(FLOORS)} cleared!\n\n"
-                    f"💰 Bet: {game.bet:,} coins\n"
+                    f"🪙 Bet: {game.bet:,} coins\n"
                     f"📊 {floor_display}\n"
                     f"💎 Win: {game.win_amount:,} coins\n\n"
                     f"Choose a door:",
@@ -6182,7 +6182,7 @@ async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = user.first_name if user.first_name else (user.username or "User")
     
     await update.message.reply_text(
-        f"💰 **BALANCE**\n\n"
+        f"🪙 **BALANCE**\n\n"
         f"👤 {name}\n"
         f"💳 Wallet: **{balance:,}** credits\n\n"
         f"💡 Use /bank to check bank balance",
@@ -6422,7 +6422,7 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"*✅ PLAYER ADDED!*\n\n"
         f"*🏏 Name:* {name}\n"
-        f"*💰 Base Price:* {base_price:,}\n"
+        f"*🪙 Base Price:* {base_price:,}\n"
         f"*🆔 ID:* {player_id}\n"
         f"*⏰ Time:* TBD\n\n"
         f"*💡 Use /players to see player*\n"
@@ -6502,7 +6502,7 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🏏 *PLAYER #{p['id']}*\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"👤 *Name:* {p['name']}\n"
-            f"💰 *Base Price:* {p['base_price']:,}\n"
+            f"🪙 *Base Price:* {p['base_price']:,}\n"
             f"🔥 *Current Bid:* {p['current_bid']:,}\n"
             f"👑 *Highest Bidder:* {bidder_name}\n"
             f"{time_left}\n"
@@ -6836,7 +6836,7 @@ async def auction_auto_lock(app):
                             f"🔔 *AUCTION ENDED!*\n\n"
                             f"🏏 *Player:* {player_name}\n"
                             f"🆔 *ID:* `{player_id}`\n"
-                            f"💰 *Final Bid:* {current_bid:,}\n"
+                            f"🪙 *Final Bid:* {current_bid:,}\n"
                             f"👤 *Highest Bidder:* {winner_name}\n\n"
                             f"💡 Use `/result_auction {player_id}` to declare winner",
                             parse_mode="Markdown"
@@ -7070,7 +7070,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 refund_to,
                 f"⚠️ *YOU'VE BEEN OUTBID!*\n\n"
                 f"🏏 *Player:* {player['name']}\n"
-                f"💰 *Your Bid:* {previous_bid:,}\n"
+                f"🪙 *Your Bid:* {previous_bid:,}\n"
                 f"🔥 *New Bid:* {amount:,}\n\n"
                 f"✅ *Refunded:* {previous_bid:,} credits\n\n"
                 f"💡 Bid again to reclaim!\n"
@@ -7084,7 +7084,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     caption = (
         f"✅ *BID PLACED!*\n\n"
         f"🏏 *Player:* {player['name']}\n"
-        f"💰 *Your Bid:* {amount:,}\n"
+        f"🪙 *Your Bid:* {amount:,}\n"
         f"👤 *Current Highest:* You\n"
         f"⏰ *Time left:* {remaining_time}\n\n"
         f"💳 *Your balance:* {new_balance:,}"
@@ -7172,7 +7172,7 @@ async def result_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             winner_id,
             f"🎉 *CONGRATULATIONS!*\n\n"
             f"🏏 You won *{player['name']}*!\n"
-            f"💰 Winning Bid: *{winning_bid:,}*\n\n"
+            f"🪙 Winning Bid: *{winning_bid:,}*\n\n"
             f"💡 Check your team with /myteam",
             parse_mode="Markdown"
         )
@@ -7184,7 +7184,7 @@ async def result_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🏆 *AUCTION RESULT!*\n\n"
         f"🏏 *Player:* {player['name']}\n"
         f"👤 *Winner:* {winner_name} 🎉\n"
-        f"💰 *Winning Bid:* {winning_bid:,}\n\n"
+        f"🪙 *Winning Bid:* {winning_bid:,}\n\n"
         f"✅ *Player added to {winner_name}'s team!*",
         parse_mode="Markdown"
     )
@@ -7259,7 +7259,7 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         msg += (
             f"{star}*{i}. {p['name']}*\n"
-            f"   💰 Bought: {p['current_bid']:,}\n"
+            f"   🪙 Bought: {p['current_bid']:,}\n"
             f"   📊 Base: {p['base_price']:,}\n"
             f"   📅 {date_str}\n\n"
         )
@@ -7267,7 +7267,7 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += (
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"🏆 *Total Players:* {count}\n"
-        f"💰 *Total Value:* {total:,}\n"
+        f"🪙 *Total Value:* {total:,}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"💡 `/fav <id>` to set favourite player"
     )
@@ -7375,7 +7375,7 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     medals = ["🥇", "🥈", "🥉"]
     for i, t in enumerate(tops, 1):
         medal = medals[i-1] if i <= 3 else f"{i}."
-        msg += f"*{medal} {t['name']} - {t['count']} players ({t['total']:,} 💰)*\n"
+        msg += f"*{medal} {t['name']} - {t['count']} players ({t['total']:,} 🪙)*\n"
 
     await update.message.reply_text(msg, parse_mode="Markdown")
     await close_db(db)
@@ -7438,8 +7438,8 @@ async def rmplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"*🗑️ PLAYER REMOVED + REFUNDED!*\n\n"
         f"*🏏 Name:* {player['name']}\n"
         f"*🆔 ID:* {player_id}\n\n"
-        f"*💰 Refunded {refund_count} users*\n"
-        f"*💰 Total Refund: {refund_total:,} 💰*\n\n"
+        f"*🪙 Refunded {refund_count} users*\n"
+        f"*🪙 Total Refund: {refund_total:,} 🪙*\n\n"
         f"*✅ Removed from auction, teams, and history!*",
         parse_mode="Markdown"
     )
@@ -7658,7 +7658,7 @@ async def check_penalty():
             """, user_id, penalty, today, new_total)
 
             print(
-                f"💰 DAILY PENALTY | "
+                f"🪙 DAILY PENALTY | "
                 f"User: {user_id} | "
                 f"Penalty: {penalty:,} | "
                 f"Remaining: {new_total:,}"
@@ -7800,7 +7800,7 @@ async def penalty_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     for p in penalties:
         msg += f"👤 {p['name']}\n"
-        msg += f"   💰 -{p['amount']:,} (New Balance: {p['balance_after']:,})\n"
+        msg += f"   🪙 -{p['amount']:,} (New Balance: {p['balance_after']:,})\n"
         msg += f"   📅 {p['penalty_date'].strftime('%d %b %Y')}\n\n"
     
     await update.message.reply_text(msg)
@@ -7933,7 +7933,7 @@ async def penalty_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💸 Penalized: *{penalty_count}*\n"
         f"🪙 Total Coins Removed: *{penalty_total:,}*\n\n"
         f"🔝 Penalty applies to Top *{PENALTY_TOP_PLAYERS}*\n"
-        f"💰 Minimum Wealth: *{MIN_WEALTH_FOR_PENALTY:,}*",
+        f"🪙 Minimum Wealth: *{MIN_WEALTH_FOR_PENALTY:,}*",
         parse_mode="Markdown"
     )
 
@@ -8463,7 +8463,7 @@ async def font_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             profile_text = f"👤 *{profile_label}*\n\n"
             profile_text += f"*{name_label}:* {name_escaped}\n"
             profile_text += f"*{bio_label}:* {bio_text}\n\n"
-            profile_text += f"💰 *{wallet_label}:* {wallet_bal:,}\n"
+            profile_text += f"🪙 *{wallet_label}:* {wallet_bal:,}\n"
             profile_text += f"🏦 *{bank_label}:* {bank_bal:,}\n"
             profile_text += f"💎 *{total_label}:* {total_wealth:,}\n\n"
             profile_text += f"🏆 *{points_label}:* {points}\n"
