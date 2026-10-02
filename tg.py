@@ -743,8 +743,6 @@ def escape_markdown(text):
     special_chars = r'([_*\[\]()~`>#+\-=|{}])'
     return re.sub(special_chars, r'\\\1', text)
 
-# ============ PROFILE ==========
-# ============ PROFILE ============
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
@@ -772,12 +770,11 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     total_wealth = wallet_bal + bank_bal
 
-    if won > total:
-        await db.execute("UPDATE users SET total = $1 WHERE user_id = $2", won, user_id)
-        total = won
+    # 🔥 Just for display, no auto-fix
+    display_total = max(won, total)
 
-    if total > 0:
-        win_rate = int((won / total) * 100)
+    if display_total > 0:
+        win_rate = int((won / display_total) * 100)
         if win_rate > 100:
             win_rate = 100
     else:
@@ -808,7 +805,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     profile_text += f"🏦 *{bank_label}:* {bank_bal:,}\n"
     profile_text += f"💎 *{total_label}:* {total_wealth:,}\n\n"
     profile_text += f"🏆 *{points_label}:* {points}\n"
-    profile_text += f"📊 *{bets_label}:* {won}/{total}\n"
+    profile_text += f"📊 *{bets_label}:* {won}/{display_total}\n"
     profile_text += f"📈 *{winrate_label}:* {win_rate}%"
 
     keyboard = [
@@ -4451,7 +4448,6 @@ async def unlockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         await close_db(db)
 
-# ============ RESULT ==========
 async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Admin only!")
@@ -4491,8 +4487,6 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     team1 = " ".join(args[:vs_index]).strip()
-
-    # Everything after "vs"
     after_vs = " ".join(args[vs_index + 1:]).strip()
 
     if not after_vs:
@@ -4503,7 +4497,7 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         # =====================================================
-        # FIRST: Try to find match by matching TEAM1 exactly
+        # FIND MATCH
         # =====================================================
 
         matches = await db.fetch(
@@ -4519,14 +4513,10 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         winner = None
         team2 = None
 
-        # Check which match has a team2 that appears at the
-        # beginning/end of the remaining text.
         for m in matches:
             db_team2 = m["team2"].strip()
-
             remaining = after_vs.strip()
 
-            # Case-insensitive exact comparison
             if remaining.lower().startswith(db_team2.lower()):
                 possible_winner = remaining[len(db_team2):].strip()
 
@@ -4542,7 +4532,6 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     winner = db_team2
                     break
 
-            # Also handle if winner is written before team2
             if remaining.lower().endswith(db_team2.lower()):
                 possible_winner = remaining[:-len(db_team2)].strip()
 
@@ -4552,12 +4541,7 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     winner = team1
                     break
 
-        # =====================================================
-        # SECOND: Exact team2 search
-        # =====================================================
-
         if not match:
-            # Try every possible split after "vs"
             words = args[vs_index + 1:]
 
             for split in range(1, len(words)):
@@ -4591,10 +4575,6 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         team2 = possible_team2
                         break
 
-        # =====================================================
-        # MATCH NOT FOUND
-        # =====================================================
-
         if not match:
             await update.message.reply_text(
                 f"❌ Match {team1} vs {after_vs} not found!"
@@ -4615,11 +4595,25 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Use actual database team name
         if winner.lower() == match["team1"].lower():
             winner = match["team1"]
         else:
             winner = match["team2"]
+
+        # =====================================================
+        # 🔥 PREVENT DOUBLE RESULT
+        # =====================================================
+
+        result_declared = await db.fetchval(
+            "SELECT id FROM matches WHERE id = $1 AND locked = 1",
+            match["id"]
+        )
+
+        if not result_declared:
+            await update.message.reply_text(
+                "⚠️ Match is not locked yet! Lock it before declaring result."
+            )
+            return
 
         # =====================================================
         # GET ALL BETS
@@ -4637,10 +4631,6 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         winners_count = 0
         losers_count = 0
         total_paid = 0
-
-        # =====================================================
-        # PROCESS BETS
-        # =====================================================
 
         for bet in bets:
             user_id = bet["user_id"]
@@ -4661,7 +4651,6 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # ---------------- WINNING BET ----------------
             if bet_team.strip().lower() == winner.strip().lower():
-
                 win_amount = amount * 2
 
                 new_balance = user["balance"] + win_amount
@@ -4690,7 +4679,6 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # ---------------- LOSING BET ----------------
             else:
-
                 new_total = user["total"] + 1
                 new_points = user["points"] - 5
 
@@ -4709,17 +4697,13 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 losers_count += 1
 
         # =====================================================
-        # DELETE BETS
+        # DELETE BETS + MATCH
         # =====================================================
 
         await db.execute(
             "DELETE FROM bets WHERE match_id = $1",
             match["id"]
         )
-
-        # =====================================================
-        # DELETE COMPLETED MATCH
-        # =====================================================
 
         await db.execute(
             "DELETE FROM matches WHERE id = $1",
@@ -4741,14 +4725,23 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"❌ RESULT ERROR: {e}")
 
-        await update.message.reply_text(
-            "❌ Something went wrong while processing the result."
-        )
+        try:
+            await update.message.reply_text(
+                "❌ Something went wrong while processing the result."
+            )
+        except:
+            pass
 
     finally:
-        await close_db(db)
+        try:
+            await close_db(db)
+        except:
+            pass
+
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         return  # ❌ SIRF CHUP RAHEGA, KUCH NAHI BOLEGA
@@ -5581,6 +5574,12 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id
     )
 
+    # 🔥 INCREMENT TOTAL BETS
+    await db.execute(
+        "UPDATE users SET total = total + 1 WHERE user_id = $1",
+        user_id
+    )
+
     new_bal = await db.fetchval(
         "SELECT balance FROM users WHERE user_id = $1",
         user_id
@@ -5607,43 +5606,55 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 🔥 FIX: CHECK KARO update.message HAI YA NAHI
     if update.message is None:
         return
-    
+
     user_id = update.effective_user.id
     if not await is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    
+
     args = context.args
     if len(args) < 1:
         await update.message.reply_text('❌ /cancel <bet_number>')
         return
-    
+
     try:
         bet_number = int(args[0])
     except:
         await update.message.reply_text('❌ Invalid number')
         return
-    
+
     db = await get_db()
     bets_data = await db.fetch("""
         SELECT b.id, b.amount, m.team1, m.team2, m.locked
         FROM bets b JOIN matches m ON b.match_id = m.id
         WHERE b.user_id = $1 AND m.locked = 0
     """, user_id)
-    
+
     if bet_number < 1 or bet_number > len(bets_data):
         await update.message.reply_text(f'❌ Choose 1-{len(bets_data)}')
         await close_db(db)
         return
-    
+
     bet_to_cancel = bets_data[bet_number - 1]
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", bet_to_cancel['amount'], user_id)
     await db.execute("DELETE FROM bets WHERE id = $1", bet_to_cancel['id'])
-    await db.execute("UPDATE users SET total = total - 1 WHERE user_id = $1", user_id)
+
+    # 🔥 SAFE DECREMENT (total won se kam nahi hoga)
+    await db.execute(
+        "UPDATE users SET total = GREATEST(total - 1, won) WHERE user_id = $1",
+        user_id
+    )
+
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     await close_db(db)
-    
-    await update.message.reply_text(f"✅ BET CANCELLED!\n\n🏏 {bet_to_cancel['team1']} vs {bet_to_cancel['team2']}\n🪙 Refund: {bet_to_cancel['amount']:,} 🪙\n📊 New balance: {new_bal:,} 🪙")
+
+    await update.message.reply_text(
+        f"✅ BET CANCELLED!\n\n"
+        f"🏏 {bet_to_cancel['team1']} vs {bet_to_cancel['team2']}\n"
+        f"🪙 Refund: {bet_to_cancel['amount']:,} 🪙\n"
+        f"📊 New balance: {new_bal:,} 🪙"
+    )
+
 
 # ============ ALLBETS WITH BUTTONS ============
 async def allbets(update: Update, context: ContextTypes.DEFAULT_TYPE):
