@@ -98,6 +98,25 @@ async def init_db():
         )
     ''')
     
+    # 🔥 ROB SYSTEM COLUMNS
+    await db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS rob_count_today INT DEFAULT 0")
+    await db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_rob_reset DATE")
+    await db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS protection_until TIMESTAMP")
+    await db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_robbed_time TIMESTAMP")
+    await db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_rob_attempt TIMESTAMP")
+
+    # 🔥 ROB HISTORY TABLE
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS rob_history (
+            id SERIAL PRIMARY KEY,
+            robber_id BIGINT,
+            target_id BIGINT,
+            amount BIGINT,
+            success BOOLEAN,
+            robbed_at TIMESTAMP
+        )
+    ''')
+
     await db.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id BIGINT PRIMARY KEY,
@@ -9364,6 +9383,536 @@ async def earn_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+# ============ ROB COMMAND ============
+async def rob(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    chat_id = update.message.chat.id
+    chat_type = update.message.chat.type
+
+    # 🔥 ONLY IN CL PLAYZONE GC
+    CL_PLAYZONE_GC_ID = -1003011263365
+
+    if chat_type not in ['group', 'supergroup'] or chat_id != CL_PLAYZONE_GC_ID:
+        await update.message.reply_text(
+            "*🚫 ROB ONLY IN CL PLAYZONE!*\n\n"
+            "*Join here:*",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("👥 JOIN CL PLAYZONE", url="https://t.me/clbotplayzone")]
+            ])
+        )
+        return
+
+    if not await is_registered(user_id):
+        await update.message.reply_text("*❌ Send /start first!*", parse_mode="Markdown")
+        return
+
+    # 🔥 MUST REPLY
+    if not update.message.reply_to_message:
+        await update.message.reply_text(
+            "*❌ Reply to the user you want to rob!*\n\n"
+            "*Example:*\n"
+            "1. Reply to @friend's message\n"
+            "2. Send: `/rob`",
+            parse_mode="Markdown"
+        )
+        return
+
+    target = update.message.reply_to_message.from_user
+
+    if target.id == user_id:
+        await update.message.reply_text("*❌ Cannot rob yourself!*", parse_mode="Markdown")
+        return
+
+    if target.is_bot:
+        await update.message.reply_text("*❌ Cannot rob a bot!*", parse_mode="Markdown")
+        return
+
+    if not await is_registered(target.id):
+        await update.message.reply_text(
+            f"*❌ {target.first_name} hasn't started the bot!*",
+            parse_mode="Markdown"
+        )
+        return
+
+    db = await get_db()
+
+    # ============ CHECK TARGET PROTECTION ============
+    protection = await db.fetchval(
+        "SELECT protection_until FROM users WHERE user_id = $1",
+        target.id
+    )
+
+    now_ist = datetime.now(IST).replace(tzinfo=None)
+
+    if protection:
+        if isinstance(protection, str):
+            protection = datetime.fromisoformat(protection)
+        if protection.tzinfo is not None:
+            protection = protection.replace(tzinfo=None)
+
+        if now_ist < protection:
+            remaining = int((protection - now_ist).total_seconds())
+            hours = remaining // 3600
+            minutes = (remaining % 3600) // 60
+
+            await update.message.reply_text(
+                f"🛡️ *TARGET PROTECTED!*\n\n"
+                f"👤 *Target:* {target.first_name}\n"
+                f"🛡️ *Protection:* Active ({hours}h {minutes}m left)\n\n"
+                f"❌ *Cannot rob them!*",
+                parse_mode="Markdown"
+            )
+            await close_db(db)
+            return
+
+    # ============ CHECK TARGET COOLDOWN (3h) ============
+    last_robbed = await db.fetchval(
+        "SELECT last_robbed_time FROM users WHERE user_id = $1",
+        target.id
+    )
+
+    if last_robbed:
+        if isinstance(last_robbed, str):
+            last_robbed = datetime.fromisoformat(last_robbed)
+        if last_robbed.tzinfo is not None:
+            last_robbed = last_robbed.replace(tzinfo=None)
+
+        diff = (now_ist - last_robbed).total_seconds()
+
+        if diff < 10800:  # 3 hours = 10800 seconds
+            remaining = int(10800 - diff)
+            hours = remaining // 3600
+            minutes = (remaining % 3600) // 60
+
+            await update.message.reply_text(
+                f"⏰ *TARGET ON COOLDOWN!*\n\n"
+                f"👤 *Target:* {target.first_name}\n"
+                f"🕐 *Last robbed:* {int(diff // 3600)}h {int((diff % 3600) // 60)}m ago\n"
+                f"⏰ *Wait:* {hours}h {minutes}m\n\n"
+                f"❌ *Cannot rob them!*",
+                parse_mode="Markdown"
+            )
+            await close_db(db)
+            return
+
+    # ============ CHECK ROBBER COOLDOWN (1h) ============
+    last_attempt = await db.fetchval(
+        "SELECT last_rob_attempt FROM users WHERE user_id = $1",
+        user_id
+    )
+
+    if last_attempt:
+        if isinstance(last_attempt, str):
+            last_attempt = datetime.fromisoformat(last_attempt)
+        if last_attempt.tzinfo is not None:
+            last_attempt = last_attempt.replace(tzinfo=None)
+
+        diff = (now_ist - last_attempt).total_seconds()
+
+        if diff < 3600:  # 1 hour = 3600 seconds
+            remaining = int(3600 - diff)
+            minutes = remaining // 60
+
+            await update.message.reply_text(
+                f"⏰ *YOU'RE ON COOLDOWN!*\n\n"
+                f"🕐 *Last rob:* {int(diff // 60)}m ago\n"
+                f"⏰ *Wait:* {minutes}m\n\n"
+                f"💡 Come back later!",
+                parse_mode="Markdown"
+            )
+            await close_db(db)
+            return
+
+    # ============ CHECK DAILY LIMIT (3 robs) ============
+    today = now_ist.date()
+    last_reset = await db.fetchval(
+        "SELECT last_rob_reset FROM users WHERE user_id = $1",
+        user_id
+    )
+
+    rob_count = await db.fetchval(
+        "SELECT rob_count_today FROM users WHERE user_id = $1",
+        user_id
+    ) or 0
+
+    # Reset if new day
+    if last_reset != today:
+        await db.execute(
+            "UPDATE users SET rob_count_today = 0, last_rob_reset = $1 WHERE user_id = $2",
+            today, user_id
+        )
+        rob_count = 0
+
+    if rob_count >= 3:
+        await update.message.reply_text(
+            f"⚠️ *DAILY LIMIT REACHED!*\n\n"
+            f"🎯 *Robs Used:* 3/3\n"
+            f"🕐 *Reset:* 12 AM\n\n"
+            f"💡 Come back tomorrow!",
+            parse_mode="Markdown"
+        )
+        await close_db(db)
+        return
+
+    # ============ CHECK TARGET BALANCE ============
+    target_balance = await db.fetchval(
+        "SELECT balance FROM users WHERE user_id = $1",
+        target.id
+    ) or 0
+
+    if target_balance < 1000:
+        await update.message.reply_text(
+            f"❌ *{target.first_name} has insufficient balance to rob!*",
+            parse_mode="Markdown"
+        )
+        await close_db(db)
+        return
+
+    await close_db(db)
+
+    # ============ CONFIRMATION ============
+    keyboard = [
+        [InlineKeyboardButton("✅ ROB", callback_data=f"rob_confirm_{target.id}"),
+         InlineKeyboardButton("❌ CANCEL", callback_data=f"rob_cancel_{target.id}")]
+    ]
+
+    await update.message.reply_text(
+        f"🎯 *ROB {target.first_name}?*\n\n"
+        f"⚠️ *50% Success / 50% Fail*\n"
+        f"💰 *Success:* Random 1k-10k\n"
+        f"💸 *Fail:* 1,000 fine\n\n"
+        f"🎯 *Daily limit:* 3 robs\n"
+        f"🕐 *Robber cooldown:* 1 hour\n"
+        f"🕐 *Target cooldown:* 3 hours",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+# ============ ROB CALLBACK ============
+async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    try:
+        await query.answer()
+    except:
+        pass
+
+    user_id = update.effective_user.id
+    data = query.data
+
+    if data.startswith("rob_cancel_"):
+        await query.edit_message_text("❌ *Rob cancelled.*", parse_mode="Markdown")
+        return
+
+    if data.startswith("rob_confirm_"):
+        target_id = int(data.split("_")[2])
+
+        db = await get_db()
+
+        # Re-verify all conditions
+        target_balance = await db.fetchval(
+            "SELECT balance FROM users WHERE user_id = $1",
+            target_id
+        ) or 0
+
+        # Target name
+        target_name = await db.fetchval(
+            "SELECT name FROM users WHERE user_id = $1",
+            target_id
+        ) or "User"
+
+        user_balance = await db.fetchval(
+            "SELECT balance FROM users WHERE user_id = $1",
+            user_id
+        ) or 0
+
+        now_ist = datetime.now(IST).replace(tzinfo=None)
+
+        # 🔥 RANDOM 50/50
+        import random
+        success = random.choice([True, False])
+
+        if success:
+            # Success — random 1k-10k
+            amount = random.randint(1000, 10000)
+
+            # Cap to target balance
+            if amount > target_balance:
+                amount = target_balance
+
+            # Transfer
+            await db.execute(
+                "UPDATE users SET balance = balance - $1 WHERE user_id = $2",
+                amount, target_id
+            )
+            await db.execute(
+                "UPDATE users SET balance = balance + $1 WHERE user_id = $2",
+                amount, user_id
+            )
+
+            new_user_bal = user_balance + amount
+
+            # Save history
+            await db.execute(
+                """
+                INSERT INTO rob_history (robber_id, target_id, amount, success, robbed_at)
+                VALUES ($1, $2, $3, $4, $5)
+                """,
+                user_id, target_id, amount, True, now_ist
+            )
+
+            # Update target cooldown + robber stats
+            await db.execute(
+                "UPDATE users SET last_robbed_time = $1 WHERE user_id = $2",
+                now_ist, target_id
+            )
+            await db.execute(
+                """
+                UPDATE users 
+                SET last_rob_attempt = $1,
+                    rob_count_today = rob_count_today + 1,
+                    last_rob_reset = $2
+                WHERE user_id = $3
+                """,
+                now_ist, now_ist.date(), user_id
+            )
+
+            # New rob count
+            new_count = await db.fetchval(
+                "SELECT rob_count_today FROM users WHERE user_id = $1",
+                user_id
+            )
+
+            await close_db(db)
+
+            await query.edit_message_text(
+                f"🎉 *ROB SUCCESSFUL!*\n\n"
+                f"👤 *Target:* {target_name}\n"
+                f"💰 *Stolen:* {amount:,}\n"
+                f"📊 *Your Balance:* {new_user_bal:,}\n\n"
+                f"🎯 *Robs Left:* {3 - new_count}/3\n"
+                f"🕐 *Robber cooldown:* 1 hour\n"
+                f"🕐 *Target cooldown:* 3 hours",
+                parse_mode="Markdown"
+            )
+
+            # Target ko DM
+            try:
+                await context.bot.send_message(
+                    target_id,
+                    f"🚨 *YOU WERE ROBBED!*\n\n"
+                    f"👤 *Robber:* Someone\n"
+                    f"💰 *Lost:* {amount:,}\n\n"
+                    f"💡 Buy /protection next time!",
+                    parse_mode="Markdown"
+                )
+            except:
+                pass
+
+        else:
+            # Fail — 1,000 fine
+            fine = 1000
+
+            # Check if user has enough
+            if user_balance < fine:
+                fine = user_balance
+
+            await db.execute(
+                "UPDATE users SET balance = balance - $1 WHERE user_id = $2",
+                fine, user_id
+            )
+
+            new_user_bal = user_balance - fine
+
+            # Save history
+            await db.execute(
+                """
+                INSERT INTO rob_history (robber_id, target_id, amount, success, robbed_at)
+                VALUES ($1, $2, $3, $4, $5)
+                """,
+                user_id, target_id, fine, False, now_ist
+            )
+
+            # Update robber stats
+            await db.execute(
+                """
+                UPDATE users 
+                SET last_rob_attempt = $1,
+                    rob_count_today = rob_count_today + 1,
+                    last_rob_reset = $2
+                WHERE user_id = $3
+                """,
+                now_ist, now_ist.date(), user_id
+            )
+
+            new_count = await db.fetchval(
+                "SELECT rob_count_today FROM users WHERE user_id = $1",
+                user_id
+            )
+
+            await close_db(db)
+
+            await query.edit_message_text(
+                f"❌ *ROB FAILED!*\n\n"
+                f"👤 *Target:* {target_name}\n"
+                f"💸 *Fine:* {fine:,}\n"
+                f"📊 *Your Balance:* {new_user_bal:,}\n\n"
+                f"🎯 *Robs Left:* {3 - new_count}/3\n"
+                f"🕐 *Robber cooldown:* 1 hour",
+                parse_mode="Markdown"
+            )
+
+        return
+
+# ============ PROTECTION COMMAND ============
+async def protection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    chat_id = update.message.chat.id
+    chat_type = update.message.chat.type
+
+    # 🔥 ONLY IN CL PLAYZONE GC
+    CL_PLAYZONE_GC_ID = -1003011263365
+
+    if chat_type not in ['group', 'supergroup'] or chat_id != CL_PLAYZONE_GC_ID:
+        await update.message.reply_text(
+            "*🚫 PROTECTION ONLY IN CL PLAYZONE!*",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("👥 JOIN CL PLAYZONE", url="https://t.me/clbotplayzone")]
+            ])
+        )
+        return
+
+    if not await is_registered(user_id):
+        await update.message.reply_text("*❌ Send /start first!*", parse_mode="Markdown")
+        return
+
+    db = await get_db()
+
+    # Check existing protection
+    existing = await db.fetchval(
+        "SELECT protection_until FROM users WHERE user_id = $1",
+        user_id
+    )
+
+    now_ist = datetime.now(IST).replace(tzinfo=None)
+
+    if existing:
+        if isinstance(existing, str):
+            existing = datetime.fromisoformat(existing)
+        if existing.tzinfo is not None:
+            existing = existing.replace(tzinfo=None)
+
+        if now_ist < existing:
+            remaining = int((existing - now_ist).total_seconds())
+            hours = remaining // 3600
+            minutes = (remaining % 3600) // 60
+
+            await update.message.reply_text(
+                f"🛡️ *PROTECTION ACTIVE!*\n\n"
+                f"⏰ *Remaining:* {hours}h {minutes}m\n"
+                f"📅 *Expires:* {existing.strftime('%d %b %Y, %I:%M %p')} IST\n\n"
+                f"💡 You're already protected!",
+                parse_mode="Markdown"
+            )
+            await close_db(db)
+            return
+
+    # Check balance
+    balance = await db.fetchval(
+        "SELECT balance FROM users WHERE user_id = $1",
+        user_id
+    ) or 0
+
+    await close_db(db)
+
+    if balance < 5000:
+        await update.message.reply_text(
+            f"❌ *Insufficient balance!*\n\n"
+            f"🪙 *Need:* 5,000\n"
+            f"💳 *Have:* {balance:,}\n\n"
+            f"💡 Earn credits first!",
+            parse_mode="Markdown"
+        )
+        return
+
+    # Confirmation
+    keyboard = [
+        [InlineKeyboardButton("✅ PAY 5,000", callback_data="protect_confirm"),
+         InlineKeyboardButton("❌ CANCEL", callback_data="protect_cancel")]
+    ]
+
+    await update.message.reply_text(
+        f"🛡️ *BUY PROTECTION*\n\n"
+        f"💰 *Price:* 5,000\n"
+        f"⏰ *Duration:* 24 hours\n"
+        f"🛡️ *Protects from rob attempts*\n\n"
+        f"⚠️ *Cannot be robbed for 24h!*",
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+# ============ PROTECTION CALLBACK ============
+async def protection_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    try:
+        await query.answer()
+    except:
+        pass
+
+    user_id = update.effective_user.id
+    data = query.data
+
+    if data == "protect_cancel":
+        await query.edit_message_text("❌ *Cancelled.*", parse_mode="Markdown")
+        return
+
+    if data == "protect_confirm":
+        db = await get_db()
+
+        balance = await db.fetchval(
+            "SELECT balance FROM users WHERE user_id = $1",
+            user_id
+        ) or 0
+
+        if balance < 5000:
+            await query.edit_message_text(
+                f"❌ *Insufficient balance!*\n\n"
+                f"💳 *Have:* {balance:,}",
+                parse_mode="Markdown"
+            )
+            await close_db(db)
+            return
+
+        now_ist = datetime.now(IST).replace(tzinfo=None)
+        protection_until = now_ist + timedelta(hours=24)
+
+        await db.execute(
+            "UPDATE users SET balance = balance - 5000 WHERE user_id = $1",
+            user_id
+        )
+
+        await db.execute(
+            "UPDATE users SET protection_until = $1 WHERE user_id = $2",
+            protection_until, user_id
+        )
+
+        new_bal = balance - 5000
+
+        await close_db(db)
+
+        await query.edit_message_text(
+            f"✅ *PROTECTION ACTIVATED!*\n\n"
+            f"🛡️ *Protection:* 24 hours\n"
+            f"📅 *Expires:* {protection_until.strftime('%d %b %Y, %I:%M %p')} IST\n"
+            f"💰 *Paid:* 5,000\n"
+            f"📊 *Balance:* {new_bal:,}\n\n"
+            f"💡 *No one can rob you for 24 hours!*",
+            parse_mode="Markdown"
+        )
+        return
+
+
 
 # ============ GLOBAL ERROR HANDLER ============
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -9450,6 +9999,10 @@ async def main():
     app.add_handler(CallbackQueryHandler(sell_callback, pattern="^sell_"))
     app.add_handler(CommandHandler("gift", gift))
     app.add_handler(CallbackQueryHandler(gift_callback, pattern="^gift_"))
+    app.add_handler(CommandHandler("rob", rob))
+    app.add_handler(CallbackQueryHandler(rob_callback, pattern="^rob_"))
+    app.add_handler(CommandHandler("protection", protection))
+    app.add_handler(CallbackQueryHandler(protection_callback, pattern="^protect_"))
 
     # ============ LOGIN / PENALTY ==========
     app.add_handler(CommandHandler("login", login))
