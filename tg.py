@@ -9092,7 +9092,7 @@ async def earn_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     data = query.data
 
-    # 🔥 OPEN EARN MENU FROM BUTTON
+    # 🔥 OPEN EARN MENU
     if data == "earn_open":
         db = await get_db()
         balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
@@ -9165,9 +9165,12 @@ async def earn_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Tower
+    # 🏰 TOWER
     if data == "earn_tower":
-        await query.message.reply_text(
+        keyboard = [
+            [InlineKeyboardButton("◀️ Back to Menu", callback_data="earn_open")]
+        ]
+        await query.edit_message_text(
             "🏰 *TOWER CLIMB*\n\n"
             "Climb 6 floors — Win 5x!\n"
             "💀 One wrong door = lose all\n"
@@ -9176,13 +9179,17 @@ async def earn_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "`/tower <amount>`\n\n"
             "💰 Min: 100 | Max: 7,000\n\n"
             "💡 Example: `/tower 500`",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
 
-    # HiLo
+    # 🃏 HILO
     if data == "earn_hilo":
-        await query.message.reply_text(
+        keyboard = [
+            [InlineKeyboardButton("◀️ Back to Menu", callback_data="earn_open")]
+        ]
+        await query.edit_message_text(
             "🃏 *HILO CARD GAME*\n\n"
             "Guess higher or lower card!\n"
             "💰 Cashout anytime\n"
@@ -9191,13 +9198,17 @@ async def earn_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "`/hilo <amount>`\n\n"
             "💰 Min: 100 | Max: 10,000\n\n"
             "💡 Example: `/hilo 1000`",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
 
-    # Mines
+    # 💣 MINES
     if data == "earn_mines":
-        await query.message.reply_text(
+        keyboard = [
+            [InlineKeyboardButton("◀️ Back to Menu", callback_data="earn_open")]
+        ]
+        await query.edit_message_text(
             "💣 *MINES GAME*\n\n"
             "Reveal safe tiles, avoid bombs!\n"
             "💰 Cashout anytime\n"
@@ -9207,13 +9218,17 @@ async def earn_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "💰 Min: 100 | Max: 10,000\n"
             "💣 Bombs: 1-24\n\n"
             "💡 Example: `/mines 1000 3`",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
 
-    # Dice
+    # 🎲 DICE
     if data == "earn_dice":
-        await query.message.reply_text(
+        keyboard = [
+            [InlineKeyboardButton("◀️ Back to Menu", callback_data="earn_open")]
+        ]
+        await query.edit_message_text(
             "🎲 *DICE GAME*\n\n"
             "Roll 1-6 — Win up to 2.5x!\n\n"
             "📊 *Multipliers:*\n"
@@ -9227,26 +9242,34 @@ async def earn_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "`/dice <amount>`\n\n"
             "💰 Min: 100 | Max: 20,000\n\n"
             "💡 Example: `/dice 1000`",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
 
-    # Flip
+    # 🪙 FLIP
     if data == "earn_flip":
-        await query.message.reply_text(
+        keyboard = [
+            [InlineKeyboardButton("◀️ Back to Menu", callback_data="earn_open")]
+        ]
+        await query.edit_message_text(
             "🪙 *COIN FLIP*\n\n"
             "Heads or Tails — 2x win!\n\n"
             "🎮 *How to play:*\n"
             "`/flip <heads/tails> <amount>`\n\n"
             "💰 Min: 100 | Max: 20,000\n\n"
             "💡 Example: `/flip heads 1000`",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
 
-    # TTT
+    # ⭕ TTT
     if data == "earn_ttt":
-        await query.message.reply_text(
+        keyboard = [
+            [InlineKeyboardButton("◀️ Back to Menu", callback_data="earn_open")]
+        ]
+        await query.edit_message_text(
             "⭕ *TIC TAC TOE*\n\n"
             "1v1 — Winner takes all!\n"
             "🎯 3 in a row to win\n\n"
@@ -9254,26 +9277,34 @@ async def earn_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "`/ttt <amount>`\n\n"
             "💰 Min: 100 | Any amount\n\n"
             "💡 Example: `/ttt 5000`",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
 
-    # RPS
+    # ✊ RPS
     if data == "earn_rps":
-        await query.message.reply_text(
+        keyboard = [
+            [InlineKeyboardButton("◀️ Back to Menu", callback_data="earn_open")]
+        ]
+        await query.edit_message_text(
             "✊ *ROCK PAPER SCISSORS*\n\n"
             "1v1 — 2x win!\n\n"
             "🎮 *How to play:*\n"
             "`/rps <amount>`\n\n"
             "💰 Min: 100 | Any amount\n\n"
             "💡 Example: `/rps 5000`",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
 
-    # Cricket
+    # 🏏 CRICKET
     if data == "earn_cricket":
-        await query.message.reply_text(
+        keyboard = [
+            [InlineKeyboardButton("◀️ Back to Menu", callback_data="earn_open")]
+        ]
+        await query.edit_message_text(
             "🏏 *CRICKET GAME*\n\n"
             "1v1 — Strategy + Luck!\n"
             "🎯 Choose modes, bat, bowl\n"
@@ -9282,13 +9313,17 @@ async def earn_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "`/CLcricket <amount>`\n\n"
             "💰 Min: 100 | Any amount\n\n"
             "💡 Example: `/CLcricket 1000`",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
 
-    # Daily
+    # 🎁 DAILY
     if data == "earn_daily":
-        await query.message.reply_text(
+        keyboard = [
+            [InlineKeyboardButton("◀️ Back to Menu", callback_data="earn_open")]
+        ]
+        await query.edit_message_text(
             "🎁 *FREE DAILY REWARDS*\n\n"
             "━━━━━━━━━━━━━━━━━━━━\n\n"
 
@@ -9304,21 +9339,28 @@ async def earn_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             "━━━━━━━━━━━━━━━━━━━━\n\n"
             "💡 Use these every day!",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
 
-    # Balance
+    # 💳 BALANCE
     if data == "earn_balance":
         db = await get_db()
         balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
         await close_db(db)
+        balance = balance or 0
 
-        await query.message.reply_text(
+        keyboard = [
+            [InlineKeyboardButton("◀️ Back to Menu", callback_data="earn_open")]
+        ]
+
+        await query.edit_message_text(
             f"💰 *YOUR BALANCE*\n\n"
             f"🪙 *{balance:,}* credits\n\n"
             f"💡 Play games to win more!",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
 
