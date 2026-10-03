@@ -9389,17 +9389,11 @@ async def rob(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat.id
     chat_type = update.message.chat.type
 
-    # 🔥 ONLY IN CL PLAYZONE GC
-    CL_PLAYZONE_GC_ID = -1003011263365
-
-    if chat_type not in ['group', 'supergroup'] or chat_id != CL_PLAYZONE_GC_ID:
+    # 🔥 ANY GROUP ALLOWED (but not private)
+    if chat_type not in ['group', 'supergroup']:
         await update.message.reply_text(
-            "*🚫 ROB ONLY IN CL PLAYZONE!*\n\n"
-            "*Join here:*",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("👥 JOIN CL PLAYZONE", url="https://t.me/clbotplayzone")]
-            ])
+            "*❌ Rob only works in groups!*",
+            parse_mode="Markdown"
         )
         return
 
@@ -9480,7 +9474,7 @@ async def rob(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         diff = (now_ist - last_robbed).total_seconds()
 
-        if diff < 10800:  # 3 hours = 10800 seconds
+        if diff < 10800:  # 3 hours
             remaining = int(10800 - diff)
             hours = remaining // 3600
             minutes = (remaining % 3600) // 60
@@ -9510,7 +9504,7 @@ async def rob(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         diff = (now_ist - last_attempt).total_seconds()
 
-        if diff < 3600:  # 1 hour = 3600 seconds
+        if diff < 3600:  # 1 hour
             remaining = int(3600 - diff)
             minutes = remaining // 60
 
@@ -9536,7 +9530,6 @@ async def rob(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id
     ) or 0
 
-    # Reset if new day
     if last_reset != today:
         await db.execute(
             "UPDATE users SET rob_count_today = 0, last_rob_reset = $1 WHERE user_id = $2",
@@ -9609,13 +9602,11 @@ async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         db = await get_db()
 
-        # Re-verify all conditions
         target_balance = await db.fetchval(
             "SELECT balance FROM users WHERE user_id = $1",
             target_id
         ) or 0
 
-        # Target name
         target_name = await db.fetchval(
             "SELECT name FROM users WHERE user_id = $1",
             target_id
@@ -9632,15 +9623,17 @@ async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         import random
         success = random.choice([True, False])
 
+        # 🔥 ROBBER NAME
+        robber_user = update.effective_user
+        robber_display = robber_user.first_name if robber_user.first_name else (robber_user.username or "User")
+        robber_display_escaped = escape_markdown(robber_display)
+
         if success:
-            # Success — random 1k-10k
             amount = random.randint(1000, 10000)
 
-            # Cap to target balance
             if amount > target_balance:
                 amount = target_balance
 
-            # Transfer
             await db.execute(
                 "UPDATE users SET balance = balance - $1 WHERE user_id = $2",
                 amount, target_id
@@ -9652,7 +9645,6 @@ async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             new_user_bal = user_balance + amount
 
-            # Save history
             await db.execute(
                 """
                 INSERT INTO rob_history (robber_id, target_id, amount, success, robbed_at)
@@ -9661,7 +9653,6 @@ async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user_id, target_id, amount, True, now_ist
             )
 
-            # Update target cooldown + robber stats
             await db.execute(
                 "UPDATE users SET last_robbed_time = $1 WHERE user_id = $2",
                 now_ist, target_id
@@ -9677,7 +9668,6 @@ async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 now_ist, now_ist.date(), user_id
             )
 
-            # New rob count
             new_count = await db.fetchval(
                 "SELECT rob_count_today FROM users WHERE user_id = $1",
                 user_id
@@ -9696,12 +9686,12 @@ async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="Markdown"
             )
 
-            # Target ko DM
+            # 🔥 Target ko DM with robber name
             try:
                 await context.bot.send_message(
                     target_id,
                     f"🚨 *YOU WERE ROBBED!*\n\n"
-                    f"👤 *Robber:* Someone\n"
+                    f"👤 *Robber:* {robber_display_escaped}\n"
                     f"💰 *Lost:* {amount:,}\n\n"
                     f"💡 Buy /protection next time!",
                     parse_mode="Markdown"
@@ -9710,10 +9700,8 @@ async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
 
         else:
-            # Fail — 1,000 fine
             fine = 1000
 
-            # Check if user has enough
             if user_balance < fine:
                 fine = user_balance
 
@@ -9724,7 +9712,6 @@ async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             new_user_bal = user_balance - fine
 
-            # Save history
             await db.execute(
                 """
                 INSERT INTO rob_history (robber_id, target_id, amount, success, robbed_at)
@@ -9733,7 +9720,6 @@ async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user_id, target_id, fine, False, now_ist
             )
 
-            # Update robber stats
             await db.execute(
                 """
                 UPDATE users 
@@ -9770,16 +9756,11 @@ async def protection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat.id
     chat_type = update.message.chat.type
 
-    # 🔥 ONLY IN CL PLAYZONE GC
-    CL_PLAYZONE_GC_ID = -1003011263365
-
-    if chat_type not in ['group', 'supergroup'] or chat_id != CL_PLAYZONE_GC_ID:
+    # 🔥 ANY GROUP ALLOWED
+    if chat_type not in ['group', 'supergroup']:
         await update.message.reply_text(
-            "*🚫 PROTECTION ONLY IN CL PLAYZONE!*",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("👥 JOIN CL PLAYZONE", url="https://t.me/clbotplayzone")]
-            ])
+            "*❌ Protection only works in groups!*",
+            parse_mode="Markdown"
         )
         return
 
@@ -9789,7 +9770,6 @@ async def protection(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     db = await get_db()
 
-    # Check existing protection
     existing = await db.fetchval(
         "SELECT protection_until FROM users WHERE user_id = $1",
         user_id
@@ -9818,7 +9798,6 @@ async def protection(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await close_db(db)
             return
 
-    # Check balance
     balance = await db.fetchval(
         "SELECT balance FROM users WHERE user_id = $1",
         user_id
@@ -9836,7 +9815,6 @@ async def protection(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Confirmation
     keyboard = [
         [InlineKeyboardButton("✅ PAY 5,000", callback_data="protect_confirm"),
          InlineKeyboardButton("❌ CANCEL", callback_data="protect_cancel")]
@@ -9911,7 +9889,6 @@ async def protection_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
             parse_mode="Markdown"
         )
         return
-
 
 
 # ============ GLOBAL ERROR HANDLER ============
