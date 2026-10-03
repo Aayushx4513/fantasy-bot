@@ -5465,6 +5465,7 @@ async def mybets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(msg)
 
+# ============ BET ============
 async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -5551,8 +5552,17 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if balance < amount:
+        keyboard = [
+            [InlineKeyboardButton("💰 EARN CREDITS", callback_data="earn_open")]
+        ]
+
         await update.message.reply_text(
-            f'❌ Need {amount:,}, have {balance:,}'
+            f"❌ *Insufficient Balance!*\n\n"
+            f"🪙 *Need:* {amount:,}\n"
+            f"💳 *Have:* {balance:,}\n\n"
+            f"💡 *Play games to earn credits!*",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         await close_db(db)
         return
@@ -5591,6 +5601,11 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     team2_escaped = escape_markdown(match['team2'])
     bet_team_escaped = escape_markdown(bet_team)
 
+    # 🔥 EARN BUTTON
+    keyboard = [
+        [InlineKeyboardButton("💰 EARN CREDITS", callback_data="earn_open")]
+    ]
+
     await update.message.reply_text(
         f"✅ *BET PLACED\\! \\(PENDING\\)*\n\n"
         f"🏏 *{team1_escaped}* vs *{team2_escaped}*\n"
@@ -5599,8 +5614,10 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📊 Status: ⏳ *PENDING*\n"
         f"💡 Result will be announced after match ends\\!\n\n"
         f"📊 Current balance: *{new_bal:,}* 🪙",
-        parse_mode="MarkdownV2"
+        parse_mode="MarkdownV2",
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 🔥 FIX: CHECK KARO update.message HAI YA NAHI
@@ -8986,6 +9003,324 @@ async def gift_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
+# ============ EARN COMMAND ============
+async def earn(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not await is_registered(user_id):
+        await update.message.reply_text('*❌ Send /start first!*', parse_mode="Markdown")
+        return
+
+    db = await get_db()
+    balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
+    await close_db(db)
+
+    balance = balance or 0
+
+    msg = (
+        "💰 *EARN CREDITS*\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+
+        "🏰 *TOWER CLIMB*\n"
+        "Climb 6 floors · Win 5x\n"
+        "`/tower 500`\n\n"
+
+        "🃏 *HILO*\n"
+        "Card game · Cashout anytime\n"
+        "`/hilo 1000`\n\n"
+
+        "💣 *MINES*\n"
+        "Reveal safe tiles · Cashout anytime\n"
+        "`/mines 1000 3`\n\n"
+
+        "🎲 *DICE*\n"
+        "Roll 1-6 · Win up to 2.5x\n"
+        "`/dice 1000`\n\n"
+
+        "🪙 *FLIP*\n"
+        "Heads or Tails · 2x win\n"
+        "`/flip heads 1000`\n\n"
+
+        "⭕ *TIC TAC TOE*\n"
+        "1v1 · Winner takes all\n"
+        "`/ttt 5000`\n\n"
+
+        "✊ *ROCK PAPER SCISSORS*\n"
+        "1v1 · 2x win\n"
+        "`/rps 5000`\n\n"
+
+        "🏏 *CRICKET GAME*\n"
+        "1v1 · Strategy + luck\n"
+        "`/CLcricket 1000`\n\n"
+
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+
+        "🎁 *FREE DAILY:*\n"
+        "`/claim` · `/spin` · `/login`\n\n"
+
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+
+        f"📊 *Balance:* {balance:,} 🪙"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("🏰 Tower", callback_data="earn_tower"),
+         InlineKeyboardButton("🃏 HiLo", callback_data="earn_hilo")],
+        [InlineKeyboardButton("💣 Mines", callback_data="earn_mines"),
+         InlineKeyboardButton("🎲 Dice", callback_data="earn_dice")],
+        [InlineKeyboardButton("🪙 Flip", callback_data="earn_flip"),
+         InlineKeyboardButton("⭕ TTT", callback_data="earn_ttt")],
+        [InlineKeyboardButton("✊ RPS", callback_data="earn_rps"),
+         InlineKeyboardButton("🏏 Cricket", callback_data="earn_cricket")],
+        [InlineKeyboardButton("🎁 Daily Rewards", callback_data="earn_daily")],
+        [InlineKeyboardButton("💳 Check Balance", callback_data="earn_balance")],
+    ]
+
+    await update.message.reply_text(
+        msg,
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+# ============ EARN CALLBACK ============
+async def earn_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    try:
+        await query.answer()
+    except:
+        pass
+
+    user_id = update.effective_user.id
+    data = query.data
+
+    # 🔥 OPEN EARN MENU FROM BUTTON
+    if data == "earn_open":
+        db = await get_db()
+        balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
+        await close_db(db)
+        balance = balance or 0
+
+        msg = (
+            "💰 *EARN CREDITS*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+
+            "🏰 *TOWER CLIMB*\n"
+            "Climb 6 floors · Win 5x\n"
+            "`/tower 500`\n\n"
+
+            "🃏 *HILO*\n"
+            "Card game · Cashout anytime\n"
+            "`/hilo 1000`\n\n"
+
+            "💣 *MINES*\n"
+            "Reveal safe tiles · Cashout anytime\n"
+            "`/mines 1000 3`\n\n"
+
+            "🎲 *DICE*\n"
+            "Roll 1-6 · Win up to 2.5x\n"
+            "`/dice 1000`\n\n"
+
+            "🪙 *FLIP*\n"
+            "Heads or Tails · 2x win\n"
+            "`/flip heads 1000`\n\n"
+
+            "⭕ *TIC TAC TOE*\n"
+            "1v1 · Winner takes all\n"
+            "`/ttt 5000`\n\n"
+
+            "✊ *ROCK PAPER SCISSORS*\n"
+            "1v1 · 2x win\n"
+            "`/rps 5000`\n\n"
+
+            "🏏 *CRICKET GAME*\n"
+            "1v1 · Strategy + luck\n"
+            "`/CLcricket 1000`\n\n"
+
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+
+            "🎁 *FREE DAILY:*\n"
+            "`/claim` · `/spin` · `/login`\n\n"
+
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+
+            f"📊 *Balance:* {balance:,} 🪙"
+        )
+
+        keyboard = [
+            [InlineKeyboardButton("🏰 Tower", callback_data="earn_tower"),
+             InlineKeyboardButton("🃏 HiLo", callback_data="earn_hilo")],
+            [InlineKeyboardButton("💣 Mines", callback_data="earn_mines"),
+             InlineKeyboardButton("🎲 Dice", callback_data="earn_dice")],
+            [InlineKeyboardButton("🪙 Flip", callback_data="earn_flip"),
+             InlineKeyboardButton("⭕ TTT", callback_data="earn_ttt")],
+            [InlineKeyboardButton("✊ RPS", callback_data="earn_rps"),
+             InlineKeyboardButton("🏏 Cricket", callback_data="earn_cricket")],
+            [InlineKeyboardButton("🎁 Daily Rewards", callback_data="earn_daily")],
+            [InlineKeyboardButton("💳 Check Balance", callback_data="earn_balance")],
+        ]
+
+        await query.edit_message_text(
+            msg,
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+
+    # Tower
+    if data == "earn_tower":
+        await query.message.reply_text(
+            "🏰 *TOWER CLIMB*\n\n"
+            "Climb 6 floors — Win 5x!\n"
+            "💀 One wrong door = lose all\n"
+            "💰 Cashout anytime\n\n"
+            "🎮 *How to play:*\n"
+            "`/tower <amount>`\n\n"
+            "💰 Min: 100 | Max: 7,000\n\n"
+            "💡 Example: `/tower 500`",
+            parse_mode="Markdown"
+        )
+        return
+
+    # HiLo
+    if data == "earn_hilo":
+        await query.message.reply_text(
+            "🃏 *HILO CARD GAME*\n\n"
+            "Guess higher or lower card!\n"
+            "💰 Cashout anytime\n"
+            "📈 Multiplier increases with each win\n\n"
+            "🎮 *How to play:*\n"
+            "`/hilo <amount>`\n\n"
+            "💰 Min: 100 | Max: 10,000\n\n"
+            "💡 Example: `/hilo 1000`",
+            parse_mode="Markdown"
+        )
+        return
+
+    # Mines
+    if data == "earn_mines":
+        await query.message.reply_text(
+            "💣 *MINES GAME*\n\n"
+            "Reveal safe tiles, avoid bombs!\n"
+            "💰 Cashout anytime\n"
+            "📈 Multiplier grows with each safe tile\n\n"
+            "🎮 *How to play:*\n"
+            "`/mines <amount> <bombs>`\n\n"
+            "💰 Min: 100 | Max: 10,000\n"
+            "💣 Bombs: 1-24\n\n"
+            "💡 Example: `/mines 1000 3`",
+            parse_mode="Markdown"
+        )
+        return
+
+    # Dice
+    if data == "earn_dice":
+        await query.message.reply_text(
+            "🎲 *DICE GAME*\n\n"
+            "Roll 1-6 — Win up to 2.5x!\n\n"
+            "📊 *Multipliers:*\n"
+            "1 → 0x\n"
+            "2 → 0.25x\n"
+            "3 → 0.5x\n"
+            "4 → 1.25x\n"
+            "5 → 1.5x\n"
+            "6 → 2.5x\n\n"
+            "🎮 *How to play:*\n"
+            "`/dice <amount>`\n\n"
+            "💰 Min: 100 | Max: 20,000\n\n"
+            "💡 Example: `/dice 1000`",
+            parse_mode="Markdown"
+        )
+        return
+
+    # Flip
+    if data == "earn_flip":
+        await query.message.reply_text(
+            "🪙 *COIN FLIP*\n\n"
+            "Heads or Tails — 2x win!\n\n"
+            "🎮 *How to play:*\n"
+            "`/flip <heads/tails> <amount>`\n\n"
+            "💰 Min: 100 | Max: 20,000\n\n"
+            "💡 Example: `/flip heads 1000`",
+            parse_mode="Markdown"
+        )
+        return
+
+    # TTT
+    if data == "earn_ttt":
+        await query.message.reply_text(
+            "⭕ *TIC TAC TOE*\n\n"
+            "1v1 — Winner takes all!\n"
+            "🎯 3 in a row to win\n\n"
+            "🎮 *How to play:*\n"
+            "`/ttt <amount>`\n\n"
+            "💰 Min: 100 | Any amount\n\n"
+            "💡 Example: `/ttt 5000`",
+            parse_mode="Markdown"
+        )
+        return
+
+    # RPS
+    if data == "earn_rps":
+        await query.message.reply_text(
+            "✊ *ROCK PAPER SCISSORS*\n\n"
+            "1v1 — 2x win!\n\n"
+            "🎮 *How to play:*\n"
+            "`/rps <amount>`\n\n"
+            "💰 Min: 100 | Any amount\n\n"
+            "💡 Example: `/rps 5000`",
+            parse_mode="Markdown"
+        )
+        return
+
+    # Cricket
+    if data == "earn_cricket":
+        await query.message.reply_text(
+            "🏏 *CRICKET GAME*\n\n"
+            "1v1 — Strategy + Luck!\n"
+            "🎯 Choose modes, bat, bowl\n"
+            "🏆 Winner takes all\n\n"
+            "🎮 *How to play:*\n"
+            "`/CLcricket <amount>`\n\n"
+            "💰 Min: 100 | Any amount\n\n"
+            "💡 Example: `/CLcricket 1000`",
+            parse_mode="Markdown"
+        )
+        return
+
+    # Daily
+    if data == "earn_daily":
+        await query.message.reply_text(
+            "🎁 *FREE DAILY REWARDS*\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+
+            "🎯 */claim*\n"
+            "Daily reward — 500 credits\n"
+            "1000 credits in CL Zone GC!\n\n"
+
+            "🎡 */spin*\n"
+            "Daily spin wheel — 1k-10k\n\n"
+
+            "🎯 */login*\n"
+            "Top 10 only — avoid penalty\n\n"
+
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "💡 Use these every day!",
+            parse_mode="Markdown"
+        )
+        return
+
+    # Balance
+    if data == "earn_balance":
+        db = await get_db()
+        balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
+        await close_db(db)
+
+        await query.message.reply_text(
+            f"💰 *YOUR BALANCE*\n\n"
+            f"🪙 *{balance:,}* credits\n\n"
+            f"💡 Play games to win more!",
+            parse_mode="Markdown"
+        )
+        return
 
 
 # ============ GLOBAL ERROR HANDLER ============
@@ -9095,6 +9430,8 @@ async def main():
     app.add_handler(CommandHandler("reset_lottery", reset_lottery))
     app.add_handler(CommandHandler("lottery_coupon", lottery_coupon))
     app.add_handler(CommandHandler("claim_coupon", claim_coupon))
+    app.add_handler(CommandHandler("earn", earn))
+    app.add_handler(CallbackQueryHandler(earn_callback, pattern="^earn_"))
 
     # ============ NUMPUZ ==========
     app.add_handler(CommandHandler("numpuz", numpuz))
