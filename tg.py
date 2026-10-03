@@ -9384,6 +9384,7 @@ async def earn_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 # ============ ROB COMMAND ============
+# ============ ROB COMMAND ============
 async def rob(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_id = update.message.chat.id
@@ -9548,15 +9549,23 @@ async def rob(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await close_db(db)
         return
 
-    # ============ CHECK TARGET BALANCE ============
-    target_balance = await db.fetchval(
+    # ============ CHECK TARGET BALANCE (WALLET + BANK) ============
+    target_wallet = await db.fetchval(
         "SELECT balance FROM users WHERE user_id = $1",
         target.id
     ) or 0
 
-    if target_balance < 1000:
+    target_bank = await db.fetchval(
+        "SELECT balance FROM bank WHERE user_id = $1",
+        target.id
+    ) or 0
+
+    target_total = target_wallet + target_bank
+
+    if target_total < 1000:
         await update.message.reply_text(
-            f"❌ *{target.first_name} has insufficient balance to rob!*",
+            f"❌ *{target.first_name} has insufficient balance to rob!*\n\n"
+            f"💡 They need at least 1,000 credits (wallet + bank).",
             parse_mode="Markdown"
         )
         await close_db(db)
@@ -9582,6 +9591,8 @@ async def rob(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+
+# ============ ROB CALLBACK ============
 # ============ ROB CALLBACK ============
 async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -9602,20 +9613,30 @@ async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         db = await get_db()
 
-        target_balance = await db.fetchval(
-            "SELECT balance FROM users WHERE user_id = $1",
-            target_id
-        ) or 0
-
+        # Target name
         target_name = await db.fetchval(
             "SELECT name FROM users WHERE user_id = $1",
             target_id
         ) or "User"
 
+        # Robber balance
         user_balance = await db.fetchval(
             "SELECT balance FROM users WHERE user_id = $1",
             user_id
         ) or 0
+
+        # Target wallet + bank
+        target_wallet = await db.fetchval(
+            "SELECT balance FROM users WHERE user_id = $1",
+            target_id
+        ) or 0
+
+        target_bank = await db.fetchval(
+            "SELECT balance FROM bank WHERE user_id = $1",
+            target_id
+        ) or 0
+
+        target_total = target_wallet + target_bank
 
         now_ist = datetime.now(IST).replace(tzinfo=None)
 
@@ -9631,13 +9652,41 @@ async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if success:
             amount = random.randint(1000, 10000)
 
-            if amount > target_balance:
-                amount = target_balance
+            # Cap to target total
+            if amount > target_total:
+                amount = target_total
 
-            await db.execute(
-                "UPDATE users SET balance = balance - $1 WHERE user_id = $2",
-                amount, target_id
-            )
+            # 🔥 Deduct from wallet first, then bank
+            remaining = amount
+
+            if target_wallet >= remaining:
+                # Wallet has enough
+                await db.execute(
+                    "UPDATE users SET balance = balance - $1 WHERE user_id = $2",
+                    remaining, target_id
+                )
+            else:
+                # Wallet empty, take from bank
+                wallet_taken = target_wallet
+                bank_taken = remaining - wallet_taken
+
+                await db.execute(
+                    "UPDATE users SET balance = 0 WHERE user_id = $1",
+                    target_id
+                )
+
+                # Ensure bank row exists
+                await db.execute(
+                    "INSERT INTO bank (user_id, balance) VALUES ($1, 0) ON CONFLICT (user_id) DO NOTHING",
+                    target_id
+                )
+
+                await db.execute(
+                    "UPDATE bank SET balance = balance - $1 WHERE user_id = $2",
+                    bank_taken, target_id
+                )
+
+            # 🔥 Add to robber
             await db.execute(
                 "UPDATE users SET balance = balance + $1 WHERE user_id = $2",
                 amount, user_id
@@ -9645,6 +9694,7 @@ async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             new_user_bal = user_balance + amount
 
+            # Save history
             await db.execute(
                 """
                 INSERT INTO rob_history (robber_id, target_id, amount, success, robbed_at)
@@ -9653,10 +9703,13 @@ async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user_id, target_id, amount, True, now_ist
             )
 
+            # Update target cooldown
             await db.execute(
                 "UPDATE users SET last_robbed_time = $1 WHERE user_id = $2",
                 now_ist, target_id
             )
+
+            # Update robber stats
             await db.execute(
                 """
                 UPDATE users 
@@ -9749,6 +9802,7 @@ async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
         return
+
 
 # ============ PROTECTION COMMAND ============
 async def protection(update: Update, context: ContextTypes.DEFAULT_TYPE):
