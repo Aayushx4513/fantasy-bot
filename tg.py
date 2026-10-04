@@ -10111,12 +10111,20 @@ async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await close_db(db)
         return
 
+    # 🔥 Already answered case
     if row["answered"]:
+        winner_id = row["winner_id"]
         await close_db(db)
-        try:
-            winner_name = await db.fetchval("SELECT name FROM users WHERE user_id = $1", row["winner_id"])
-        except:
-            winner_name = "Someone"
+
+        winner_name = "Someone"
+        if winner_id:
+            try:
+                db2 = await get_db()
+                winner_name = await db2.fetchval("SELECT name FROM users WHERE user_id = $1", winner_id) or "Someone"
+                await close_db(db2)
+            except:
+                pass
+
         try:
             await query.answer(f"❌ Already answered by {winner_name}!", show_alert=True)
         except:
@@ -10162,17 +10170,16 @@ async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 f"⏰ Next question: 2.5 hours",
                 parse_mode="Markdown"
             )
-        except:
-            pass
+        except Exception as e:
+            print(f"❌ Edit error: {e}")
 
     else:
-        # Wrong answer — just notify (only user sees)
+        # Wrong answer
         await close_db(db)
         try:
             await query.answer("❌ Wrong answer! Try again.", show_alert=True)
         except:
             pass
-
 
 # ============ IQ SCHEDULER ============
 async def iq_scheduler(context):
@@ -10189,6 +10196,32 @@ async def iq_scheduler(context):
         # Wait 2.5 hours = 9000 seconds
         await asyncio.sleep(9000)
 
+# ============ SEND QUESTION (ADMIN) ============
+async def sendque(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("*❌ Admin only!*", parse_mode="Markdown")
+        return
+
+    CL_ZONE_GC_ID = -1001661258033
+
+    await update.message.reply_text(
+        "*🧠 Sending question to CL Zone GC...*",
+        parse_mode="Markdown"
+    )
+
+    try:
+        await iq_send_question(context, CL_ZONE_GC_ID)
+
+        await update.message.reply_text(
+            "*✅ Question sent!*\n\n"
+            "*💡 Next auto question: 2.5 hours*",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(
+            f"*❌ Error:* `{e}`",
+            parse_mode="Markdown"
+        )
 
 # ============ GLOBAL ERROR HANDLER ============
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -10284,6 +10317,7 @@ async def main():
     app.add_handler(CommandHandler("protection", protection))
     app.add_handler(CallbackQueryHandler(protection_callback, pattern="^protect_"))
     app.add_handler(CallbackQueryHandler(iq_answer_callback, pattern="^iq_pick_"))
+    app.add_handler(CommandHandler("sendque", sendque))
 
     # ============ LOGIN / PENALTY ==========
     app.add_handler(CommandHandler("login", login))
