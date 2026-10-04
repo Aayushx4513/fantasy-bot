@@ -10077,38 +10077,19 @@ async def iq_send_question(context, chat_id):
 
 
 # ============ IQ ANSWER CALLBACK ============
+# ============ IQ ANSWER CALLBACK ============
 async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = update.effective_user.id
     data = query.data
-
-    # 🔥 DEBUG - Admin ko notification
-    for admin_id in ADMIN_IDS:
-        try:
-            await context.bot.send_message(
-                admin_id,
-                f"🔍 *IQ CALLBACK RECEIVED*\n\n"
-                f"📱 Data: `{data}`\n"
-                f"👤 User: `{user_id}`\n"
-                f"💬 Chat: `{query.message.chat.id}`\n"
-                f"📋 Message ID: `{query.message.message_id}`",
-                parse_mode="Markdown"
-            )
-        except:
-            pass
 
     if not data.startswith("iq_pick_"):
         return
 
     try:
         await query.answer()
-    except Exception as e:
-        for admin_id in ADMIN_IDS:
-            try:
-                await context.bot.send_message(admin_id, f"❌ Answer error: `{e}`", parse_mode="Markdown")
-            except:
-                pass
-        return
+    except:
+        pass
 
     if not await is_registered(user_id):
         try:
@@ -10126,38 +10107,15 @@ async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         query.message.chat.id
     )
 
-    # 🔥 DEBUG - DB row check
-    for admin_id in ADMIN_IDS:
-        try:
-            if row:
-                await context.bot.send_message(
-                    admin_id,
-                    f"🔍 *DB ROW FOUND*\n\n"
-                    f"❓ Q: `{row['question'][:50]}`\n"
-                    f"✅ A: `{row['answer']}`\n"
-                    f"📊 Answered: `{row['answered']}`\n"
-                    f"🏆 Winner: `{row['winner_id']}`\n"
-                    f"🔘 Index: `{index}`",
-                    parse_mode="Markdown"
-                )
-            else:
-                await context.bot.send_message(
-                    admin_id,
-                    f"❌ *NO DB ROW*\n\n"
-                    f"Chat ID: `{query.message.chat.id}`",
-                    parse_mode="Markdown"
-                )
-        except:
-            pass
-
     if not row:
         await close_db(db)
         return
 
+    # 🔥 ALREADY ANSWERED
     if row["answered"]:
         winner_id = row["winner_id"]
         await close_db(db)
-        
+
         winner_name = "Someone"
         if winner_id:
             try:
@@ -10166,7 +10124,7 @@ async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await close_db(db2)
             except:
                 pass
-        
+
         try:
             await query.answer(f"❌ Already answered by {winner_name}!", show_alert=True)
         except:
@@ -10182,6 +10140,7 @@ async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     selected = choices[index]
 
+    # 🔥 CORRECT ANSWER
     if selected == correct:
         reward = 1000
 
@@ -10200,30 +10159,37 @@ async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         user = update.effective_user
         winner_name = user.first_name if user.first_name else (user.username or "User")
 
-        try:
-            await query.edit_message_text(
-                f"🎉 *CORRECT ANSWER!*\n\n"
-                f"❓ {row['question']}\n\n"
-                f"✅ *Answer:* {correct}\n\n"
-                f"🏆 *Winner:* {winner_name}\n"
-                f"🎁 *Reward:* +1,000 credits\n"
-                f"💳 *New Balance:* {new_bal:,}\n\n"
-                f"⏰ Next question: 2.5 hours",
-                parse_mode="Markdown"
-            )
-        except Exception as e:
-            for admin_id in ADMIN_IDS:
-                try:
-                    await context.bot.send_message(admin_id, f"❌ Edit error: `{e}`", parse_mode="Markdown")
-                except:
-                    pass
+        # 🔥 SHORT MESSAGE (avoid edit issues)
+        result_text = (
+            f"🎉 *CORRECT ANSWER!*\n\n"
+            f"✅ *Answer:* {correct}\n\n"
+            f"🏆 *Winner:* {winner_name}\n"
+            f"🎁 *Reward:* +1,000 credits\n"
+            f"💳 *Balance:* {new_bal:,}"
+        )
 
+        try:
+            await query.edit_message_text(result_text, parse_mode="Markdown")
+        except Exception as e:
+            print(f"❌ Edit error: {e}")
+            try:
+                await context.bot.send_message(
+                    query.message.chat.id,
+                    result_text,
+                    parse_mode="Markdown"
+                )
+            except:
+                pass
+
+    # 🔥 WRONG ANSWER
     else:
         await close_db(db)
         try:
             await query.answer("❌ Wrong answer! Try again.", show_alert=True)
         except:
             pass
+
+
 # ============ IQ SCHEDULER ============
 async def iq_scheduler(context):
     """Send IQ question every 2.5 hours to CL Zone GC"""
