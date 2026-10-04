@@ -10111,7 +10111,7 @@ async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await close_db(db)
         return
 
-    # 🔥 ALREADY ANSWERED
+    # ALREADY ANSWERED
     if row["answered"]:
         winner_id = row["winner_id"]
         await close_db(db)
@@ -10140,7 +10140,7 @@ async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     selected = choices[index]
 
-    # 🔥 CORRECT ANSWER
+    # CORRECT ANSWER
     if selected == correct:
         reward = 1000
 
@@ -10159,7 +10159,6 @@ async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         user = update.effective_user
         winner_name = user.first_name if user.first_name else (user.username or "User")
 
-        # 🔥 SHORT MESSAGE (avoid edit issues)
         result_text = (
             f"🎉 *CORRECT ANSWER!*\n\n"
             f"✅ *Answer:* {correct}\n\n"
@@ -10170,8 +10169,7 @@ async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         try:
             await query.edit_message_text(result_text, parse_mode="Markdown")
-        except Exception as e:
-            print(f"❌ Edit error: {e}")
+        except:
             try:
                 await context.bot.send_message(
                     query.message.chat.id,
@@ -10181,14 +10179,28 @@ async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             except:
                 pass
 
-    # 🔥 WRONG ANSWER
+    # WRONG ANSWER
     else:
         await close_db(db)
+
         try:
-            await query.answer("❌ Wrong answer! Try again.", show_alert=True)
+            await query.answer("❌ Wrong! Try again.", show_alert=True)
         except:
             pass
 
+        try:
+            user = update.effective_user
+            wrong_name = user.first_name if user.first_name else (user.username or "User")
+
+            await query.edit_message_text(
+                f"❌ *WRONG ANSWER!*\n\n"
+                f"👤 *{wrong_name}* selected: `{selected}`\n\n"
+                f"🎯 *Still waiting for correct answer!*\n"
+                f"💰 *Reward:* 1,000 credits",
+                parse_mode="Markdown"
+            )
+        except:
+            pass
 
 # ============ IQ SCHEDULER ============
 async def iq_scheduler(context):
