@@ -5186,48 +5186,108 @@ async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.execute("INSERT INTO groups (group_id, group_name, added_at) VALUES ($1, $2, $3) ON CONFLICT (group_id) DO NOTHING", group_id, group_name, datetime.now().isoformat())
         await close_db(db)
 
-# ============ BROADCAST ==========
+# ============ BROADCAST ============
 async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Admin only!")
         return
+
     msg = update.message
+
+    # Get content
+    is_photo = False
+    photo = None
+    caption = ""
+    content = ""
+
+    if msg.reply_to_message and msg.reply_to_message.photo:
+        is_photo = True
+        photo = msg.reply_to_message.photo[-1].file_id
+        caption = msg.reply_to_message.caption or ""
+    else:
+        content = msg.reply_to_message.text if msg.reply_to_message else " ".join(context.args)
+
+    if not content and not photo:
+        await update.message.reply_text("❌ No content to broadcast!")
+        return
+
+    # Fetch users + groups
     db = await get_db()
     users = [row['user_id'] for row in await db.fetch("SELECT user_id FROM users")]
     groups = [row['group_id'] for row in await db.fetch("SELECT group_id FROM groups")]
     await close_db(db)
-    sent = 0
-    if msg.reply_to_message and msg.reply_to_message.photo:
-        photo = msg.reply_to_message.photo[-1].file_id
-        caption = msg.reply_to_message.caption or ""
-        for uid in users:
-            try:
-                await context.bot.send_photo(uid, photo, caption=caption)
-                sent += 1
-            except:
-                pass
-        for gid in groups:
-            try:
-                await context.bot.send_photo(gid, photo, caption=caption)
-                sent += 1
-            except:
-                pass
-        await update.message.reply_text(f"📸 BROADCAST SENT! Total: {sent}")
+
+    all_targets = users + groups
+    total = len(all_targets)
+
+    if total == 0:
+        await update.message.reply_text("❌ No users or groups found!")
         return
-    content = msg.reply_to_message.text if msg.reply_to_message else " ".join(context.args)
-    for uid in users:
+
+    # Send initial message
+    status_msg = await update.message.reply_text(
+        f"📢 *BROADCAST STARTED!*\n\n"
+        f"🎯 Total: {total}\n"
+        f"📤 Sending: 0/{total}\n"
+        f"✅ Success: 0\n"
+        f"❌ Failed: 0\n\n"
+        f"💡 Bot is running in background...",
+        parse_mode="Markdown"
+    )
+
+    # 🔥 START BACKGROUND TASK
+    asyncio.create_task(
+        broadcast_worker(context, all_targets, is_photo, photo, caption, content, status_msg)
+    )
+
+
+async def broadcast_worker(context, targets, is_photo, photo, caption, content, status_msg):
+    """Background broadcast worker with progress updates"""
+    total = len(targets)
+    sent = 0
+    failed = 0
+
+    for i, target_id in enumerate(targets, 1):
         try:
-            await context.bot.send_message(uid, content)
+            if is_photo:
+                await context.bot.send_photo(target_id, photo, caption=caption)
+            else:
+                await context.bot.send_message(target_id, content)
             sent += 1
         except:
-            pass
-    for gid in groups:
-        try:
-            await context.bot.send_message(gid, content)
-            sent += 1
-        except:
-            pass
-    await update.message.reply_text(f"📢 BROADCAST SENT! Total: {sent}")
+            failed += 1
+
+        # 🔥 Update progress every 50 messages
+        if i % 50 == 0 or i == total:
+            try:
+                await status_msg.edit_text(
+                    f"📢 *BROADCAST IN PROGRESS*\n\n"
+                    f"🎯 Total: {total}\n"
+                    f"📤 Sending: {i}/{total}\n"
+                    f"✅ Success: {sent}\n"
+                    f"❌ Failed: {failed}\n\n"
+                    f"💡 Bot is running in background...",
+                    parse_mode="Markdown"
+                )
+            except:
+                pass
+
+        # 🔥 Small delay to avoid flood (Telegram limit: 30 msg/sec)
+        await asyncio.sleep(0.05)
+
+    # Final update
+    try:
+        await status_msg.edit_text(
+            f"✅ *BROADCAST COMPLETE!*\n\n"
+            f"🎯 Total: {total}\n"
+            f"✅ Success: {sent}\n"
+            f"❌ Failed: {failed}\n"
+            f"📊 Success Rate: {int((sent/total)*100)}%\n\n"
+            f"🎉 All messages sent!",
+            parse_mode="Markdown"
+        )
+    except:
+        pass
 
 async def broadcast_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
