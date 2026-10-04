@@ -20,6 +20,16 @@ import time
 import asyncio
 import asyncpg
 
+# ============ IQ TRIVIA LOADER ============
+import json
+import random as _random_iq
+
+with open("data/trivia_questions.json", "r", encoding="utf-8") as f:
+    TRIVIA_QUESTIONS = json.load(f)
+
+print(f"✅ Loaded {len(TRIVIA_QUESTIONS)} trivia questions")
+
+
 # India Standard Time
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -114,6 +124,19 @@ async def init_db():
             amount BIGINT,
             success BOOLEAN,
             robbed_at TIMESTAMP
+        )
+    ''')
+
+    # 🔥 IQ GAME TABLE
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS iq_game (
+            chat_id BIGINT PRIMARY KEY,
+            question TEXT,
+            answer TEXT,
+            choices TEXT,
+            sent_at TIMESTAMP,
+            answered BOOLEAN DEFAULT FALSE,
+            winner_id BIGINT
         )
     ''')
 
@@ -10004,6 +10027,168 @@ async def protection_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return
 
+# ============ IQ GAME ============
+
+async def iq_send_question(context, chat_id):
+    """Send a random IQ question to the group"""
+    if not TRIVIA_QUESTIONS:
+        return
+
+    # Pick random question
+    q = _random_iq.choice(TRIVIA_QUESTIONS)
+
+    choices = q["choices"]
+    answer = q["answer"]
+
+    # Save to DB
+    db = await get_db()
+    await db.execute("""
+        INSERT INTO iq_game (chat_id, question, answer, choices, sent_at, answered, winner_id)
+        VALUES ($1, $2, $3, $4, $5, FALSE, NULL)
+        ON CONFLICT (chat_id) DO UPDATE SET
+            question = $2,
+            answer = $3,
+            choices = $4,
+            sent_at = $5,
+            answered = FALSE,
+            winner_id = NULL
+    """, chat_id, q["question"], answer, json.dumps(choices), datetime.now(IST).replace(tzinfo=None))
+    await close_db(db)
+
+    # Build keyboard
+    keyboard = []
+    for i, choice in enumerate(choices):
+        # Truncate long choices
+        display = choice[:50] if len(choice) > 50 else choice
+        keyboard.append([InlineKeyboardButton(display, callback_data=f"iq_pick_{i}")])
+
+    try:
+        await context.bot.send_message(
+            chat_id,
+            f"🧠 *IQ CHALLENGE*\n\n"
+            f"❓ {q['question']}\n\n"
+            f"🏆 *First correct answer: 1,000 credits!*\n"
+            f"⏰ Next question: 2.5 hours",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        print(f"❌ IQ send error: {e}")
+
+
+# ============ IQ ANSWER CALLBACK ============
+async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = update.effective_user.id
+    data = query.data
+
+    if not data.startswith("iq_pick_"):
+        return
+
+    try:
+        await query.answer()
+    except:
+        pass
+
+    if not await is_registered(user_id):
+        try:
+            await query.answer("❌ Send /start first!", show_alert=True)
+        except:
+            pass
+        return
+
+    index = int(data.replace("iq_pick_", ""))
+
+    db = await get_db()
+
+    # Get current question
+    row = await db.fetchrow(
+        "SELECT question, answer, choices, answered, winner_id FROM iq_game WHERE chat_id = $1",
+        query.message.chat.id
+    )
+
+    if not row:
+        await close_db(db)
+        return
+
+    if row["answered"]:
+        await close_db(db)
+        try:
+            winner_name = await db.fetchval("SELECT name FROM users WHERE user_id = $1", row["winner_id"])
+        except:
+            winner_name = "Someone"
+        try:
+            await query.answer(f"❌ Already answered by {winner_name}!", show_alert=True)
+        except:
+            pass
+        return
+
+    choices = json.loads(row["choices"])
+    correct = row["answer"]
+
+    if index >= len(choices):
+        await close_db(db)
+        return
+
+    selected = choices[index]
+
+    if selected == correct:
+        # Correct answer
+        reward = 1000
+
+        await db.execute(
+            "UPDATE users SET balance = balance + $1 WHERE user_id = $2",
+            reward, user_id
+        )
+        await db.execute(
+            "UPDATE iq_game SET answered = TRUE, winner_id = $1 WHERE chat_id = $2",
+            user_id, query.message.chat.id
+        )
+
+        new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
+        await close_db(db)
+
+        user = update.effective_user
+        winner_name = user.first_name if user.first_name else (user.username or "User")
+
+        try:
+            await query.edit_message_text(
+                f"🎉 *CORRECT ANSWER!*\n\n"
+                f"❓ {row['question']}\n\n"
+                f"✅ *Answer:* {correct}\n\n"
+                f"🏆 *Winner:* {winner_name}\n"
+                f"🎁 *Reward:* +1,000 credits\n"
+                f"💳 *New Balance:* {new_bal:,}\n\n"
+                f"⏰ Next question: 2.5 hours",
+                parse_mode="Markdown"
+            )
+        except:
+            pass
+
+    else:
+        # Wrong answer — just notify (only user sees)
+        await close_db(db)
+        try:
+            await query.answer("❌ Wrong answer! Try again.", show_alert=True)
+        except:
+            pass
+
+
+# ============ IQ SCHEDULER ============
+async def iq_scheduler(context):
+    """Send IQ question every 2.5 hours to CL Zone GC"""
+    CL_ZONE_GC_ID = -1001661258033
+
+    while True:
+        try:
+            await iq_send_question(context, CL_ZONE_GC_ID)
+            print(f"🧠 IQ question sent to {CL_ZONE_GC_ID}")
+        except Exception as e:
+            print(f"❌ IQ scheduler error: {e}")
+
+        # Wait 2.5 hours = 9000 seconds
+        await asyncio.sleep(9000)
+
 
 # ============ GLOBAL ERROR HANDLER ============
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -10036,6 +10221,10 @@ async def main():
     # 🔥 START AUCTION AUTO-LOCK TASK
     asyncio.create_task(auction_auto_lock(app))
     print("✅ Auction auto-lock task started!")
+   
+   # 🔥 START IQ SCHEDULER (after app starts)
+    asyncio.create_task(iq_scheduler(app))
+    print("✅ IQ scheduler started!")
 
 
     # ============ USER COMMANDS ==========
@@ -10094,6 +10283,7 @@ async def main():
     app.add_handler(CallbackQueryHandler(rob_callback, pattern="^rob_"))
     app.add_handler(CommandHandler("protection", protection))
     app.add_handler(CallbackQueryHandler(protection_callback, pattern="^protect_"))
+    app.add_handler(CallbackQueryHandler(iq_answer_callback, pattern="^iq_pick_"))
 
     # ============ LOGIN / PENALTY ==========
     app.add_handler(CommandHandler("login", login))
