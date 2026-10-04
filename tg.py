@@ -10114,6 +10114,7 @@ async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # ALREADY ANSWERED
     if row["answered"]:
         winner_id = row["winner_id"]
+        correct_answer = row["answer"]
         await close_db(db)
 
         winner_name = "Someone"
@@ -10126,7 +10127,10 @@ async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 pass
 
         try:
-            await query.answer(f"❌ Already answered by {winner_name}!", show_alert=True)
+            await query.answer(
+                f"❌ Already answered by {winner_name}!\n✅ Correct: {correct_answer}",
+                show_alert=True
+            )
         except:
             pass
         return
@@ -10161,7 +10165,7 @@ async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         result_text = (
             f"🎉 *CORRECT ANSWER!*\n\n"
-            f"✅ *Answer:* {correct}\n\n"
+            f"✅ *Correct Answer:* {correct}\n\n"
             f"🏆 *Winner:* {winner_name}\n"
             f"🎁 *Reward:* +1,000 credits\n"
             f"💳 *Balance:* {new_bal:,}"
@@ -10195,13 +10199,12 @@ async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await query.edit_message_text(
                 f"❌ *WRONG ANSWER!*\n\n"
                 f"👤 *{wrong_name}* selected: `{selected}`\n\n"
-                f"🎯 *Still waiting for correct answer!*\n"
-                f"💰 *Reward:* 1,000 credits",
+                f"🎯 *Still waiting for correct answer!*\n\n"
+                f"💰 *Reward:* 1,000 credits (first correct answer)",
                 parse_mode="Markdown"
             )
         except:
             pass
-
 # ============ IQ SCHEDULER ============
 async def iq_scheduler(context):
     """Send IQ question every 2.5 hours to CL Zone GC"""
