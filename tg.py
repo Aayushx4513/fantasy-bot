@@ -10077,7 +10077,6 @@ async def iq_send_question(context, chat_id):
 
 
 # ============ IQ ANSWER CALLBACK ============
-# ============ IQ ANSWER CALLBACK ============
 async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = update.effective_user.id
@@ -10165,7 +10164,7 @@ async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         result_text = (
             f"🎉 *CORRECT ANSWER!*\n\n"
-            f"✅ *Correct Answer:* {correct}\n\n"
+            f"✅ *Correct:* {correct}\n\n"
             f"🏆 *Winner:* {winner_name}\n"
             f"🎁 *Reward:* +1,000 credits\n"
             f"💳 *Balance:* {new_bal:,}"
@@ -10188,7 +10187,7 @@ async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await close_db(db)
 
         try:
-            await query.answer("❌ Wrong! Try again.", show_alert=True)
+            await query.answer(f"❌ Wrong! Correct: {correct}", show_alert=True)
         except:
             pass
 
@@ -10199,8 +10198,7 @@ async def iq_answer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await query.edit_message_text(
                 f"❌ *WRONG ANSWER!*\n\n"
                 f"👤 *{wrong_name}* selected: `{selected}`\n\n"
-                f"🎯 *Still waiting for correct answer!*\n\n"
-                f"💰 *Reward:* 1,000 credits (first correct answer)",
+                f"🎯 *Still waiting for correct answer!*",
                 parse_mode="Markdown"
             )
         except:
