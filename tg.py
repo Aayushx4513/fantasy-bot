@@ -10072,17 +10072,6 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wins = stats_row["wins"] if stats_row else 0
         losses = stats_row["losses"] if stats_row else 0
 
-        # ============ DOWNLOAD PFP ============
-        pfp_path = None
-        try:
-            photos = await context.bot.get_user_profile_photos(user_id, limit=1)
-            if photos.total_count > 0:
-                file_id = photos.photos[0][-1].file_id
-                file = await context.bot.get_file(file_id)
-                pfp_path = f"data/pfp_{user_id}.jpg"
-                await file.download_to_drive(pfp_path)
-        except Exception as e:
-            print(f"❌ PFP download error: {e}")
 
         # ============ GENERATE CARD ============
         card_path = generate_card_image(
@@ -10095,7 +10084,6 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             players_count=players_count,
             credits=total_credits,
             rank=rank,
-            pfp_path=pfp_path
         )
 
         try:
@@ -10112,8 +10100,6 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Cleanup
         try:
-            if pfp_path and os.path.exists(pfp_path):
-                os.remove(pfp_path)
             if card_path and os.path.exists(card_path):
                 os.remove(card_path)
         except:
@@ -10130,42 +10116,12 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============ CARD IMAGE GENERATOR ============
-def generate_card_image(display_name, runs, wickets, highest, wins, losses, players_count, credits, rank, pfp_path=None):
+def generate_card_image(display_name, runs, wickets, highest, wins, losses, players_count, credits, rank):
     """Generate cricket player card image"""
     
     card = Image.open("data/card_template.png").convert("RGBA")
     width, height = card.size
     
-    # ============ PHOTO CIRCLE ============
-    # Template size: 1856 x 2290
-    # Circle center approximate (X, Y) — tune karna padega
-    circle_center = (928, 385)
-    circle_radius = 240
-    
-    if pfp_path and os.path.exists(pfp_path):
-        try:
-            pfp = Image.open(pfp_path).convert("RGBA")
-            
-            # Crop to square
-            pfp_size = min(pfp.size)
-            left = (pfp.width - pfp_size) // 2
-            top = (pfp.height - pfp_size) // 2
-            pfp = pfp.crop((left, top, left + pfp_size, top + pfp_size))
-            
-            # Resize to circle diameter
-            pfp = pfp.resize((circle_radius * 2, circle_radius * 2), Image.LANCZOS)
-            
-            # Circular mask
-            mask = Image.new("L", pfp.size, 0)
-            mask_draw = ImageDraw.Draw(mask)
-            mask_draw.ellipse((0, 0, pfp.size[0], pfp.size[1]), fill=255)
-            
-            # Paste
-            paste_x = circle_center[0] - circle_radius
-            paste_y = circle_center[1] - circle_radius
-            card.paste(pfp, (paste_x, paste_y), mask)
-        except Exception as e:
-            print(f"❌ PFP paste error: {e}")
     
     # ============ FONTS ============
     try:
