@@ -10072,6 +10072,17 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wins = stats_row["wins"] if stats_row else 0
         losses = stats_row["losses"] if stats_row else 0
 
+        # ============ DOWNLOAD PFP ============
+        pfp_path = None
+        try:
+            photos = await context.bot.get_user_profile_photos(user_id, limit=1)
+            if photos.total_count > 0:
+                file_id = photos.photos[0][-1].file_id
+                file = await context.bot.get_file(file_id)
+                pfp_path = f"data/pfp_{user_id}.jpg"
+                await file.download_to_drive(pfp_path)
+        except Exception as e:
+            print(f"❌ PFP download error: {e}")
 
         # ============ GENERATE CARD ============
         card_path = generate_card_image(
@@ -10084,6 +10095,7 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             players_count=players_count,
             credits=total_credits,
             rank=rank,
+            pfp_path=pfp_path
         )
 
         try:
@@ -10100,6 +10112,8 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Cleanup
         try:
+            if pfp_path and os.path.exists(pfp_path):
+                os.remove(pfp_path)
             if card_path and os.path.exists(card_path):
                 os.remove(card_path)
         except:
@@ -10116,19 +10130,49 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============ CARD IMAGE GENERATOR ============
-def generate_card_image(display_name, runs, wickets, highest, wins, losses, players_count, credits, rank):
+def generate_card_image(display_name, runs, wickets, highest, wins, losses, players_count, credits, rank, pfp_path=None):
     """Generate cricket player card image"""
     
     card = Image.open("data/card_template.png").convert("RGBA")
     width, height = card.size
     
+    # ============ PFP PASTE ============
+    if pfp_path and os.path.exists(pfp_path):
+        try:
+            pfp = Image.open(pfp_path).convert("RGBA")
+            
+            # Crop to square
+            pfp_size = min(pfp.size)
+            left = (pfp.width - pfp_size) // 2
+            top = (pfp.height - pfp_size) // 2
+            pfp = pfp.crop((left, top, left + pfp_size, top + pfp_size))
+            
+            # Circle coordinates (verified)
+            cx = 561
+            cy = 290
+            radius = 175
+            
+            # Resize to circle diameter
+            pfp = pfp.resize((radius * 2, radius * 2), Image.LANCZOS)
+            
+            # Circular mask
+            mask = Image.new("L", pfp.size, 0)
+            mask_draw = ImageDraw.Draw(mask)
+            mask_draw.ellipse((0, 0, pfp.size[0], pfp.size[1]), fill=255)
+            
+            # Paste at position
+            paste_x = cx - radius
+            paste_y = cy - radius
+            card.paste(pfp, (paste_x, paste_y), mask)
+        except Exception as e:
+            print(f"❌ PFP paste error: {e}")
     
     # ============ FONTS ============
     try:
-        font_name = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 80)
-        font_label = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 35)
-        font_value = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 65)
-        font_footer = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 50)
+        font_name = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 55)
+        font_label = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 22)
+        font_value = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 42)
+        font_footer = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 32)
     except Exception as e:
         print(f"❌ Font error: {e}")
         font_name = ImageFont.load_default()
@@ -10139,50 +10183,53 @@ def generate_card_image(display_name, runs, wickets, highest, wins, losses, play
     draw = ImageDraw.Draw(card)
     
     # ============ NAME ============
-    # Name plate around Y = 790
+    # Name plate around Y = 545
     draw.text(
-        (928, 790),
+        (561, 545),
         display_name.upper(),
         font=font_name,
         fill="#FFD700",
         anchor="mm",
-        stroke_width=3,
+        stroke_width=2,
         stroke_fill="#000000"
     )
     
     # ============ STATS ============
     def draw_stat(x, y, label, value):
+        # Label (small)
         draw.text(
-            (x, y - 35),
+            (x, y - 25),
             label.upper(),
             font=font_label,
             fill="#FFD700",
             anchor="mm"
         )
+        # Value (large)
         draw.text(
-            (x, y + 30),
+            (x, y + 20),
             str(value),
             font=font_value,
             fill="white",
             anchor="mm"
         )
     
-    # Left Column X ~ 380, Right Column X ~ 1280
-    # Rows Y ~ 1100, 1350, 1600
+    # Left column X ~ 290, Right column X ~ 830
+    # Row Y: 720, 855, 990
     
-    # Left
-    draw_stat(380, 1100, "Runs Scored", f"{runs:,}")
-    draw_stat(380, 1350, "Wickets", f"{wickets}")
-    draw_stat(380, 1600, "Highest Score", f"{highest}")
+    # Left Column
+    draw_stat(290, 720, "Runs Scored", f"{runs:,}")
+    draw_stat(290, 855, "Wickets", f"{wickets}")
+    draw_stat(290, 990, "Highest Score", f"{highest}")
     
-    # Right
-    draw_stat(1280, 1100, "Wins/Losses", f"{wins}/{losses}")
-    draw_stat(1280, 1350, "Players Owned", f"{players_count}")
-    draw_stat(1280, 1600, "Credits", f"{credits:,}")
+    # Right Column
+    draw_stat(830, 720, "Wins/Losses", f"{wins}/{losses}")
+    draw_stat(830, 855, "Players Owned", f"{players_count}")
+    draw_stat(830, 990, "Credits", f"{credits:,}")
     
     # ============ FOOTER (Rank) ============
+    # Footer at Y ~ 1240
     draw.text(
-        (928, 2030),
+        (561, 1240),
         f"🏆 RANK #{rank}",
         font=font_footer,
         fill="#FFD700",
