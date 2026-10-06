@@ -10027,7 +10027,6 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("*❌ Send /start first!*", parse_mode="Markdown")
         return
 
-    # Processing message
     msg = await update.message.reply_text("*🎨 Generating your card...*", parse_mode="Markdown")
 
     db = await get_db()
@@ -10040,23 +10039,20 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         stats_row = await db.fetchrow(
-            "SELECT runs, wickets, highest_score FROM cricket_stats WHERE user_id = $1",
+            "SELECT runs, wickets, highest_score, wins, losses FROM cricket_stats WHERE user_id = $1",
             user_id
         )
 
-        # Bank balance
         bank_bal = await db.fetchval(
             "SELECT COALESCE(balance, 0) FROM bank WHERE user_id = $1",
             user_id
         ) or 0
 
-        # Players owned
         players_count = await db.fetchval(
             "SELECT COUNT(*) FROM user_players WHERE user_id = $1",
             user_id
         ) or 0
 
-        # Rank (by runs)
         my_runs = stats_row["runs"] if stats_row else 0
         rank = await db.fetchval(
             "SELECT COUNT(*) + 1 FROM cricket_stats WHERE runs > $1",
@@ -10073,6 +10069,8 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         runs = stats_row["runs"] if stats_row else 0
         wickets = stats_row["wickets"] if stats_row else 0
         highest = stats_row["highest_score"] if stats_row else 0
+        wins = stats_row["wins"] if stats_row else 0
+        losses = stats_row["losses"] if stats_row else 0
 
         # ============ DOWNLOAD PFP ============
         pfp_path = None
@@ -10092,19 +10090,19 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             runs=runs,
             wickets=wickets,
             highest=highest,
+            wins=wins,
+            losses=losses,
             players_count=players_count,
             credits=total_credits,
             rank=rank,
             pfp_path=pfp_path
         )
 
-        # Delete processing message
         try:
             await msg.delete()
         except:
             pass
 
-        # Send card
         with open(card_path, "rb") as f:
             await update.message.reply_photo(
                 photo=f,
@@ -10132,17 +10130,17 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============ CARD IMAGE GENERATOR ============
-def generate_card_image(display_name, runs, wickets, highest, players_count, credits, rank, pfp_path=None):
+def generate_card_image(display_name, runs, wickets, highest, wins, losses, players_count, credits, rank, pfp_path=None):
     """Generate cricket player card image"""
     
-    # Load template
     card = Image.open("data/card_template.png").convert("RGBA")
-    width, height = card.size  # 1856 x 2290
+    width, height = card.size
     
     # ============ PHOTO CIRCLE ============
-    # Template mein circle roughly center X = 928, Y = 390, radius = 250
-    circle_center = (928, 390)
-    circle_radius = 250
+    # Template size: 1856 x 2290
+    # Circle center approximate (X, Y) — tune karna padega
+    circle_center = (928, 385)
+    circle_radius = 240
     
     if pfp_path and os.path.exists(pfp_path):
         try:
@@ -10154,7 +10152,7 @@ def generate_card_image(display_name, runs, wickets, highest, players_count, cre
             top = (pfp.height - pfp_size) // 2
             pfp = pfp.crop((left, top, left + pfp_size, top + pfp_size))
             
-            # Resize
+            # Resize to circle diameter
             pfp = pfp.resize((circle_radius * 2, circle_radius * 2), Image.LANCZOS)
             
             # Circular mask
@@ -10171,10 +10169,10 @@ def generate_card_image(display_name, runs, wickets, highest, players_count, cre
     
     # ============ FONTS ============
     try:
-        font_name = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 90)
-        font_label = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 40)
-        font_value = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 70)
-        font_footer = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 55)
+        font_name = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 80)
+        font_label = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 35)
+        font_value = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 65)
+        font_footer = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 50)
     except Exception as e:
         print(f"❌ Font error: {e}")
         font_name = ImageFont.load_default()
@@ -10185,9 +10183,9 @@ def generate_card_image(display_name, runs, wickets, highest, players_count, cre
     draw = ImageDraw.Draw(card)
     
     # ============ NAME ============
-    # Name plate: Y ~ 830
+    # Name plate around Y = 790
     draw.text(
-        (928, 830),
+        (928, 790),
         display_name.upper(),
         font=font_name,
         fill="#FFD700",
@@ -10197,20 +10195,14 @@ def generate_card_image(display_name, runs, wickets, highest, players_count, cre
     )
     
     # ============ STATS ============
-    # Left column X ~ 350, Right column X ~ 1250
-    # Row 1 Y ~ 1150, Row 2 Y ~ 1400, Row 3 Y ~ 1650
-    
-    # Helper function
     def draw_stat(x, y, label, value):
-        # Label (small, above)
         draw.text(
-            (x, y - 40),
+            (x, y - 35),
             label.upper(),
             font=font_label,
             fill="#FFD700",
             anchor="mm"
         )
-        # Value (large, below)
         draw.text(
             (x, y + 30),
             str(value),
@@ -10219,20 +10211,23 @@ def generate_card_image(display_name, runs, wickets, highest, players_count, cre
             anchor="mm"
         )
     
-    # Left Column
-    draw_stat(350, 1150, "Runs Scored", f"{runs:,}")
-    draw_stat(350, 1400, "Wickets", f"{wickets}")
-    draw_stat(350, 1650, "Highest Score", f"{highest}")
+    # Left Column X ~ 380, Right Column X ~ 1280
+    # Rows Y ~ 1100, 1350, 1600
     
-    # Right Column
-    draw_stat(1250, 1150, "Best Bowling", "0/0")  # You can add if available
-    draw_stat(1250, 1400, "Players Owned", f"{players_count}")
-    draw_stat(1250, 1650, "Credits", f"{credits:,}")
+    # Left
+    draw_stat(380, 1100, "Runs Scored", f"{runs:,}")
+    draw_stat(380, 1350, "Wickets", f"{wickets}")
+    draw_stat(380, 1600, "Highest Score", f"{highest}")
+    
+    # Right
+    draw_stat(1280, 1100, "Wins/Losses", f"{wins}/{losses}")
+    draw_stat(1280, 1350, "Players Owned", f"{players_count}")
+    draw_stat(1280, 1600, "Credits", f"{credits:,}")
     
     # ============ FOOTER (Rank) ============
     draw.text(
-        (928, 2100),
-        f"🏆 RANK #{rank}  |  🏏 CL BOT",
+        (928, 2030),
+        f"🏆 RANK #{rank}",
         font=font_footer,
         fill="#FFD700",
         anchor="mm",
@@ -10241,7 +10236,7 @@ def generate_card_image(display_name, runs, wickets, highest, players_count, cre
     )
     
     # ============ SAVE ============
-    output_path = f"data/output_card_{display_name}.png"
+    output_path = f"data/output_card_{display_name.replace(' ', '_')}.png"
     os.makedirs("data", exist_ok=True)
     card.save(output_path, "PNG", optimize=True)
     
