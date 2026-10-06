@@ -10015,6 +10015,239 @@ async def protection_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return
 
+# ============ MY CARD ============
+from PIL import Image, ImageDraw, ImageFont
+import os
+
+async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user = update.effective_user
+
+    if not await is_registered(user_id):
+        await update.message.reply_text("*❌ Send /start first!*", parse_mode="Markdown")
+        return
+
+    # Processing message
+    msg = await update.message.reply_text("*🎨 Generating your card...*", parse_mode="Markdown")
+
+    db = await get_db()
+
+    try:
+        # ============ FETCH DATA ============
+        user_row = await db.fetchrow(
+            "SELECT balance, name FROM users WHERE user_id = $1",
+            user_id
+        )
+
+        stats_row = await db.fetchrow(
+            "SELECT runs, wickets, highest_score FROM cricket_stats WHERE user_id = $1",
+            user_id
+        )
+
+        # Bank balance
+        bank_bal = await db.fetchval(
+            "SELECT COALESCE(balance, 0) FROM bank WHERE user_id = $1",
+            user_id
+        ) or 0
+
+        # Players owned
+        players_count = await db.fetchval(
+            "SELECT COUNT(*) FROM user_players WHERE user_id = $1",
+            user_id
+        ) or 0
+
+        # Rank (by runs)
+        my_runs = stats_row["runs"] if stats_row else 0
+        rank = await db.fetchval(
+            "SELECT COUNT(*) + 1 FROM cricket_stats WHERE runs > $1",
+            my_runs
+        ) or 1
+
+        await close_db(db)
+
+        # ============ DATA PREPARE ============
+        display_name = user.first_name if user.first_name else (user.username or "User")
+        wallet = user_row["balance"] if user_row else 0
+        total_credits = wallet + bank_bal
+
+        runs = stats_row["runs"] if stats_row else 0
+        wickets = stats_row["wickets"] if stats_row else 0
+        highest = stats_row["highest_score"] if stats_row else 0
+
+        # ============ DOWNLOAD PFP ============
+        pfp_path = None
+        try:
+            photos = await context.bot.get_user_profile_photos(user_id, limit=1)
+            if photos.total_count > 0:
+                file_id = photos.photos[0][-1].file_id
+                file = await context.bot.get_file(file_id)
+                pfp_path = f"data/pfp_{user_id}.jpg"
+                await file.download_to_drive(pfp_path)
+        except Exception as e:
+            print(f"❌ PFP download error: {e}")
+
+        # ============ GENERATE CARD ============
+        card_path = generate_card_image(
+            display_name=display_name,
+            runs=runs,
+            wickets=wickets,
+            highest=highest,
+            players_count=players_count,
+            credits=total_credits,
+            rank=rank,
+            pfp_path=pfp_path
+        )
+
+        # Delete processing message
+        try:
+            await msg.delete()
+        except:
+            pass
+
+        # Send card
+        with open(card_path, "rb") as f:
+            await update.message.reply_photo(
+                photo=f,
+                caption=f"🏏 *{display_name}'s Card*\n📊 Rank: #{rank}",
+                parse_mode="Markdown"
+            )
+
+        # Cleanup
+        try:
+            if pfp_path and os.path.exists(pfp_path):
+                os.remove(pfp_path)
+            if card_path and os.path.exists(card_path):
+                os.remove(card_path)
+        except:
+            pass
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        try:
+            await close_db(db)
+        except:
+            pass
+        await msg.edit_text(f"❌ *Error:* `{e}`", parse_mode="Markdown")
+
+
+# ============ CARD IMAGE GENERATOR ============
+def generate_card_image(display_name, runs, wickets, highest, players_count, credits, rank, pfp_path=None):
+    """Generate cricket player card image"""
+    
+    # Load template
+    card = Image.open("data/card_template.png").convert("RGBA")
+    width, height = card.size  # 1856 x 2290
+    
+    # ============ PHOTO CIRCLE ============
+    # Template mein circle roughly center X = 928, Y = 390, radius = 250
+    circle_center = (928, 390)
+    circle_radius = 250
+    
+    if pfp_path and os.path.exists(pfp_path):
+        try:
+            pfp = Image.open(pfp_path).convert("RGBA")
+            
+            # Crop to square
+            pfp_size = min(pfp.size)
+            left = (pfp.width - pfp_size) // 2
+            top = (pfp.height - pfp_size) // 2
+            pfp = pfp.crop((left, top, left + pfp_size, top + pfp_size))
+            
+            # Resize
+            pfp = pfp.resize((circle_radius * 2, circle_radius * 2), Image.LANCZOS)
+            
+            # Circular mask
+            mask = Image.new("L", pfp.size, 0)
+            mask_draw = ImageDraw.Draw(mask)
+            mask_draw.ellipse((0, 0, pfp.size[0], pfp.size[1]), fill=255)
+            
+            # Paste
+            paste_x = circle_center[0] - circle_radius
+            paste_y = circle_center[1] - circle_radius
+            card.paste(pfp, (paste_x, paste_y), mask)
+        except Exception as e:
+            print(f"❌ PFP paste error: {e}")
+    
+    # ============ FONTS ============
+    try:
+        font_name = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 90)
+        font_label = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 40)
+        font_value = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 70)
+        font_footer = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 55)
+    except Exception as e:
+        print(f"❌ Font error: {e}")
+        font_name = ImageFont.load_default()
+        font_label = ImageFont.load_default()
+        font_value = ImageFont.load_default()
+        font_footer = ImageFont.load_default()
+    
+    draw = ImageDraw.Draw(card)
+    
+    # ============ NAME ============
+    # Name plate: Y ~ 830
+    draw.text(
+        (928, 830),
+        display_name.upper(),
+        font=font_name,
+        fill="#FFD700",
+        anchor="mm",
+        stroke_width=3,
+        stroke_fill="#000000"
+    )
+    
+    # ============ STATS ============
+    # Left column X ~ 350, Right column X ~ 1250
+    # Row 1 Y ~ 1150, Row 2 Y ~ 1400, Row 3 Y ~ 1650
+    
+    # Helper function
+    def draw_stat(x, y, label, value):
+        # Label (small, above)
+        draw.text(
+            (x, y - 40),
+            label.upper(),
+            font=font_label,
+            fill="#FFD700",
+            anchor="mm"
+        )
+        # Value (large, below)
+        draw.text(
+            (x, y + 30),
+            str(value),
+            font=font_value,
+            fill="white",
+            anchor="mm"
+        )
+    
+    # Left Column
+    draw_stat(350, 1150, "Runs Scored", f"{runs:,}")
+    draw_stat(350, 1400, "Wickets", f"{wickets}")
+    draw_stat(350, 1650, "Highest Score", f"{highest}")
+    
+    # Right Column
+    draw_stat(1250, 1150, "Best Bowling", "0/0")  # You can add if available
+    draw_stat(1250, 1400, "Players Owned", f"{players_count}")
+    draw_stat(1250, 1650, "Credits", f"{credits:,}")
+    
+    # ============ FOOTER (Rank) ============
+    draw.text(
+        (928, 2100),
+        f"🏆 RANK #{rank}  |  🏏 CL BOT",
+        font=font_footer,
+        fill="#FFD700",
+        anchor="mm",
+        stroke_width=2,
+        stroke_fill="#000000"
+    )
+    
+    # ============ SAVE ============
+    output_path = f"data/output_card_{display_name}.png"
+    os.makedirs("data", exist_ok=True)
+    card.save(output_path, "PNG", optimize=True)
+    
+    return output_path
+
+
 
 # ============ GLOBAL ERROR HANDLER ============
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -10029,6 +10262,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     print(f"❌ ERROR: {type(err).__name__}: {err}")
+
 
 
 # ============ MAIN ==========
@@ -10107,7 +10341,7 @@ async def main():
     app.add_handler(CallbackQueryHandler(rob_callback, pattern="^rob_"))
     app.add_handler(CommandHandler("protection", protection))
     app.add_handler(CallbackQueryHandler(protection_callback, pattern="^protect_"))
-
+    app.add_handler(CommandHandler("mycard", mycard))
     # ============ LOGIN / PENALTY ==========
     app.add_handler(CommandHandler("login", login))
     app.add_handler(CommandHandler("login_log", login_log))
