@@ -10159,14 +10159,17 @@ def generate_card_image(display_name, runs, wickets, highest, wins, losses, play
     output_name = f"output_card_{display_name.replace(' ', '_')}.png"
     output_path = f"data/{output_name}"
     
-    hti = Html2Image(output_path="data/", size=(1122, 1402))
+    hti = Html2Image(
+        output_path="data/",
+        size=(1122, 1402),
+        browser_executable="/usr/bin/chromium"
+    )
     hti.screenshot(
         html_file="data/card_temp.html",
         save_as=output_name
     )
     
     return output_path
-
 
 # ============ GLOBAL ERROR HANDLER ============
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:

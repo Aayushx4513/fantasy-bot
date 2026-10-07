@@ -8,6 +8,3 @@ services:
       pip install -r requirements.txt
       apt-get update && apt-get install -y chromium
     startCommand: python tg.py
-    envVars:
-      - key: HTML2IMAGE_CHROME_BIN
-        value: /usr/bin/chromium
