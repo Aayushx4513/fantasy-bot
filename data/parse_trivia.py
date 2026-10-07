@@ -7,7 +7,7 @@ OUTPUT_FILE = "data/trivia_questions.json"
 def parse_trivia_file(filepath):
     questions = []
 
-    # 🔥 FIX: Try multiple encodings
+    # 🔥 Try multiple encodings
     content = None
     for encoding in ["utf-8", "latin-1", "cp1252", "iso-8859-1"]:
         try:
@@ -27,12 +27,29 @@ def parse_trivia_file(filepath):
         if len(lines) < 3:
             continue
 
-        question = lines[0]
-        answer = lines[1]
-        choices = lines[2:]
+        # 🔥 Remove #Q prefix from question
+        question = lines[0].replace("#Q", "").strip()
 
-        # Skip if any line has issues
+        # 🔥 Remove ^ prefix from answer
+        answer = lines[1].replace("^", "").strip()
+
+        # 🔥 Remove ^, #Q, and A/B/C/D prefix from choices
+        choices = []
+        for c in lines[2:]:
+            c_clean = c.replace("^", "").replace("#Q", "").strip()
+
+            # Remove "A ", "B ", "C ", "D " prefix
+            if len(c_clean) > 2 and c_clean[1] == ' ':
+                c_clean = c_clean[2:].strip()
+
+            if c_clean:
+                choices.append(c_clean)
+
         if not question or not answer or not choices:
+            continue
+
+        # 🔥 Verify answer is in choices
+        if answer not in choices:
             continue
 
         questions.append({

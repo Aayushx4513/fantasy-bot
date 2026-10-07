@@ -20,16 +20,6 @@ import time
 import asyncio
 import asyncpg
 
-# ============ IQ TRIVIA LOADER ============
-import json
-import random as _random_iq
-
-with open("data/trivia_questions.json", "r", encoding="utf-8") as f:
-    TRIVIA_QUESTIONS = json.load(f)
-
-print(f"✅ Loaded {len(TRIVIA_QUESTIONS)} trivia questions")
-
-
 # India Standard Time
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -54,29 +44,14 @@ def run_flask():
 # ============ GLOBAL CONNECTION ============
 db_conn = None
 
-# ============ GLOBAL POOL ============
-db_pool = None
-
 async def get_db():
-    """Get a connection from pool"""
-    global db_pool
-    if db_pool is None:
-        db_pool = await asyncpg.create_pool(
+    global db_conn
+    if db_conn is None or db_conn.is_closed():
+        db_conn = await asyncpg.connect(
             DATABASE_URL,
-            min_size=1,
-            max_size=10,
-            statement_cache_size=0
+            statement_cache_size=0  # 🔥 YEH ADD KARO
         )
-    return await db_pool.acquire()
-
-async def close_db(db):
-    """Release connection back to pool"""
-    global db_pool
-    if db_pool and db:
-        try:
-            await db_pool.release(db)
-        except Exception as e:
-            print(f"⚠️ DB release error: {e}")
+    return db_conn
 
 # ============ DATABASE INIT ============
 async def init_db():
@@ -108,26 +83,6 @@ async def init_db():
         )
     ''')
     
-    # 🔥 ROB SYSTEM COLUMNS
-    await db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS rob_count_today INT DEFAULT 0")
-    await db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_rob_reset DATE")
-    await db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS protection_until TIMESTAMP")
-    await db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_robbed_time TIMESTAMP")
-    await db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_rob_attempt TIMESTAMP")
-
-    # 🔥 ROB HISTORY TABLE
-    await db.execute('''
-        CREATE TABLE IF NOT EXISTS rob_history (
-            id SERIAL PRIMARY KEY,
-            robber_id BIGINT,
-            target_id BIGINT,
-            amount BIGINT,
-            success BOOLEAN,
-            robbed_at TIMESTAMP
-        )
-    ''')
-
-
     await db.execute('''
         CREATE TABLE IF NOT EXISTS users (
             user_id BIGINT PRIMARY KEY,
@@ -144,8 +99,6 @@ async def init_db():
     # 🔥 Fav player column
     await db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS fav_player INT DEFAULT 0")
     await db.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS font TEXT DEFAULT '1'")
-    # 🔥 Gift/Sell columns
-    await db.execute("ALTER TABLE user_players ADD COLUMN IF NOT EXISTS purchased_price BIGINT DEFAULT 0")
 
 
     await db.execute('''
@@ -179,29 +132,6 @@ async def init_db():
     ''')
 
 
-    await db.execute('''
-        CREATE TABLE IF NOT EXISTS sell_history (
-            id SERIAL PRIMARY KEY,
-            user_id BIGINT,
-            player_id INT,
-            player_name TEXT,
-            bought_price BIGINT,
-            sold_price BIGINT,
-            fee BIGINT,
-            sold_at TIMESTAMP
-        )
-    ''')
-
-    await db.execute('''
-        CREATE TABLE IF NOT EXISTS gift_history (
-            id SERIAL PRIMARY KEY,
-            from_user BIGINT,
-            to_user BIGINT,
-            player_id INT,
-            player_name TEXT,
-            gifted_at TIMESTAMP
-        )
-    ''')
     await db.execute('''
         CREATE TABLE IF NOT EXISTS login_tracker (
             user_id BIGINT PRIMARY KEY,
@@ -584,13 +514,13 @@ async def init_db():
     ''')
     
     print("✅ PostgreSQL tables created!")
-    await close_db(db)
+    await db.close()
 
 # ============ HELPER FUNCTIONS ============
 async def is_registered(user_id):
     db = await get_db()
     result = await db.fetchval("SELECT user_id FROM users WHERE user_id = $1", user_id)
-    await close_db(db)
+    await db.close()
     return result is not None
 
 async def get_user(user_id, name=""):
@@ -602,18 +532,18 @@ async def get_user(user_id, name=""):
             user_id, name
         )
         user = await db.fetchrow("SELECT * FROM users WHERE user_id = $1", user_id)
-    await close_db(db)
+    await db.close()
     return user
 
 async def update_balance(user_id, amount):
     db = await get_db()
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", amount, user_id)
-    await close_db(db)
+    await db.close()
 
 async def get_balance(user_id):
     db = await get_db()
     balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    await close_db(db)
+    await db.close()
     return balance if balance else 0
 
 # ============ LOTTERY GLOBALS ==========
@@ -667,32 +597,29 @@ async def refer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
     await update.message.reply_text(f"👥 REFERRAL SYSTEM\n\nInvite friends and earn 1,000 credits each!\n\nYour Link: {ref_link}\n\nNew users get +500 bonus!")
 
-# ============ START COMMAND ============
+# ============ START COMMAND ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.first_name if user.first_name else user.username or "User"
     user_id = user.id
-
-    # 🔥 Escape name for Markdown
-    name_escaped = escape_markdown(name)
-
+    
     referred_by = None
     if context.args and len(context.args) > 0 and context.args[0].startswith("ref_"):
         try:
             referred_by = int(context.args[0].split("_")[1])
         except:
             pass
-
+    
     db = await get_db()
-
+    
     existing = await db.fetchrow("SELECT * FROM users WHERE user_id = $1", user_id)
-
+    
     if not existing:
         await db.execute(
             "INSERT INTO users (user_id, name, balance, points, won, total) VALUES ($1, $2, 1000, 0, 0, 0)",
             user_id, name
         )
-
+        
         if referred_by and referred_by != user_id:
             ref_exists = await db.fetchval("SELECT user_id FROM users WHERE user_id = $1", referred_by)
             if ref_exists:
@@ -705,61 +632,48 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await db.execute("UPDATE users SET balance = balance + 1000 WHERE user_id = $1", referred_by)
                     await db.execute("UPDATE users SET balance = balance + 500 WHERE user_id = $1", user_id)
                     try:
-                        await context.bot.send_message(
-                            referred_by,
-                            f"🎉 *REFERRAL REWARD!*\n\n"
-                            f"*@{name_escaped}* joined using your link!\n"
-                            f"🪙 *+1,000 credits!*",
-                            parse_mode="Markdown"
-                        )
+                        await context.bot.send_message(referred_by, f"🎉 REFERRAL REWARD!\n\n@{name} joined using your link!\n💰 +1,000 credits!")
                     except:
                         pass
-                    await update.message.reply_text(
-                        "🎉 *WELCOME!*\n\n"
-                        "*You joined with a referral!*\n"
-                        "🪙 *+500 bonus credits!*",
-                        parse_mode="Markdown"
-                    )
-
+                    await update.message.reply_text("🎉 WELCOME!\n\nYou joined with a referral!\n💰 +500 bonus credits!")
+        
         keyboard = [
             [InlineKeyboardButton("📢 UPDATES", url="https://t.me/clbotofficial")],
             [InlineKeyboardButton("👥 MAIN GROUP", url="https://t.me/+eTD1m8Cjc_wyOTNl")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-
+        
         await update.message.reply_text(
-            f"✨ *WELCOME TO CL BOT* ✨\n\n"
-            f"👑 *{name_escaped}*, you've joined the elite club!\n"
-            f"🪙 *1000* credits | 🏆 *0* pts\n\n"
-            f"🎯 */claim* — Daily rewards\n"
-            f"🎡 */spin* — Daily spin\n"
-            f"👤 */profile* — Your stats\n"
-            f"🏆 */leaderboard* — Top players\n\n"
-            f"📌 *Join our channels for exclusive updates!*",
-            reply_markup=reply_markup,
-            parse_mode="Markdown"
+            f"✨ WELCOME TO CL ZONE ✨\n\n"
+            f"👑 {name}, you've joined the elite club!\n"
+            f"💰 1000 credits | 🏆 0 pts\n\n"
+            f"🎯 /claim - Daily rewards\n"
+            f"🎡 /spin - Daily spin\n"
+            f"👤 /profile - Your stats\n"
+            f"🏆 /leaderboard - Top players\n\n"
+            f"📌 Join our channels for exclusive updates!",
+            reply_markup=reply_markup
         )
     else:
         keyboard = [
             [InlineKeyboardButton("📢 UPDATES", url="https://t.me/clbotofficial")],
             [InlineKeyboardButton("👥 MAIN GROUP", url="https://t.me/+eTD1m8Cjc_wyOTNl")]
-        ]
+         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-
+        
         await update.message.chat.send_message(
-            f"✨ *WELCOME BACK TO CL BOT* ✨\n\n"
-            f"👑 *{name_escaped}*\n"
-            f"🪙 *{existing['balance']:,}* credits | 🏆 *{existing['points']}* pts\n\n"
-            f"🎯 */claim* — Daily rewards\n"
-            f"🎡 */spin* — Daily spin\n"
-            f"👤 */profile* — Your stats\n"
-            f"🏆 */leaderboard* — Top players\n\n"
-            f"📌 *Stay connected with our community!*",
-            reply_markup=reply_markup,
-            parse_mode="Markdown"
+            f"✨ WELCOME BACK TO CL ZONE ✨\n\n"
+            f"👑 {name}\n"
+            f"💰 {existing['balance']:,} credits | 🏆 {existing['points']} pts\n\n"
+            f"🎯 /claim - Daily rewards\n"
+            f"🎡 /spin - Daily spin\n"
+            f"👤 /profile - Your stats\n"
+            f"🏆 /leaderboard - Top players\n\n"
+            f"📌 Stay connected with our community!",
+            reply_markup=reply_markup
         )
-
-    await close_db(db)
+    
+    await db.close()
 
 
 import re
@@ -773,6 +687,8 @@ def escape_markdown(text):
     special_chars = r'([_*\[\]()~`>#+\-=|{}])'
     return re.sub(special_chars, r'\\\1', text)
 
+# ============ PROFILE ==========
+# ============ PROFILE ============
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
@@ -789,7 +705,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     if not data:
-        await close_db(db)
+        await db.close()
         await update.message.reply_text("❌ *Profile not found!*", parse_mode="Markdown")
         return
 
@@ -800,17 +716,18 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     total_wealth = wallet_bal + bank_bal
 
-    # 🔥 Just for display, no auto-fix
-    display_total = max(won, total)
+    if won > total:
+        await db.execute("UPDATE users SET total = $1 WHERE user_id = $2", won, user_id)
+        total = won
 
-    if display_total > 0:
-        win_rate = int((won / display_total) * 100)
+    if total > 0:
+        win_rate = int((won / total) * 100)
         if win_rate > 100:
             win_rate = 100
     else:
         win_rate = 0
 
-    await close_db(db)
+    await db.close()
 
     DEFAULT_BIO = "I Play With CL Bot!"
     bio_text = bio if bio else DEFAULT_BIO
@@ -831,11 +748,11 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     profile_text = f"👤 *{profile_label}*\n\n"
     profile_text += f"*{name_label}:* {name_escaped}\n"
     profile_text += f"*{bio_label}:* {bio_text}\n\n"
-    profile_text += f"🪙 *{wallet_label}:* {wallet_bal:,}\n"
+    profile_text += f"💰 *{wallet_label}:* {wallet_bal:,}\n"
     profile_text += f"🏦 *{bank_label}:* {bank_bal:,}\n"
     profile_text += f"💎 *{total_label}:* {total_wealth:,}\n\n"
     profile_text += f"🏆 *{points_label}:* {points}\n"
-    profile_text += f"📊 *{bets_label}:* {won}/{display_total}\n"
+    profile_text += f"📊 *{bets_label}:* {won}/{total}\n"
     profile_text += f"📈 *{winrate_label}:* {win_rate}%"
 
     keyboard = [
@@ -876,7 +793,7 @@ async def setbio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     db = await get_db()
     await db.execute("UPDATE users SET bio = $1 WHERE user_id = $2", bio, user_id)
-    await close_db(db)
+    await db.close()
     
     bio_escaped = escape_markdown(bio)
     await update.message.reply_text(f"✅ *Bio updated!*\n\n{bio_escaped}", parse_mode="Markdown")
@@ -891,7 +808,7 @@ async def rmbio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     db = await get_db()
     await db.execute("UPDATE users SET bio = 'I Play With CL Bot!' WHERE user_id = $1", user_id)
-    await close_db(db)
+    await db.close()
     
     await update.message.reply_text("✅ *Bio reset to default!*\n\n*I Play With CL Bot!*", parse_mode="Markdown")
 
@@ -910,7 +827,7 @@ async def setpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo = update.message.reply_to_message.photo[-1].file_id
     db = await get_db()
     await db.execute("UPDATE users SET photo = $1 WHERE user_id = $2", photo, user_id)
-    await close_db(db)
+    await db.close()
     await update.message.reply_text('✅ Profile photo updated!')
 
 async def rmpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -920,7 +837,7 @@ async def rmpfp(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     db = await get_db()
     await db.execute("UPDATE users SET photo = NULL WHERE user_id = $1", user_id)
-    await close_db(db)
+    await db.close()
     await update.message.reply_text('❌ Profile photo removed!')
 
 # ============ CLAIM ==========
@@ -945,7 +862,7 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if last:
         if last == today:
             await update.message.reply_text("*⚠️ Already claimed today!*\n*Come back tomorrow.*", parse_mode="Markdown")
-            await close_db(db)
+            await db.close()
             return
 
     if chat_type in ['group', 'supergroup'] and chat_id == CL_GROUP_ID:
@@ -964,11 +881,11 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", reward, user_id)
 
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    await close_db(db)
+    await db.close()
 
     await update.message.reply_text(
         f"*✅ Claimed Daily Rewards!*\n\n"
-        f"*🪙 +{reward} credits*\n"
+        f"*💰 +{reward} credits*\n"
         f"*📅 {today_str}*\n"
         f"*💳 New balance: {new_bal:,}*"
         f"{extra_note}\n\n"
@@ -994,7 +911,7 @@ async def achieve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target = update.message.reply_to_message.from_user
     db = await get_db()
     await db.execute("INSERT INTO achievements (user_id, achievement) VALUES ($1, $2)", target.id, achievement)
-    await close_db(db)
+    await db.close()
     await update.message.reply_text(f"✅ ACHIEVEMENT GIVEN!\n\nUser: {target.first_name}\nAchievement: {achievement} 🏆")
 
 # ============ RMACHIEVE COMMAND (ADMIN) ==========
@@ -1018,11 +935,11 @@ async def rmachieve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     achievements = await db.fetch("SELECT row_number() OVER () as rowid, achievement FROM achievements WHERE user_id = $1", target_id)
     if num < 1 or num > len(achievements):
         await update.message.reply_text(f'❌ Choose 1-{len(achievements)}')
-        await close_db(db)
+        await db.close()
         return
     removed = achievements[num-1]
     await db.execute("DELETE FROM achievements WHERE user_id = $1 AND achievement = $2", target_id, removed['achievement'])
-    await close_db(db)
+    await db.close()
     await update.message.reply_text(f"✅ ACHIEVEMENT REMOVED!\n\nRemoved: {removed['achievement']} 🏆")
 
 
@@ -1040,11 +957,11 @@ async def deletecode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     exists = await db.fetchval("SELECT code FROM claim_codes WHERE code = $1", code)
     if not exists:
         await update.message.reply_text(f"❌ Code '{code}' not found!")
-        await close_db(db)
+        await db.close()
         return
     await db.execute("DELETE FROM claim_codes WHERE code = $1", code)
     await db.execute("DELETE FROM code_claims WHERE code = $1", code)
-    await close_db(db)
+    await db.close()
     await update.message.reply_text(f"✅ Code '{code}' deleted!")
 
 async def codestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1057,8 +974,8 @@ async def codestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_claims = await db.fetchval("SELECT COUNT(*) FROM code_claims")
     total_given = await db.fetchval("SELECT COALESCE(SUM(amount), 0) FROM code_claims cc JOIN claim_codes c ON cc.code = c.code")
     unique_users = await db.fetchval("SELECT COUNT(DISTINCT user_id) FROM code_claims")
-    await close_db(db)
-    await update.message.reply_text(f"📊 CODE STATS\n\n📝 Total codes: {total_codes}\n🟢 Active codes: {active_codes}\n🎯 Total claims: {total_claims}\n🪙 Credits given: {total_given:,}\n👥 Unique users: {unique_users}")
+    await db.close()
+    await update.message.reply_text(f"📊 CODE STATS\n\n📝 Total codes: {total_codes}\n🟢 Active codes: {active_codes}\n🎯 Total claims: {total_claims}\n💰 Credits given: {total_given:,}\n👥 Unique users: {unique_users}")
 
 # ============ SPIN ==========
 async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1093,7 +1010,7 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "*Come back tomorrow.*",
                     parse_mode="Markdown"
                 )
-                await close_db(db)
+                await db.close()
                 return
 
         except ValueError:
@@ -1117,7 +1034,7 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         now_str
     )
 
-    # 🪙 Add reward
+    # 💰 Add reward
     await db.execute(
         """
         UPDATE users
@@ -1133,12 +1050,12 @@ async def spin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id
     )
 
-    await close_db(db)
+    await db.close()
 
     await update.message.reply_text(
         f"*✅ Claimed Daily Spin Rewards of {amount:,} Credits*\n"
         f"*at {today_str}*\n\n"
-        f"*🪙 New balance: {new_bal:,} 🪙*\n"
+        f"*💰 New balance: {new_bal:,} 💰*\n"
         f"*🎡 Next spin: tomorrow*",
         parse_mode="Markdown"
     )
@@ -1157,37 +1074,37 @@ async def dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if last_dice and (datetime.now() - last_dice).seconds < 4:
         await update.message.reply_text("⏰ You are on cooldown of few seconds.")
-        await close_db(db)
+        await db.close()
         return
 
     args = context.args
     if len(args) < 1:
-        await update.message.reply_text('🎲 /dice <amount>\n\nMultipliers: 1(0x) 2(0.25x) 3(0.5x) 4(1.25x) 5(1.5x) 6(2.5x)\n🪙 Min: 100 | Max: 20,000')
-        await close_db(db)
+        await update.message.reply_text('🎲 /dice <amount>\n\nMultipliers: 1(0x) 2(0.25x) 3(0.5x) 4(1.25x) 5(1.5x) 6(2.5x)\n💰 Min: 100 | Max: 20,000')
+        await db.close()
         return
 
     try:
         amount = int(args[0])
     except:
         await update.message.reply_text('❌ Invalid amount')
-        await close_db(db)
+        await db.close()
         return
 
     if amount < 100:
         await update.message.reply_text('❌ Minimum 100 credits')
-        await close_db(db)
+        await db.close()
         return
 
     if amount > 20000:
         await update.message.reply_text('❌ Maximum 20,000 credits')
-        await close_db(db)
+        await db.close()
         return
 
     balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
 
     if balance < amount:
         await update.message.reply_text(f'❌ Need {amount:,}, have {balance:,}')
-        await close_db(db)
+        await db.close()
         return
 
     roll = random.randint(1, 6)
@@ -1200,12 +1117,12 @@ async def dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # 🔥 UPDATE LAST USED TIME
     await db.execute("INSERT INTO user_cooldown (user_id, last_dice) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_dice = $2", user_id, datetime.now())
-    await close_db(db)
+    await db.close()
 
     if win > 0:
-        await update.message.reply_text(f"🎲 DICE\n\n🎲 Rolled: {roll} {dice_emoji[roll]}\n✨ You won {win:,} 🪙 ({multi[roll]}x)\n🪙 New balance: {new_bal:,} 🪙")
+        await update.message.reply_text(f"🎲 DICE\n\n🎲 Rolled: {roll} {dice_emoji[roll]}\n✨ You won {win:,} 💰 ({multi[roll]}x)\n💰 New balance: {new_bal:,} 💰")
     else:
-        await update.message.reply_text(f"🎲 DICE\n\n🎲 Rolled: {roll} {dice_emoji[roll]}\n💀 You lost {amount:,} 🪙\n🪙 New balance: {new_bal:,} 🪙")
+        await update.message.reply_text(f"🎲 DICE\n\n🎲 Rolled: {roll} {dice_emoji[roll]}\n💀 You lost {amount:,} 💰\n💰 New balance: {new_bal:,} 💰")
 
 # ============ FLIP ==========
 async def flip(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1221,43 +1138,43 @@ async def flip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if last_flip and (datetime.now() - last_flip).seconds < 4:
         await update.message.reply_text("⏰ You are on cooldown of few seconds.")
-        await close_db(db)
+        await db.close()
         return
     
     args = context.args
     if len(args) < 2:
-        await update.message.reply_text('🪙 /flip heads/tails <amount>\nExample: /flip heads 1000\n\n🪙 Min: 100 | Max: 20,000')
-        await close_db(db)
+        await update.message.reply_text('🪙 /flip heads/tails <amount>\nExample: /flip heads 1000\n\n💰 Min: 100 | Max: 20,000')
+        await db.close()
         return
 
     choice = args[0].lower()
     if choice not in ['heads', 'tails']:
         await update.message.reply_text('❌ Choose heads or tails')
-        await close_db(db)
+        await db.close()
         return
 
     try:
         amount = int(args[1])
     except:
         await update.message.reply_text('❌ Invalid amount')
-        await close_db(db)
+        await db.close()
         return
 
     if amount < 100:
         await update.message.reply_text('❌ Minimum 100 credits')
-        await close_db(db)
+        await db.close()
         return
 
     if amount > 20000:
         await update.message.reply_text('❌ Maximum 20,000 credits')
-        await close_db(db)
+        await db.close()
         return
 
     balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
 
     if balance < amount:
         await update.message.reply_text(f'❌ Need {amount:,}, have {balance:,}')
-        await close_db(db)
+        await db.close()
         return
 
     result = random.choice(['heads', 'tails'])
@@ -1268,14 +1185,14 @@ async def flip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await db.execute("UPDATE users SET balance = $1 WHERE user_id = $2", new_bal, user_id)
         # 🔥 UPDATE LAST USED TIME
         await db.execute("INSERT INTO user_cooldown (user_id, last_flip) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_flip = $2", user_id, datetime.now())
-        await close_db(db)
-        await update.message.reply_text(f"🪙 {result.upper()}! You won {win:,} 🪙\n🪙 New balance: {new_bal:,} 🪙")
+        await db.close()
+        await update.message.reply_text(f"🪙 {result.upper()}! You won {win:,} 💰\n💰 New balance: {new_bal:,} 💰")
     else:
         new_bal = balance - amount
         await db.execute("UPDATE users SET balance = $1 WHERE user_id = $2", new_bal, user_id)
         await db.execute("INSERT INTO user_cooldown (user_id, last_flip) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET last_flip = $2", user_id, datetime.now())
-        await close_db(db)
-        await update.message.reply_text(f"😞 {result.upper()}! You lost {amount:,} 🪙\n🪙 New balance: {new_bal:,} 🪙")
+        await db.close()
+        await update.message.reply_text(f"😞 {result.upper()}! You lost {amount:,} 💰\n💰 New balance: {new_bal:,} 💰")
 
 # ============ HELP COMMAND ==========
 # ============ HELP COMMAND ==========
@@ -1296,7 +1213,7 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• /rmbio - Remove bio\n"
         "• /setpfp - Set photo (reply to pic)\n"
         "• /rmpfp - Remove photo\n\n"
-        "*🪙 EARN CREDITS*\n"
+        "*💰 EARN CREDITS*\n"
         "• /claim - 500 daily\n"
         "• /spin - 1,000-10,000 daily\n"
         "• /dice <amount> - 0x to 2.5x\n"
@@ -1418,7 +1335,7 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += f"🪙 Total wealth : *{user_total:,}*"
 
     await update.message.reply_text(msg, parse_mode="Markdown")
-    await close_db(db)
+    await db.close()
 
 # ============ TOP FANTASY ==========
 async def top_fantasy(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1433,7 +1350,7 @@ async def top_fantasy(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not users_data:
         await update.message.reply_text('📭 No fantasy points yet!')
-        await close_db(db)
+        await db.close()
         return
 
     msg = "🏆 FANTASY LEADERBOARD\n\n"
@@ -1451,7 +1368,7 @@ async def top_fantasy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         msg += f"\n━━━━━━━━━━━━━━━━━━━━━━\n📊 You are not registered yet!"
     
-    await close_db(db)
+    await db.close()
     await update.message.reply_text(msg)
 
 import re
@@ -1521,12 +1438,12 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if sender_bal is None:
         await msg.reply_text("❌ You are not registered! Send /start first.")
-        await close_db(db)
+        await db.close()
         return
 
     if sender_bal < amount:
         await msg.reply_text(f'❌ Need {amount:,}, have {sender_bal:,}')
-        await close_db(db)
+        await db.close()
         return
 
     fee = int(amount * 0.05)
@@ -1535,7 +1452,7 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", amount, sender.id)
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", receiver_amount, receiver.id)
     sender_new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", sender.id)
-    await close_db(db)
+    await db.close()
 
     sender_name = f"@{sender.username}" if sender.username else sender.first_name
     receiver_name = f"@{receiver.username}" if receiver.username else receiver.first_name
@@ -1544,10 +1461,10 @@ async def tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💝 TIP SENT!\n\n"
         f"FROM: {sender_name}\n"
         f"TO: {receiver_name}\n"
-        f"🪙 Amount: {amount:,}\n"
+        f"💰 Amount: {amount:,}\n"
         f"💸 Fee (5%): {fee:,}\n"
         f"📥 Received: {receiver_amount:,}\n\n"
-        f"📊 Your balance: {sender_new_bal:,} 🪙"
+        f"📊 Your balance: {sender_new_bal:,} 💰"
     )
 
     await msg.reply_text(caption)
@@ -1561,7 +1478,7 @@ async def achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     db = await get_db()
     ach = await db.fetch("SELECT achievement FROM achievements WHERE user_id = $1", user_id)
-    await close_db(db)
+    await db.close()
 
     if not ach:
         await update.message.reply_text(
@@ -1688,8 +1605,8 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(
             f"🏦 *MY BANK ACCOUNT*\n\n"
-            f"🪙 Bank Balance: *{bank_bal:,}* 🪙\n"
-            f"👛 Wallet Balance: *{wallet_bal:,}* 🪙\n"
+            f"💰 Bank Balance: *{bank_bal:,}* 💰\n"
+            f"👛 Wallet Balance: *{wallet_bal:,}* 💰\n"
             f"📈 Interest Rate: *5% daily*\n"
             f"⏰ Next interest: *{next_time_str}*\n\n"
             f"━━━━━━━━━━━━━━━━━━━━",
@@ -1716,7 +1633,7 @@ async def bank(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         if db is not None:
             try:
-                await close_db(db)
+                await db.close()
             except Exception:
                 pass
 
@@ -1747,8 +1664,8 @@ async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     wallet_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     
     if wallet_bal < amount:
-        await update.message.reply_text(f'❌ Insufficient wallet balance!\n\nNeed: {amount:,} 🪙\nHave: {wallet_bal:,} 🪙')
-        await close_db(db)
+        await update.message.reply_text(f'❌ Insufficient wallet balance!\n\nNeed: {amount:,} 💰\nHave: {wallet_bal:,} 💰')
+        await db.close()
         return
     
     await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", amount, user_id)
@@ -1756,9 +1673,9 @@ async def deposit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     new_wallet = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     new_bank = await db.fetchval("SELECT balance FROM bank WHERE user_id = $1", user_id)
-    await close_db(db)
+    await db.close()
     
-    await update.message.reply_text(f"✅ DEPOSITED!\n\nAmount: +{amount:,} 🪙\nWallet: {wallet_bal:,} → {new_wallet:,} 🪙\nBank: {new_bank - amount:,} → {new_bank:,} 🪙")
+    await update.message.reply_text(f"✅ DEPOSITED!\n\nAmount: +{amount:,} 💰\nWallet: {wallet_bal:,} → {new_wallet:,} 💰\nBank: {new_bank - amount:,} → {new_bank:,} 💰")
 
 async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -1787,8 +1704,8 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bank_bal = await db.fetchval("SELECT balance FROM bank WHERE user_id = $1", user_id)
     
     if bank_bal < amount:
-        await update.message.reply_text(f'❌ Insufficient bank balance!\n\nNeed: {amount:,} 🪙\nHave: {bank_bal:,} 🪙')
-        await close_db(db)
+        await update.message.reply_text(f'❌ Insufficient bank balance!\n\nNeed: {amount:,} 💰\nHave: {bank_bal:,} 💰')
+        await db.close()
         return
     
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", amount, user_id)
@@ -1796,9 +1713,9 @@ async def withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     new_bank = await db.fetchval("SELECT balance FROM bank WHERE user_id = $1", user_id)
     new_wallet = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    await close_db(db)
+    await db.close()
     
-    await update.message.reply_text(f"✅ WITHDRAWN!\n\nAmount: -{amount:,} 🪙\nBank: {bank_bal:,} → {new_bank:,} 🪙\nWallet: {new_wallet - amount:,} → {new_wallet:,} 🪙")
+    await update.message.reply_text(f"✅ WITHDRAWN!\n\nAmount: -{amount:,} 💰\nBank: {bank_bal:,} → {new_bank:,} 💰\nWallet: {new_wallet - amount:,} → {new_wallet:,} 💰")
 
 # ============ CLAIM INTEREST (SIMPLE) ==========
 async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1837,7 +1754,7 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
             '**❌ No bank account found! Use /bank first.**',
             parse_mode="Markdown"
         )
-        await close_db(db)
+        await db.close()
         return
 
     bank_bal = row['balance']
@@ -1866,7 +1783,7 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="Markdown"
             )
 
-            await close_db(db)
+            await db.close()
             return
 
     # ============ TIER SYSTEM ============
@@ -1902,14 +1819,14 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id
     )
 
-    await close_db(db)
+    await db.close()
 
     # ============ RESULT ============
     await update.message.reply_text(
-        f"**🪙 INTEREST CLAIMED!**\n\n"
+        f"**💰 INTEREST CLAIMED!**\n\n"
         f"**Rate: {rate * 100:g}%**\n"
-        f"**Interest: +{interest:,} 🪙**\n"
-        f"**New Bank Balance: {new_bank:,} 🪙**\n\n"
+        f"**Interest: +{interest:,} 💰**\n"
+        f"**New Bank Balance: {new_bank:,} 💰**\n\n"
         f"**⏰ Next interest: 24h**",
         parse_mode="Markdown"
     )
@@ -1923,13 +1840,13 @@ async def lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     db = await get_db()
     balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    await close_db(db)
+    await db.close()
     
     user_tickets = lottery_tickets.get(user_id, [])
     status_text = "ACTIVE" if lottery_active else "NOT ACTIVE"
     
     msg = f"🎰 LOTTERY SYSTEM\n\n"
-    msg += f"🪙 Balance: {balance:,}\n"
+    msg += f"💰 Balance: {balance:,}\n"
     msg += f"🎫 Your tickets: {len(user_tickets)}\n"
     msg += f"📊 Status: {status_text}\n\n"
     msg += f"🎟️ Ticket price: 20,000 credits\n"
@@ -1977,7 +1894,7 @@ async def buy_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_tickets_count + quantity > 5:
         remaining = 5 - user_tickets_count
         await update.message.reply_text(f"❌ You can only buy maximum 5 tickets!\nYou already have {user_tickets_count} tickets.\nYou can buy {remaining} more.")
-        await close_db(db)
+        await db.close()
         return
     
     cost = quantity * 20000
@@ -1985,7 +1902,7 @@ async def buy_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if balance < cost:
         await update.message.reply_text(f"❌ Need {cost:,} credits! You have {balance:,}")
-        await close_db(db)
+        await db.close()
         return
     
     await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", cost, user_id)
@@ -2002,13 +1919,13 @@ async def buy_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total_tickets = await db.fetchval("SELECT COUNT(*) FROM lottery_tickets")
     await db.execute("UPDATE lottery_data SET value = $1 WHERE key = 'total_tickets'", str(total_tickets))
     
-    await close_db(db)
+    await db.close()
     
     ticket_list = "\n".join([f"🎫 {t}" for t in new_tickets])
     
     await update.message.reply_text(
         f"✅ BOUGHT {quantity} TICKETS!\n\n"
-        f"🪙 Cost: {cost:,} credits\n"
+        f"💰 Cost: {cost:,} credits\n"
         f"🎫 Your tickets:\n{ticket_list}\n\n"
         f"📊 Total tickets you have: {user_tickets_count + quantity}/5\n"
         f"📊 Total tickets sold: {total_tickets}\n\n"
@@ -2025,7 +1942,7 @@ async def mytickets_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
     tickets = await db.fetch("SELECT ticket FROM lottery_tickets WHERE user_id = $1", user_id)
     total = await db.fetchval("SELECT COUNT(*) FROM lottery_tickets WHERE user_id = $1", user_id)
-    await close_db(db)
+    await db.close()
     
     if not tickets:
         await update.message.reply_text("🎫 You don't have any tickets!\nUse /buy_ticket to buy.")
@@ -2068,7 +1985,7 @@ async def lottery_info_command(update: Update, context: ContextTypes.DEFAULT_TYP
     win_chance = (user_tickets / total_tickets * 100) if total_tickets > 0 else 0
     status_text = "🟢 ACTIVE" if lottery_active else "🔴 NOT ACTIVE"
     
-    await close_db(db)
+    await db.close()
     
     msg = f"🎰 LOTTERY INFO\n\n"
     msg += f"Status: {status_text}\n"
@@ -2102,7 +2019,7 @@ async def start_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.execute("INSERT INTO lottery_data (key, value) VALUES ('active', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'")
     await db.execute("INSERT INTO lottery_data (key, value) VALUES ('total_tickets', '0') ON CONFLICT (key) DO UPDATE SET value = '0'")
     await db.execute("INSERT INTO lottery_data (key, value) VALUES ('start_time', $1) ON CONFLICT (key) DO UPDATE SET value = $1", datetime.now().isoformat())
-    await close_db(db)
+    await db.close()
     
     await update.message.reply_text(
         "✅ LOTTERY STARTED!\n\n"
@@ -2127,7 +2044,7 @@ async def draw_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if total_tickets == 0:
         await update.message.reply_text("❌ No tickets sold!")
-        await close_db(db)
+        await db.close()
         return
     
     all_tickets = await db.fetch("SELECT user_id, ticket FROM lottery_tickets")
@@ -2145,7 +2062,7 @@ async def draw_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await db.execute("DELETE FROM lottery_tickets")
     await db.execute("DELETE FROM lottery_participants")
     await db.execute("UPDATE lottery_data SET value = 'false' WHERE key = 'active'")
-    await close_db(db)
+    await db.close()
     
     lottery_active = False
     
@@ -2154,7 +2071,7 @@ async def draw_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
             winner_id,
             f"🎉 YOU WON THE LOTTERY! 🎉\n\n"
             f"🏆 Ticket: {winner_ticket}\n"
-            f"🪙 Prize: {prize_pool:,}\n"
+            f"💰 Prize: {prize_pool:,}\n"
             f"💳 New balance: {current_bal + prize_pool:,}"
         )
     except:
@@ -2164,7 +2081,7 @@ async def draw_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎉 LOTTERY WINNER! 🎉\n\n"
         f"🏆 Winner: {winner_name}\n"
         f"🎫 Ticket: {winner_ticket}\n"
-        f"🪙 Prize: {prize_pool:,}\n\n"
+        f"💰 Prize: {prize_pool:,}\n\n"
         f"💡 /reset_lottery - Start new lottery"
     )
 
@@ -2204,7 +2121,7 @@ async def lottery_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
     await db.execute("CREATE TABLE IF NOT EXISTS lottery_coupons (code TEXT PRIMARY KEY, quantity INT, used INT DEFAULT 0)")
     await db.execute("INSERT INTO lottery_coupons (code, quantity) VALUES ($1, $2)", coupon_code, quantity)
-    await close_db(db)
+    await db.close()
     
     await update.message.reply_text(
         f"✅ COUPON GENERATED!\n\n"
@@ -2232,26 +2149,26 @@ async def claim_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not coupon:
         await update.message.reply_text("❌ Invalid coupon code!")
-        await close_db(db)
+        await db.close()
         return
     
     quantity, used = coupon['quantity'], coupon['used']
     
     if used >= quantity:
         await update.message.reply_text("❌ This coupon has been fully used!")
-        await close_db(db)
+        await db.close()
         return
     
     await db.execute("CREATE TABLE IF NOT EXISTS coupon_used (code TEXT, user_id BIGINT, PRIMARY KEY (code, user_id))")
     already_used = await db.fetchval("SELECT code FROM coupon_used WHERE code = $1 AND user_id = $2", coupon_code, user_id)
     if already_used:
         await update.message.reply_text("❌ You already used this coupon!")
-        await close_db(db)
+        await db.close()
         return
     
     await db.execute("INSERT INTO coupon_used (code, user_id) VALUES ($1, $2)", coupon_code, user_id)
     await db.execute("UPDATE lottery_coupons SET used = used + 1 WHERE code = $1", coupon_code)
-    await close_db(db)
+    await db.close()
     
     if not lottery_active:
         await update.message.reply_text(f"✅ Coupon claimed! You got {quantity} free tickets.\nBut lottery is not active. Wait for /start_lottery")
@@ -2331,11 +2248,11 @@ async def hilo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if balance < bet:
         await update.message.reply_text(f"❌ Need {bet:,} credits! You have {balance:,}")
-        await close_db(db)
+        await db.close()
         return
     
     await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, user_id)
-    await close_db(db)
+    await db.close()
     
     first_card = get_random_card()
     
@@ -2350,10 +2267,10 @@ async def hilo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🔼 HIGH", callback_data=f"hilo_H_{user_id}"),
          InlineKeyboardButton("🔽 LOW", callback_data=f"hilo_L_{user_id}")],
-        [InlineKeyboardButton("🪙 CASHOUT", callback_data=f"hilo_C_{user_id}")]
+        [InlineKeyboardButton("💰 CASHOUT", callback_data=f"hilo_C_{user_id}")]
     ]
     
-    msg = f"📈 HiLo Game 📉\n\n🪙 Bet: {bet:,}\n📈 Multiplier: None\n\n🃏 Your card: {first_card['suit']}{first_card['value']}"
+    msg = f"📈 HiLo Game 📉\n\n💰 Bet: {bet:,}\n📈 Multiplier: None\n\n🃏 Your card: {first_card['suit']}{first_card['value']}"
     await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def hilo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2382,10 +2299,10 @@ async def hilo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if win_amount > 0:
             db = await get_db()
             await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", win_amount, owner_id)
-            await close_db(db)
+            await db.close()
         
         log_str = "".join([f"|{c['suit']}{c['value']}" for c in game['logs']])
-        msg = f"📈 HiLo Game 📉\n\n🪙 Bet: {game['bet']:,}\n📈 Multiplier: {game['multiplier']:.3f}x\n🎉 You won: {win_amount:,} 🪙\n\n📜 Logs: {log_str}|"
+        msg = f"📈 HiLo Game 📉\n\n💰 Bet: {game['bet']:,}\n📈 Multiplier: {game['multiplier']:.3f}x\n🎉 You won: {win_amount:,} 💰\n\n📜 Logs: {log_str}|"
         await query.edit_message_text(msg)
         del hilo_games[owner_id]
         return
@@ -2408,18 +2325,18 @@ async def hilo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         win_amount = int(game['bet'] * game['multiplier'])
         log_str = "".join([f"|{c['suit']}{c['value']}" for c in game['logs']])
         
-        msg = f"📈 HiLo Game 📉\n\n🪙 Bet: {game['bet']:,}\n📈 Multiplier: {game['multiplier']:.3f}x\n🏆 Winning: {win_amount:,} 🪙\n\n✅ Card: {new_card['suit']}{new_card['value']} ({guess} won!)\n🃏 Your card: {game['current_card']['suit']}{game['current_card']['value']}\n\n📜 Logs: {log_str}|"
+        msg = f"📈 HiLo Game 📉\n\n💰 Bet: {game['bet']:,}\n📈 Multiplier: {game['multiplier']:.3f}x\n🏆 Winning: {win_amount:,} 💰\n\n✅ Card: {new_card['suit']}{new_card['value']} ({guess} won!)\n🃏 Your card: {game['current_card']['suit']}{game['current_card']['value']}\n\n📜 Logs: {log_str}|"
         
         keyboard = [
             [InlineKeyboardButton("🔼 HIGH", callback_data=f"hilo_H_{owner_id}"),
              InlineKeyboardButton("🔽 LOW", callback_data=f"hilo_L_{owner_id}")],
-            [InlineKeyboardButton("🪙 CASHOUT", callback_data=f"hilo_C_{owner_id}")]
+            [InlineKeyboardButton("💰 CASHOUT", callback_data=f"hilo_C_{owner_id}")]
         ]
         
         await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
     else:
         log_str = "".join([f"|{c['suit']}{c['value']}" for c in game['logs']])
-        msg = f"📈 HiLo Game 📉\n\n🪙 Bet: {game['bet']:,}\n📈 Multiplier: 0x\n\n💀 Game Over!\n❌ You bet {guess} on {new_card['suit']}{new_card['value']} and lost!\n\n📜 Logs: {log_str}|"
+        msg = f"📈 HiLo Game 📉\n\n💰 Bet: {game['bet']:,}\n📈 Multiplier: 0x\n\n💀 Game Over!\n❌ You bet {guess} on {new_card['suit']}{new_card['value']} and lost!\n\n📜 Logs: {log_str}|"
         
         await query.edit_message_text(msg)
         del hilo_games[owner_id]
@@ -2495,11 +2412,11 @@ async def mines(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if balance < bet:
         await update.message.reply_text(f"❌ Need {bet:,}, you have {balance:,}")
-        await close_db(db)
+        await db.close()
         return
     
     await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, user_id)
-    await close_db(db)
+    await db.close()
     
     global mines_next_id
     game_id = mines_next_id
@@ -2529,11 +2446,11 @@ async def mines(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pos = i * 5 + j
             row.append(InlineKeyboardButton("❓", callback_data=f"mine_{game_id}_{pos}"))
         keyboard.append(row)
-    keyboard.append([InlineKeyboardButton("🪙 CASHOUT", callback_data=f"mine_cashout_{game_id}")])
+    keyboard.append([InlineKeyboardButton("💰 CASHOUT", callback_data=f"mine_cashout_{game_id}")])
     
     await update.message.reply_text(
         f"💣 MINES\n\n"
-        f"🪙 Bet: {bet:,}\n"
+        f"💰 Bet: {bet:,}\n"
         f"📈 Multiplier: 1.00x\n"
         f"💎 Cashout: {bet:,}\n\n"
         f"Click tiles to reveal safe spots. Don't hit a bomb!",
@@ -2581,11 +2498,11 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         current_balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
         new_balance = current_balance + win_amount
         await db.execute("UPDATE users SET balance = $1 WHERE user_id = $2", new_balance, user_id)
-        await close_db(db)
+        await db.close()
 
         await query.edit_message_text(
-            f"🪙 CASHOUT SUCCESSFUL!\n\n"
-            f"🪙 Bet: {game['bet']:,}\n"
+            f"💰 CASHOUT SUCCESSFUL!\n\n"
+            f"💰 Bet: {game['bet']:,}\n"
             f"📈 Multiplier: {multiplier:.2f}x\n"
             f"💎 Won: {win_amount:,}\n"
             f"💳 New balance: {new_balance:,}"
@@ -2638,7 +2555,7 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.edit_message_text(
             f"💣 BOOM! GAME OVER!\n\n"
-            f"🪙 Bet: {game['bet']:,}\n"
+            f"💰 Bet: {game['bet']:,}\n"
             f"💣 You hit a bomb!\n\n"
             f"Use /mines to play again!",
             reply_markup=InlineKeyboardMarkup(keyboard)
@@ -2668,7 +2585,7 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 row.append(InlineKeyboardButton("❓", callback_data=f"mine_{game_id}_{pos}"))
         keyboard.append(row)
-    keyboard.append([InlineKeyboardButton("🪙 CASHOUT", callback_data=f"mine_cashout_{game_id}")])
+    keyboard.append([InlineKeyboardButton("💰 CASHOUT", callback_data=f"mine_cashout_{game_id}")])
 
     total_safe = 25 - game['bomb_count']
 
@@ -2678,7 +2595,7 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         current_balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
         new_balance = current_balance + cashout
         await db.execute("UPDATE users SET balance = $1 WHERE user_id = $2", new_balance, user_id)
-        await close_db(db)
+        await db.close()
 
         # Reveal all as 💎
         keyboard = []
@@ -2694,7 +2611,7 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.edit_message_text(
             f"🎉 PERFECT WIN! 🎉\n\n"
-            f"🪙 Bet: {game['bet']:,}\n"
+            f"💰 Bet: {game['bet']:,}\n"
             f"📈 Multiplier: {multiplier:.2f}x\n"
             f"💎 Won: {cashout:,}\n\n"
             f"All safe tiles revealed!",
@@ -2706,7 +2623,7 @@ async def mine_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text(
         f"💣 MINES\n\n"
-        f"🪙 Bet: {game['bet']:,}\n"
+        f"💰 Bet: {game['bet']:,}\n"
         f"📈 Multiplier: {multiplier:.2f}x\n"
         f"💎 Cashout: {cashout:,}\n\n"
         f"✅ Safe tiles: {safe_count}/{total_safe}\n"
@@ -2748,7 +2665,7 @@ async def update_cricket_stats_realtime(user_id, name, runs_added=0, wickets_add
             "INSERT INTO cricket_stats (user_id, name, runs, wickets, highest_score, ducks) VALUES ($1, $2, $3, $4, $5, $6)",
             user_id, name, runs_added, wickets_added, current_match_runs, ducks_added
         )
-    await close_db(db)
+    await db.close()
 
 async def update_wins_losses_realtime(user_id, name, won):
     db = await get_db()
@@ -2760,7 +2677,7 @@ async def update_wins_losses_realtime(user_id, name, won):
             await db.execute("UPDATE cricket_stats SET losses = losses + 1 WHERE user_id = $1", user_id)
     else:
         await db.execute("INSERT INTO cricket_stats (user_id, name, wins, losses) VALUES ($1, $2, $3, $4)", user_id, name, 1 if won else 0, 0 if won else 1)
-    await close_db(db)
+    await db.close()
 
 class CricketGame:
     def __init__(self, game_id, player1_id, player1_name, bet, chat_id, mode):
@@ -2877,7 +2794,7 @@ async def clcricket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if bet > 0:
         db = await get_db()
         balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-        await close_db(db)
+        await db.close()
         if balance < bet:
             await update.message.reply_text(f"*❌ You need {bet:,} credits to play!*", parse_mode="Markdown")
             return
@@ -2885,7 +2802,7 @@ async def clcricket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game_id = cricket_next_id
     cricket_next_id += 1
     cricket_lobby[game_id] = {"creator_id": user_id, "creator_name": user_name, "bet": bet, "chat_id": chat_id}
-    bet_text = f"🪙 Bet: {bet} | Prize: {bet*2}" if bet > 0 else "🎮 Normal Game"
+    bet_text = f"💰 Bet: {bet} | Prize: {bet*2}" if bet > 0 else "🎮 Normal Game"
 
     await update.message.reply_text(
         f"*🏏 CRICKET GAME*\n\n"
@@ -2918,7 +2835,7 @@ async def cricket_mode_callback(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     lobby["mode"] = mode
-    bet_text = f"🪙 Bet: {lobby['bet']} | Prize: {lobby['bet']*2}" if lobby['bet'] > 0 else "🎮 Normal Game"
+    bet_text = f"💰 Bet: {lobby['bet']} | Prize: {lobby['bet']*2}" if lobby['bet'] > 0 else "🎮 Normal Game"
 
     await query.edit_message_text(
         f"*🏏 CRICKET GAME*\n\n"
@@ -2964,15 +2881,15 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 await query.edit_message_text("*❌ Send /start first!*", parse_mode="Markdown")
             except:
                 pass
-            await close_db(db)
+            await db.close()
             return
         if balance < bet:
             await query.answer(f"❌ Need {bet} credits!", show_alert=True)
-            await close_db(db)
+            await db.close()
             return
         await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, creator_id)
         await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, user_id)
-        await close_db(db)
+        await db.close()
 
     game = CricketGame(game_id, creator_id, creator_name, bet, chat_id, mode)
     game.player2_id = user_id
@@ -2984,7 +2901,7 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
     await query.edit_message_text(
         f"*🏏 CRICKET GAME*\n\n"
         f"*{creator_name}* vs *{user_name}*\n"
-        + (f"🪙 Bet: {bet} | Prize: {bet*2}\n" if bet > 0 else "")
+        + (f"💰 Bet: {bet} | Prize: {bet*2}\n" if bet > 0 else "")
         + f"\n*🪙 TOSS TIME!*\n\n"
         f"*{creator_name}, choose:*",
         reply_markup=InlineKeyboardMarkup([
@@ -3154,7 +3071,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 await db.execute("UPDATE cricket_stats SET ducks = ducks + 1 WHERE user_id = $1", game.player1_id)
             else:
                 await db.execute("UPDATE cricket_stats SET ducks = ducks + 1 WHERE user_id = $1", game.player2_id)
-            await close_db(db)
+            await db.close()
         
         if game.current_bowler == game.player1_id:
             game.player1_wickets_taken += 1
@@ -3252,7 +3169,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 game.bet * 2,
                 winner_id
             )
-            await close_db(db)
+            await db.close()
 
         if winner_id == game.player1_id:
             margin = game.player1_match_runs - game.player2_match_runs
@@ -3277,7 +3194,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         summary += f"*🏆 {winner_name} won by {abs(margin)} runs!*\n"
 
         if game.bet > 0:
-            summary += f"*🪙 Prize: {game.bet * 2:,}*"
+            summary += f"*💰 Prize: {game.bet * 2:,}*"
 
         await query.edit_message_text(summary, parse_mode="Markdown")
         del cricket_games[game_id]
@@ -3298,7 +3215,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 game.bet * 2,
                 winner_id
             )
-            await close_db(db)
+            await db.close()
 
         runs_left = abs(game.player1_match_runs - game.player2_match_runs)
         player1_overs = game.get_overs(1)
@@ -3323,7 +3240,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             summary += f"*🏆 {winner_name} won by {runs_left} runs!*\n"
 
         if game.bet > 0:
-            summary += f"*🪙 Prize: {game.bet * 2:,}*"
+            summary += f"*💰 Prize: {game.bet * 2:,}*"
 
         await query.edit_message_text(summary, parse_mode="Markdown")
         del cricket_games[game_id]
@@ -3528,7 +3445,7 @@ async def numpuz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         keyboard = get_board_keyboard(board, level)
         size = len(board)
-        await close_db(db)
+        await db.close()
         
         await update.message.reply_text(
             f"🧩 NUMBER PUZZLE - LEVEL {level}\n"
@@ -3556,7 +3473,7 @@ async def numpuz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         VALUES ($1, $2, $3, $4, $5, $6)
     """, user_id, level, json.dumps(board), 0, chat_id, user_id)
     
-    await close_db(db)
+    await db.close()
     
     keyboard = get_board_keyboard(board, level)
     await update.message.reply_text(
@@ -3591,21 +3508,21 @@ async def numpuz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not saved:
         await query.answer("No active game! Use /numpuz", show_alert=True)
-        await close_db(db)
+        await db.close()
         return
     
     db_level, board_json, moves, owner_id = saved['level'], saved['board'], saved['moves'], saved['owner_id']
     
     if owner_id != user_id:
         await query.answer("❌ This is not your game!", show_alert=True)
-        await close_db(db)
+        await db.close()
         return
     
     board = json.loads(board_json)
     
     if db_level != level:
         await query.answer("Invalid move!", show_alert=True)
-        await close_db(db)
+        await db.close()
         return
     
     if move_tile(board, row, col):
@@ -3622,7 +3539,7 @@ async def numpuz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             await db.execute("UPDATE numpuz_progress SET level = $1, board = $2, moves = $3, owner_id = $4 WHERE user_id = $5",
                              next_level, json.dumps(new_board), 0, user_id, user_id)
-            await close_db(db)
+            await db.close()
             
             keyboard = get_board_keyboard(new_board, next_level)
             await query.edit_message_text(
@@ -3635,7 +3552,7 @@ async def numpuz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await db.execute("UPDATE numpuz_progress SET board = $1, moves = $2 WHERE user_id = $3",
                          json.dumps(board), moves, user_id)
-        await close_db(db)
+        await db.close()
         
         keyboard = get_board_keyboard(board, db_level)
         await query.edit_message_text(
@@ -3644,7 +3561,7 @@ async def numpuz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard
         )
     else:
-        await close_db(db)
+        await db.close()
         await query.answer("Invalid move! Click tile adjacent to ⬜", show_alert=True)
 
 # ============ TIC TAC TOE ==========
@@ -3725,7 +3642,7 @@ async def ttt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if bet > 0:
         db = await get_db()
         balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-        await close_db(db)
+        await db.close()
         if balance < bet:
             await update.message.reply_text(f"❌ Need {bet:,} credits!")
             return
@@ -3735,7 +3652,7 @@ async def ttt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ttt_next_id += 1
     
     ttt_lobby[game_id] = {"creator_id": user_id, "creator_name": user_name, "bet": bet, "chat_id": chat_id}
-    bet_text = f"🪙 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Normal Game"
+    bet_text = f"💰 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Normal Game"
     await update.message.reply_text(
         f"🎯 TIC TAC TOE\n\n👑 {user_name} (❌)\n{bet_text}\n\n⚡ Waiting for opponent...",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔵 JOIN", callback_data=f"ttt_join_{game_id}")]])
@@ -3769,11 +3686,11 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
             if balance < bet:
                 await query.edit_message_text(f"❌ Need {bet:,} credits!")
-                await close_db(db)
+                await db.close()
                 return
             await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, creator_id)
             await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, user_id)
-            await close_db(db)
+            await db.close()
         
         game = TicTacToe(game_id, creator_id, creator_name, user_name, bet, chat_id)
         game.player2_id = user_id
@@ -3781,7 +3698,7 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ttt_games[game_id] = game
         del ttt_lobby[game_id]
         
-        bet_text = f"🪙 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Normal Game"
+        bet_text = f"💰 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Normal Game"
         await query.edit_message_text(f"🎯 TIC TAC TOE\n❌ {creator_name} vs ⭕ {user_name}\n{bet_text}\n🎯 {creator_name}'s Turn", reply_markup=game.get_keyboard())
         return
     
@@ -3814,8 +3731,8 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 current_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", winner_id)
                 new_bal = current_bal + (game.bet * 2)
                 await db.execute("UPDATE users SET balance = $1 WHERE user_id = $2", new_bal, winner_id)
-                await close_db(db)
-                result_text = f"🏆 WINNER: {winner_name.upper()} 🏆\n🪙 +{game.bet*2:,} credits"
+                await db.close()
+                result_text = f"🏆 WINNER: {winner_name.upper()} 🏆\n💰 +{game.bet*2:,} credits"
             else:
                 result_text = f"🏆 WINNER: {winner_name.upper()} 🏆"
             
@@ -3828,7 +3745,7 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 db = await get_db()
                 await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", game.bet, game.player1_id)
                 await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", game.bet, game.player2_id)
-                await close_db(db)
+                await db.close()
             
             await query.edit_message_text(f"🎯 TIC TAC TOE\n\n❌ {game.player1_name} vs ⭕ {game.player2_name}\n\n🤝 DRAW 🤝", reply_markup=game.get_keyboard())
             del ttt_games[game_id]
@@ -3837,7 +3754,7 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             turn_name = game.player1_name if game.current_turn == game.player1_id else game.player2_name
             turn_symbol = "❌" if game.current_turn == game.player1_id else "⭕"
-            bet_text = f"🪙 Bet: {game.bet:,} | Prize: {game.bet*2:,}" if game.bet > 0 else "🎮 Normal Game"
+            bet_text = f"💰 Bet: {game.bet:,} | Prize: {game.bet*2:,}" if game.bet > 0 else "🎮 Normal Game"
             await query.edit_message_text(f"🎯 TIC TAC TOE\n❌ {game.player1_name} vs ⭕ {game.player2_name}\n{bet_text}\n🎯 {turn_name}'s Turn ({turn_symbol})", reply_markup=game.get_keyboard())
 
 # ============ RPS GAME ==========
@@ -3899,7 +3816,7 @@ async def rps(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if bet > 0:
         db = await get_db()
         balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-        await close_db(db)
+        await db.close()
         if balance < bet:
             await update.message.reply_text(f"❌ Need {bet:,} credits!")
             return
@@ -3907,7 +3824,7 @@ async def rps(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game_id = rps_next_id
     rps_next_id += 1
     rps_lobby[game_id] = {"creator_id": user_id, "creator_name": user_name, "bet": bet, "chat_id": chat_id}
-    bet_text = f"🪙 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Free Play"
+    bet_text = f"💰 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Free Play"
     await update.message.reply_text(f"✊ ROCK PAPER SCISSORS\n\n👑 Host: {user_name}\n{bet_text}\n\n⚡ Waiting for opponent...", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔵 JOIN", callback_data=f"rps_join_{game_id}")]]))
 
 async def rps_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3934,11 +3851,11 @@ async def rps_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
             if balance < bet:
                 await query.answer(f"❌ Need {bet} credits!", show_alert=True)
-                await close_db(db)
+                await db.close()
                 return
             await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, creator_id)
             await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, user_id)
-            await close_db(db)
+            await db.close()
         game = RPSGame(game_id, creator_id, creator_name, bet, chat_id)
         game.player2_id = user_id
         game.player2_name = user_name
@@ -3950,7 +3867,7 @@ async def rps_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("📄 PAPER", callback_data=f"rps_move_{game_id}_paper")],
             [InlineKeyboardButton("✂️ SCISSORS", callback_data=f"rps_move_{game_id}_scissors")]
         ]
-        bet_text = f"🪙 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Free Play"
+        bet_text = f"💰 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Free Play"
         await query.edit_message_text(f"✊ RPS\n\n{creator_name} vs {user_name}\n{bet_text}\n🎯 {creator_name}'s turn!", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def rps_move_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3976,7 +3893,7 @@ async def rps_move_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("📄 PAPER", callback_data=f"rps_move_{game_id}_paper")],
             [InlineKeyboardButton("✂️ SCISSORS", callback_data=f"rps_move_{game_id}_scissors")]
         ]
-        bet_text = f"🪙 Bet: {game.bet:,} | Prize: {game.bet*2:,}" if game.bet > 0 else "🎮 Free Play"
+        bet_text = f"💰 Bet: {game.bet:,} | Prize: {game.bet*2:,}" if game.bet > 0 else "🎮 Free Play"
         await query.edit_message_text(f"✊ RPS\n\n{game.player1_name} vs {game.player2_name}\n{bet_text}\n✅ {game.player1_name} chose!\n🎯 {game.player2_name}'s turn!", reply_markup=InlineKeyboardMarkup(keyboard))
     else:
         game.player2_choice = choice
@@ -3987,15 +3904,15 @@ async def rps_move_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if game.bet > 0 and winner != "draw":
             db = await get_db()
             await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", game.bet*2, winner)
-            await close_db(db)
+            await db.close()
             winner_name = game.player1_name if winner == game.player1_id else game.player2_name
-            result_text += f"\n\n🪙 Prize: {game.bet*2:,} credits\n🏆 {winner_name} +{game.bet*2:,}"
+            result_text += f"\n\n💰 Prize: {game.bet*2:,} credits\n🏆 {winner_name} +{game.bet*2:,}"
         elif game.bet > 0 and winner == "draw":
             db = await get_db()
             await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", game.bet, game.player1_id)
             await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", game.bet, game.player2_id)
-            await close_db(db)
-            result_text += f"\n\n🪙 Money returned: {game.bet:,} each"
+            await db.close()
+            result_text += f"\n\n💰 Money returned: {game.bet:,} each"
         await query.edit_message_text(f"✊ RPS\n\n{result_text}")
         del rps_games[game_id]
 
@@ -4086,7 +4003,7 @@ async def addmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         date
     )
 
-    await close_db(db)
+    await db.close()
 
     await update.message.reply_text(
         f"✅ MATCH ADDED!\n\n"
@@ -4240,7 +4157,7 @@ async def deletematch(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🗑️ *MATCH DELETED + REFUNDED!*\n\n"
             f"🏏 {match['team1']} vs {match['team2']}\n"
             f"👥 Refunded: {refund_count} users\n"
-            f"🪙 Total refund: {refund_total:,} credits",
+            f"💰 Total refund: {refund_total:,} credits",
             parse_mode="Markdown"
         )
 
@@ -4252,7 +4169,7 @@ async def deletematch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     finally:
-        await close_db(db)
+        await db.close()
 
 # ============ LOCK MATCH ============
 async def lockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4358,7 +4275,7 @@ async def lockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🔒 *MATCH LOCKED!*\n\n"
             f"🏏 {match['team1']} vs {match['team2']}\n"
             f"📊 Bets: {count}\n"
-            f"🪙 Pool: {total:,} 🪙\n"
+            f"💰 Pool: {total:,} 💰\n"
             f"❌ No more bets accepted!",
             parse_mode="Markdown"
         )
@@ -4371,7 +4288,7 @@ async def lockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     finally:
-        await close_db(db)
+        await db.close()
 
 # ============ UNLOCKMATCH COMMAND (ADMIN) ============
 async def unlockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4465,7 +4382,7 @@ async def unlockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🔓 MATCH UNLOCKED!\n\n"
             f"🏏 {match['team1']} vs {match['team2']}\n"
             f"📊 Current Bets: {count}\n"
-            f"🪙 Current Pool: {total:,} 🪙\n"
+            f"💰 Current Pool: {total:,} 💰\n"
             f"✅ New bets are now accepted again!"
         )
 
@@ -4476,8 +4393,9 @@ async def unlockmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     finally:
-        await close_db(db)
+        await db.close()
 
+# ============ RESULT ==========
 async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Admin only!")
@@ -4517,6 +4435,8 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     team1 = " ".join(args[:vs_index]).strip()
+
+    # Everything after "vs"
     after_vs = " ".join(args[vs_index + 1:]).strip()
 
     if not after_vs:
@@ -4527,7 +4447,7 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         # =====================================================
-        # FIND MATCH
+        # FIRST: Try to find match by matching TEAM1 exactly
         # =====================================================
 
         matches = await db.fetch(
@@ -4543,10 +4463,14 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         winner = None
         team2 = None
 
+        # Check which match has a team2 that appears at the
+        # beginning/end of the remaining text.
         for m in matches:
             db_team2 = m["team2"].strip()
+
             remaining = after_vs.strip()
 
+            # Case-insensitive exact comparison
             if remaining.lower().startswith(db_team2.lower()):
                 possible_winner = remaining[len(db_team2):].strip()
 
@@ -4562,6 +4486,7 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     winner = db_team2
                     break
 
+            # Also handle if winner is written before team2
             if remaining.lower().endswith(db_team2.lower()):
                 possible_winner = remaining[:-len(db_team2)].strip()
 
@@ -4571,7 +4496,12 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     winner = team1
                     break
 
+        # =====================================================
+        # SECOND: Exact team2 search
+        # =====================================================
+
         if not match:
+            # Try every possible split after "vs"
             words = args[vs_index + 1:]
 
             for split in range(1, len(words)):
@@ -4605,6 +4535,10 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         team2 = possible_team2
                         break
 
+        # =====================================================
+        # MATCH NOT FOUND
+        # =====================================================
+
         if not match:
             await update.message.reply_text(
                 f"❌ Match {team1} vs {after_vs} not found!"
@@ -4625,25 +4559,11 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
+        # Use actual database team name
         if winner.lower() == match["team1"].lower():
             winner = match["team1"]
         else:
             winner = match["team2"]
-
-        # =====================================================
-        # 🔥 PREVENT DOUBLE RESULT
-        # =====================================================
-
-        result_declared = await db.fetchval(
-            "SELECT id FROM matches WHERE id = $1 AND locked = 1",
-            match["id"]
-        )
-
-        if not result_declared:
-            await update.message.reply_text(
-                "⚠️ Match is not locked yet! Lock it before declaring result."
-            )
-            return
 
         # =====================================================
         # GET ALL BETS
@@ -4661,6 +4581,10 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
         winners_count = 0
         losers_count = 0
         total_paid = 0
+
+        # =====================================================
+        # PROCESS BETS
+        # =====================================================
 
         for bet in bets:
             user_id = bet["user_id"]
@@ -4681,6 +4605,7 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # ---------------- WINNING BET ----------------
             if bet_team.strip().lower() == winner.strip().lower():
+
                 win_amount = amount * 2
 
                 new_balance = user["balance"] + win_amount
@@ -4709,6 +4634,7 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             # ---------------- LOSING BET ----------------
             else:
+
                 new_total = user["total"] + 1
                 new_points = user["points"] - 5
 
@@ -4727,13 +4653,17 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 losers_count += 1
 
         # =====================================================
-        # DELETE BETS + MATCH
+        # DELETE BETS
         # =====================================================
 
         await db.execute(
             "DELETE FROM bets WHERE match_id = $1",
             match["id"]
         )
+
+        # =====================================================
+        # DELETE COMPLETED MATCH
+        # =====================================================
 
         await db.execute(
             "DELETE FROM matches WHERE id = $1",
@@ -4750,28 +4680,19 @@ async def result(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🏆 *WINNER:* {winner.upper()}\n\n"
             f"✅ *WINNERS (+10 pts):* {winners_count} users\n"
             f"❌ *LOSERS (-5 pts):* {losers_count} users\n\n"
-            f"🪙 *TOTAL PAYOUT:* {total_paid:,} 🪙",
+            f"💰 *TOTAL PAYOUT:* {total_paid:,} 💰",
             parse_mode="Markdown"
         )
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
         print(f"❌ RESULT ERROR: {e}")
 
-        try:
-            await update.message.reply_text(
-                "❌ Something went wrong while processing the result."
-            )
-        except:
-            pass
+        await update.message.reply_text(
+            "❌ Something went wrong while processing the result."
+        )
 
     finally:
-        try:
-            await close_db(db)
-        except:
-            pass
-
+        await db.close()
 async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         return  # ❌ SIRF CHUP RAHEGA, KUCH NAHI BOLEGA
@@ -4794,16 +4715,16 @@ async def add(update: Update, context: ContextTypes.DEFAULT_TYPE):
     old = await db.fetchrow("SELECT balance, name FROM users WHERE user_id = $1", target.id)
     if not old:
         await update.message.reply_text('❌ User not found!')
-        await close_db(db)
+        await db.close()
         return
     
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", amount, target.id)
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", target.id)
-    await close_db(db)
+    await db.close()
     
     await update.message.reply_text(
         f"✅ ADDED {amount:,} to {old['name']}\n"
-        f"🪙 Balance: {old['balance']:,} → {new_bal:,} 🪙"
+        f"💰 Balance: {old['balance']:,} → {new_bal:,} 💰"
     )
 
 # ============ REMOVE FROM WALLET ONLY ==========
@@ -4831,24 +4752,24 @@ async def removew(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = await db.fetchrow("SELECT balance FROM users WHERE user_id = $1", target_id)
     if not user:
         await update.message.reply_text('❌ User not found!')
-        await close_db(db)
+        await db.close()
         return
     
     wallet_bal = user['balance']
     
     if wallet_bal < amount:
         await update.message.reply_text(f'❌ Insufficient wallet balance! Have: {wallet_bal:,}')
-        await close_db(db)
+        await db.close()
         return
     
     await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", amount, target_id)
     new_wallet = wallet_bal - amount
     
-    await close_db(db)
+    await db.close()
     
     await update.message.reply_text(
         f"❌ REMOVED {amount:,} from {target.first_name}'s WALLET\n\n"
-        f"🪙 Wallet: {wallet_bal:,} → {new_wallet:,}"
+        f"💰 Wallet: {wallet_bal:,} → {new_wallet:,}"
     )
 
 
@@ -4877,20 +4798,20 @@ async def removeb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bank = await db.fetchrow("SELECT balance FROM bank WHERE user_id = $1", target_id)
     if not bank:
         await update.message.reply_text('❌ No bank account found!')
-        await close_db(db)
+        await db.close()
         return
     
     bank_bal = bank['balance']
     
     if bank_bal < amount:
         await update.message.reply_text(f'❌ Insufficient bank balance! Have: {bank_bal:,}')
-        await close_db(db)
+        await db.close()
         return
     
     await db.execute("UPDATE bank SET balance = balance - $1 WHERE user_id = $2", amount, target_id)
     new_bank = bank_bal - amount
     
-    await close_db(db)
+    await db.close()
     
     await update.message.reply_text(
         f"❌ REMOVED {amount:,} from {target.first_name}'s BANK\n\n"
@@ -4905,7 +4826,7 @@ async def hof(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     db = await get_db()
     winners = await db.fetch("SELECT id, winner FROM hall_of_fame ORDER BY id ASC")
-    await close_db(db)
+    await db.close()
     if not winners:
         await update.message.reply_text("🏆 HALL OF FAME 🏆\n\nNo winners yet!")
         return
@@ -4927,7 +4848,7 @@ async def addhof(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
     await db.execute("INSERT INTO hall_of_fame (winner, added_by, added_at) VALUES ($1, $2, $3)", winner, update.effective_user.id, datetime.now().isoformat())
     count = await db.fetchval("SELECT COUNT(*) FROM hall_of_fame")
-    await close_db(db)
+    await db.close()
     await update.message.reply_text(f"✅ Added to Hall of Fame!\n\n🏆 {winner}\n\n📊 Total Winners: {count}")
 
 async def rmhof(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4947,13 +4868,13 @@ async def rmhof(update: Update, context: ContextTypes.DEFAULT_TYPE):
     winners = await db.fetch("SELECT id, winner FROM hall_of_fame ORDER BY id ASC")
     if num < 1 or num > len(winners):
         await update.message.reply_text(f"❌ Invalid! Choose 1-{len(winners)}")
-        await close_db(db)
+        await db.close()
         return
     winner_id = winners[num-1]['id']
     winner_text = winners[num-1]['winner']
     await db.execute("DELETE FROM hall_of_fame WHERE id = $1", winner_id)
     count = await db.fetchval("SELECT COUNT(*) FROM hall_of_fame")
-    await close_db(db)
+    await db.close()
     await update.message.reply_text(f"🗑️ Removed from Hall of Fame!\n\n❌ Removed: {winner_text}\n\n📊 Total Winners: {count}")
 
 async def edithof(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4974,12 +4895,12 @@ async def edithof(update: Update, context: ContextTypes.DEFAULT_TYPE):
     winners = await db.fetch("SELECT id, winner FROM hall_of_fame ORDER BY id ASC")
     if num < 1 or num > len(winners):
         await update.message.reply_text(f"❌ Invalid! Choose 1-{len(winners)}")
-        await close_db(db)
+        await db.close()
         return
     winner_id = winners[num-1]['id']
     old_text = winners[num-1]['winner']
     await db.execute("UPDATE hall_of_fame SET winner = $1 WHERE id = $2", new_text, winner_id)
-    await close_db(db)
+    await db.close()
     await update.message.reply_text(f"✏️ EDITED HALL OF FAME!\n\n❌ Old: {old_text}\n✅ New: {new_text}")
 
 
@@ -5006,13 +4927,13 @@ async def createcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     exists = await db.fetchval("SELECT code FROM claim_codes WHERE code = $1", code)
     if exists:
         await update.message.reply_text(f"❌ Code '{code}' already exists!")
-        await close_db(db)
+        await db.close()
         return
     now = datetime.now()
     expires_at = now + timedelta(hours=24)
     await db.execute("INSERT INTO claim_codes (code, amount, max_claims, created_by, created_at, expires_at) VALUES ($1, $2, 5, $3, $4, $5)", code, amount, update.effective_user.id, now.isoformat(), expires_at.isoformat())
-    await close_db(db)
-    await update.message.reply_text(f"✅ CODE CREATED!\n\n🔑 Code: {code}\n🪙 Amount: {amount:,} credits\n👥 Max claims: 5 users\n⏰ Expires: 24 hours\n\nClaim: /claimcode {code}")
+    await db.close()
+    await update.message.reply_text(f"✅ CODE CREATED!\n\n🔑 Code: {code}\n💰 Amount: {amount:,} credits\n👥 Max claims: 5 users\n⏰ Expires: 24 hours\n\nClaim: /claimcode {code}")
 
 async def claimcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -5028,29 +4949,29 @@ async def claimcode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = await db.fetchrow("SELECT code, amount, max_claims, claimed_count, expires_at FROM claim_codes WHERE code = $1", code)
     if not result:
         await update.message.reply_text(f"❌ Code '{code}' not found!")
-        await close_db(db)
+        await db.close()
         return
     expires = datetime.fromisoformat(result['expires_at'])
     if datetime.now() > expires:
         await update.message.reply_text(f"❌ Code '{code}' expired!")
-        await close_db(db)
+        await db.close()
         return
     claimed = await db.fetchval("SELECT code FROM code_claims WHERE code = $1 AND user_id = $2", code, user_id)
     if claimed:
         await update.message.reply_text(f"❌ You already claimed '{code}'!")
-        await close_db(db)
+        await db.close()
         return
     if result['claimed_count'] >= result['max_claims']:
         await update.message.reply_text(f"❌ Code '{code}' max claims reached!")
-        await close_db(db)
+        await db.close()
         return
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", result['amount'], user_id)
     await db.execute("UPDATE claim_codes SET claimed_count = claimed_count + 1 WHERE code = $1", code)
     await db.execute("INSERT INTO code_claims (code, user_id, claimed_at) VALUES ($1, $2, $3)", code, user_id, datetime.now().isoformat())
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
     remaining = result['max_claims'] - (result['claimed_count'] + 1)
-    await close_db(db)
-    await update.message.reply_text(f"🎉 CODE CLAIMED!\n\n🔑 Code: {code}\n🪙 +{result['amount']:,} credits\n💳 New balance: {new_bal:,}\n📊 Remaining: {remaining}/{result['max_claims']}")
+    await db.close()
+    await update.message.reply_text(f"🎉 CODE CLAIMED!\n\n🔑 Code: {code}\n💰 +{result['amount']:,} credits\n💳 New balance: {new_bal:,}\n📊 Remaining: {remaining}/{result['max_claims']}")
 
 # ============ ACTIVECODES ==========
 # ============ ACTIVECODES ==========
@@ -5072,7 +4993,7 @@ async def activecodes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         LIMIT 10
     """)
     
-    await close_db(db)
+    await db.close()
     
     if not codes:
         await update.message.reply_text(
@@ -5086,7 +5007,7 @@ async def activecodes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for code in codes:
         remaining = code['max_claims'] - code['claimed_count']
         msg += f"🔑 Code: `{code['code']}`\n"
-        msg += f"🪙 Amount: {code['amount']:,} credits\n"
+        msg += f"💰 Amount: {code['amount']:,} credits\n"
         msg += f"👥 Remaining: {remaining}/{code['max_claims']} claims\n"
         msg += f"💡 /claimcode {code['code']}\n\n"
     
@@ -5161,7 +5082,7 @@ async def ng(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg = f"🎉 FINALLY! +{reward} coins!"
         db = await get_db()
         await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", reward, user_id)
-        await close_db(db)
+        await db.close()
         del game_data[chat_id]
         await update.message.reply_text(msg)
     elif guess < target:
@@ -5195,110 +5116,50 @@ async def track_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
         group_name = update.message.chat.title or "Unknown Group"
         db = await get_db()
         await db.execute("INSERT INTO groups (group_id, group_name, added_at) VALUES ($1, $2, $3) ON CONFLICT (group_id) DO NOTHING", group_id, group_name, datetime.now().isoformat())
-        await close_db(db)
+        await db.close()
 
-# ============ BROADCAST ============
+# ============ BROADCAST ==========
 async def broadcast_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Admin only!")
         return
-
     msg = update.message
-
-    # Get content
-    is_photo = False
-    photo = None
-    caption = ""
-    content = ""
-
-    if msg.reply_to_message and msg.reply_to_message.photo:
-        is_photo = True
-        photo = msg.reply_to_message.photo[-1].file_id
-        caption = msg.reply_to_message.caption or ""
-    else:
-        content = msg.reply_to_message.text if msg.reply_to_message else " ".join(context.args)
-
-    if not content and not photo:
-        await update.message.reply_text("❌ No content to broadcast!")
-        return
-
-    # Fetch users + groups
     db = await get_db()
     users = [row['user_id'] for row in await db.fetch("SELECT user_id FROM users")]
     groups = [row['group_id'] for row in await db.fetch("SELECT group_id FROM groups")]
-    await close_db(db)
-
-    all_targets = users + groups
-    total = len(all_targets)
-
-    if total == 0:
-        await update.message.reply_text("❌ No users or groups found!")
-        return
-
-    # Send initial message
-    status_msg = await update.message.reply_text(
-        f"📢 *BROADCAST STARTED!*\n\n"
-        f"🎯 Total: {total}\n"
-        f"📤 Sending: 0/{total}\n"
-        f"✅ Success: 0\n"
-        f"❌ Failed: 0\n\n"
-        f"💡 Bot is running in background...",
-        parse_mode="Markdown"
-    )
-
-    # 🔥 START BACKGROUND TASK
-    asyncio.create_task(
-        broadcast_worker(context, all_targets, is_photo, photo, caption, content, status_msg)
-    )
-
-
-async def broadcast_worker(context, targets, is_photo, photo, caption, content, status_msg):
-    """Background broadcast worker with progress updates"""
-    total = len(targets)
+    await db.close()
     sent = 0
-    failed = 0
-
-    for i, target_id in enumerate(targets, 1):
-        try:
-            if is_photo:
-                await context.bot.send_photo(target_id, photo, caption=caption)
-            else:
-                await context.bot.send_message(target_id, content)
-            sent += 1
-        except:
-            failed += 1
-
-        # 🔥 Update progress every 50 messages
-        if i % 50 == 0 or i == total:
+    if msg.reply_to_message and msg.reply_to_message.photo:
+        photo = msg.reply_to_message.photo[-1].file_id
+        caption = msg.reply_to_message.caption or ""
+        for uid in users:
             try:
-                await status_msg.edit_text(
-                    f"📢 *BROADCAST IN PROGRESS*\n\n"
-                    f"🎯 Total: {total}\n"
-                    f"📤 Sending: {i}/{total}\n"
-                    f"✅ Success: {sent}\n"
-                    f"❌ Failed: {failed}\n\n"
-                    f"💡 Bot is running in background...",
-                    parse_mode="Markdown"
-                )
+                await context.bot.send_photo(uid, photo, caption=caption)
+                sent += 1
             except:
                 pass
-
-        # 🔥 Small delay to avoid flood (Telegram limit: 30 msg/sec)
-        await asyncio.sleep(0.05)
-
-    # Final update
-    try:
-        await status_msg.edit_text(
-            f"✅ *BROADCAST COMPLETE!*\n\n"
-            f"🎯 Total: {total}\n"
-            f"✅ Success: {sent}\n"
-            f"❌ Failed: {failed}\n"
-            f"📊 Success Rate: {int((sent/total)*100)}%\n\n"
-            f"🎉 All messages sent!",
-            parse_mode="Markdown"
-        )
-    except:
-        pass
+        for gid in groups:
+            try:
+                await context.bot.send_photo(gid, photo, caption=caption)
+                sent += 1
+            except:
+                pass
+        await update.message.reply_text(f"📸 BROADCAST SENT! Total: {sent}")
+        return
+    content = msg.reply_to_message.text if msg.reply_to_message else " ".join(context.args)
+    for uid in users:
+        try:
+            await context.bot.send_message(uid, content)
+            sent += 1
+        except:
+            pass
+    for gid in groups:
+        try:
+            await context.bot.send_message(gid, content)
+            sent += 1
+        except:
+            pass
+    await update.message.reply_text(f"📢 BROADCAST SENT! Total: {sent}")
 
 async def broadcast_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
@@ -5307,7 +5168,7 @@ async def broadcast_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = await get_db()
     users = await db.fetchval("SELECT COUNT(*) FROM users")
     groups = await db.fetchval("SELECT COUNT(*) FROM groups")
-    await close_db(db)
+    await db.close()
     await update.message.reply_text(f"📊 BROADCAST STATS\n\n👤 Users: {users}\n👥 Groups: {groups}\n📡 Total: {users + groups}")
 
 # ============ STATS ==========
@@ -5424,7 +5285,7 @@ async def stats_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await query.edit_message_text("🏏 CRICKET STATS LEADERBOARD\n\nSelect stat to view:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-    await close_db(db)
+    await db.close()
 
 # ============ MYSTATS ==========
 async def mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5440,7 +5301,7 @@ async def mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stats = await db.fetchrow("SELECT runs, wickets, highest_score, wins, losses, ducks FROM cricket_stats WHERE user_id = $1", user_id)
 
     if not stats:
-        await close_db(db)
+        await db.close()
         await update.message.reply_text(
             f"*🏏 MY CRICKET STATS*\n\n"
             f"*👤 {name}*\n"
@@ -5471,7 +5332,7 @@ async def mystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     losses_rank = await db.fetchval("SELECT COUNT(*) + 1 FROM cricket_stats WHERE losses > $1", losses) if losses > 0 else None
     ducks_rank = await db.fetchval("SELECT COUNT(*) + 1 FROM cricket_stats WHERE ducks > $1", ducks) if ducks > 0 else None
 
-    await close_db(db)
+    await db.close()
 
     msg = f"*🏏 MY CRICKET STATS*\n\n"
     msg += f"*👤 {name}*\n"
@@ -5500,7 +5361,7 @@ async def matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not matches_data:
         await update.message.reply_text('*📭 No matches found!*', parse_mode="Markdown")
-        await close_db(db)
+        await db.close()
         return
 
     msg = "*🏏 LIVE MATCHES*\n\n"
@@ -5509,16 +5370,16 @@ async def matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += f"*🔥 {m['team1']} vs {m['team2']}*\n"
         msg += f"*📅 {m['date']} | {status}*\n"
         if m['locked'] == 0:
-            msg += f"*🪙 /bet {m['team1']} <amount> | /bet {m['team2']} <amount>*\n"
+            msg += f"*💰 /bet {m['team1']} <amount> | /bet {m['team2']} <amount>*\n"
         else:
             msg += f"*⚠️ Betting closed!*\n"
         msg += "\n"
 
     user = await get_user(user_id)
-    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n*🪙 Your balance: {user['balance']:,} 🪙*"
+    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n*💰 Your balance: {user['balance']:,} 💰*"
     
     await update.message.reply_text(msg, parse_mode="Markdown")
-    await close_db(db)
+    await db.close()
 
 # ============ MYBETS ==========
 async def mybets(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5537,7 +5398,7 @@ async def mybets(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ORDER BY m.date DESC
     """, user_id)
     
-    await close_db(db)
+    await db.close()
     
     if not bets_data:
         await update.message.reply_text('📭 No bets placed yet!')
@@ -5547,7 +5408,7 @@ async def mybets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i, bet in enumerate(bets_data, 1):
         status = "🔒 LOCKED" if bet['locked'] == 1 else "🔓 OPEN"
         msg += f"{i}️⃣ {bet['team1']} vs {bet['team2']}\n"
-        msg += f"   🎯 {bet['team']} | 🪙 {bet['amount']:,}\n"
+        msg += f"   🎯 {bet['team']} | 💰 {bet['amount']:,}\n"
         msg += f"   📅 {bet['date']} | {status}\n\n"
     
     msg += "━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -5555,7 +5416,6 @@ async def mybets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(msg)
 
-# ============ BET ============
 async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
 
@@ -5569,7 +5429,7 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             '❌ Usage: /bet TEAM AMOUNT\n'
             'Example: /bet Sri Lanka 1000\n\n'
-            '🪙 Min: 100 | Max: 35,000'
+            '💰 Min: 100 | Max: 35,000'
         )
         return
 
@@ -5606,7 +5466,7 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f'❌ Match with {team} not found!'
         )
-        await close_db(db)
+        await db.close()
         return
 
     if match['locked'] == 1:
@@ -5614,7 +5474,7 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f'🔒 Match is LOCKED!\n'
             f'Betting closed for {match["team1"]} vs {match["team2"]}'
         )
-        await close_db(db)
+        await db.close()
         return
 
     bet_count = await db.fetchval("""
@@ -5626,7 +5486,7 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "❌ You can only place up to 2 bets per match!"
         )
-        await close_db(db)
+        await db.close()
         return
 
     balance = await db.fetchval(
@@ -5638,23 +5498,14 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "❌ Your balance could not be found!"
         )
-        await close_db(db)
+        await db.close()
         return
 
     if balance < amount:
-        keyboard = [
-            [InlineKeyboardButton("💰 EARN CREDITS", callback_data="earn_open")]
-        ]
-
         await update.message.reply_text(
-            f"❌ *Insufficient Balance!*\n\n"
-            f"🪙 *Need:* {amount:,}\n"
-            f"💳 *Have:* {balance:,}\n\n"
-            f"💡 *Play games to earn credits!*",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            f'❌ Need {amount:,}, have {balance:,}'
         )
-        await close_db(db)
+        await db.close()
         return
 
     # Determine selected team
@@ -5674,94 +5525,69 @@ async def bet(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id
     )
 
-    # 🔥 INCREMENT TOTAL BETS
-    await db.execute(
-        "UPDATE users SET total = total + 1 WHERE user_id = $1",
-        user_id
-    )
-
     new_bal = await db.fetchval(
         "SELECT balance FROM users WHERE user_id = $1",
         user_id
     )
 
-    await close_db(db)
+    await db.close()
 
     team1_escaped = escape_markdown(match['team1'])
     team2_escaped = escape_markdown(match['team2'])
     bet_team_escaped = escape_markdown(bet_team)
 
-    # 🔥 EARN BUTTON
-    keyboard = [
-        [InlineKeyboardButton("💰 EARN CREDITS", callback_data="earn_open")]
-    ]
-
     await update.message.reply_text(
         f"✅ *BET PLACED\\! \\(PENDING\\)*\n\n"
         f"🏏 *{team1_escaped}* vs *{team2_escaped}*\n"
         f"🎯 *{bet_team_escaped}*\n"
-        f"🪙 *{amount:,}* 🪙\n\n"
+        f"💰 *{amount:,}* 💰\n\n"
         f"📊 Status: ⏳ *PENDING*\n"
         f"💡 Result will be announced after match ends\\!\n\n"
-        f"📊 Current balance: *{new_bal:,}* 🪙",
-        parse_mode="MarkdownV2",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        f"📊 Current balance: *{new_bal:,}* 💰",
+        parse_mode="MarkdownV2"
     )
-
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 🔥 FIX: CHECK KARO update.message HAI YA NAHI
     if update.message is None:
         return
-
+    
     user_id = update.effective_user.id
     if not await is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-
+    
     args = context.args
     if len(args) < 1:
         await update.message.reply_text('❌ /cancel <bet_number>')
         return
-
+    
     try:
         bet_number = int(args[0])
     except:
         await update.message.reply_text('❌ Invalid number')
         return
-
+    
     db = await get_db()
     bets_data = await db.fetch("""
         SELECT b.id, b.amount, m.team1, m.team2, m.locked
         FROM bets b JOIN matches m ON b.match_id = m.id
         WHERE b.user_id = $1 AND m.locked = 0
     """, user_id)
-
+    
     if bet_number < 1 or bet_number > len(bets_data):
         await update.message.reply_text(f'❌ Choose 1-{len(bets_data)}')
-        await close_db(db)
+        await db.close()
         return
-
+    
     bet_to_cancel = bets_data[bet_number - 1]
     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", bet_to_cancel['amount'], user_id)
     await db.execute("DELETE FROM bets WHERE id = $1", bet_to_cancel['id'])
-
-    # 🔥 SAFE DECREMENT (total won se kam nahi hoga)
-    await db.execute(
-        "UPDATE users SET total = GREATEST(total - 1, won) WHERE user_id = $1",
-        user_id
-    )
-
+    await db.execute("UPDATE users SET total = total - 1 WHERE user_id = $1", user_id)
     new_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    await close_db(db)
-
-    await update.message.reply_text(
-        f"✅ BET CANCELLED!\n\n"
-        f"🏏 {bet_to_cancel['team1']} vs {bet_to_cancel['team2']}\n"
-        f"🪙 Refund: {bet_to_cancel['amount']:,} 🪙\n"
-        f"📊 New balance: {new_bal:,} 🪙"
-    )
-
+    await db.close()
+    
+    await update.message.reply_text(f"✅ BET CANCELLED!\n\n🏏 {bet_to_cancel['team1']} vs {bet_to_cancel['team2']}\n💰 Refund: {bet_to_cancel['amount']:,} 💰\n📊 New balance: {new_bal:,} 💰")
 
 # ============ ALLBETS WITH BUTTONS ============
 async def allbets(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5777,7 +5603,7 @@ async def allbets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not matches:
         await update.message.reply_text('📭 No matches found!')
-        await close_db(db)
+        await db.close()
         return
     
     # Summary message
@@ -5798,11 +5624,11 @@ async def allbets(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         status = "🔓 OPEN" if m['locked'] == 0 else "🔒 LOCKED"
         summary_msg += f"{i}️⃣ {m['team1']} vs {m['team2']} [{status}]\n"
-        summary_msg += f"🪙 {m['team1']}: {team1_total:,} | {m['team2']}: {team2_total:,}\n"
+        summary_msg += f"💰 {m['team1']}: {team1_total:,} | {m['team2']}: {team2_total:,}\n"
         summary_msg += f"👥 Users: {unique_users} | Pool: {team1_total + team2_total:,}\n\n"
     
     summary_msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
-    summary_msg += f"🪙 Total Pool: {total_pool:,}\n"
+    summary_msg += f"💰 Total Pool: {total_pool:,}\n"
     summary_msg += f"👥 Total Bets: {len(total_users)} users"
     
     # 🔥 BUTTONS - SIRF MATCHES KE (NO BACK TO SUMMARY)
@@ -5815,7 +5641,7 @@ async def allbets(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 🔥 YEH LINE HATAO (BACK TO SUMMARY)
     # keyboard.append([InlineKeyboardButton("📊 BACK TO SUMMARY", callback_data="allbets_summary")])
     
-    await close_db(db)
+    await db.close()
     await update.message.reply_text(summary_msg, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def allbets_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -5834,7 +5660,7 @@ async def allbets_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if not match:
             await query.edit_message_text("❌ Match not found!")
-            await close_db(db)
+            await db.close()
             return
         
         bets_data = await db.fetch("""
@@ -5863,23 +5689,23 @@ async def allbets_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = f"📊 MATCH DETAILS\n\n"
         msg += f"🏏 {match['team1']} vs {match['team2']} [{status}]\n\n"
         
-        msg += f"🎯 {match['team1']} (Total: {team1_amount:,} 🪙):\n"
+        msg += f"🎯 {match['team1']} (Total: {team1_amount:,} 💰):\n"
         if team1_users:
             msg += "\n".join(team1_users) + "\n"
         else:
             msg += "   No bets\n"
         
-        msg += f"\n🎯 {match['team2']} (Total: {team2_amount:,} 🪙):\n"
+        msg += f"\n🎯 {match['team2']} (Total: {team2_amount:,} 💰):\n"
         if team2_users:
             msg += "\n".join(team2_users) + "\n"
         else:
             msg += "   No bets\n"
         
-        msg += f"\n💣 Total Pool: {team1_amount + team2_amount:,} 🪙"
+        msg += f"\n💣 Total Pool: {team1_amount + team2_amount:,} 💰"
         
         # 🔥 NO BACK BUTTON - SIRF MESSAGE
         await query.edit_message_text(msg)
-        await close_db(db)
+        await db.close()
         return
     
     # 🔥 SUMMARY HANDLER HATAO (AB ZAROORAT NAHI)
@@ -5903,7 +5729,7 @@ async def track_all_activity(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     activity_score = user_activity.activity_score + 1,
                     last_active = NOW()
             """, user_id, chat_id)
-            await close_db(db)
+            await db.close()
     except Exception as e:
         print(f"⚠️ Activity tracking error: {e}")
 
@@ -5932,7 +5758,7 @@ async def rain(update: Update, context: ContextTypes.DEFAULT_TYPE):
             remaining = next_time - datetime.now()
             minutes = remaining.seconds // 60
             await update.message.reply_text(f"⏰ Next rain in {minutes} minutes!")
-            await close_db(db)
+            await db.close()
             return
 
     # Get active users (last 24 hours) - TOP 10 ONLY
@@ -5947,7 +5773,7 @@ async def rain(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not active_users:
         await update.message.reply_text("❌ No active users!")
-        await close_db(db)
+        await db.close()
         return
 
     # 🔥 HAR USER KO 1,000 CREDITS
@@ -5967,13 +5793,13 @@ async def rain(update: Update, context: ContextTypes.DEFAULT_TYPE):
                      chat_id, datetime.now())
 
     # Send message and update balances
-    msg = "🌧️🪙 THE COIN RAIN HAS FALLEN! 🪙🌧️\n\n"
+    msg = "🌧️💰 THE COIN RAIN HAS FALLEN! 💰🌧️\n\n"
 
     for i, r in enumerate(results, 1):
         await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", r['coins'], r['user_id'])
-        msg += f"{i}. {r['name']} - 🪙 {r['coins']:,} credits\n"
+        msg += f"{i}. {r['name']} - 💰 {r['coins']:,} credits\n"
 
-    await close_db(db)
+    await db.close()
     await update.message.reply_text(msg)
 
 
@@ -5986,7 +5812,7 @@ async def history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     db = await get_db()
     user = await db.fetchrow("SELECT won, total, points FROM users WHERE user_id = $1", user_id)
-    await close_db(db)
+    await db.close()
     
     if not user:
         await update.message.reply_text('❌ User not found!')
@@ -6119,7 +5945,7 @@ def get_tower_keyboard(game):
             InlineKeyboardButton("🚪 2", callback_data=f"tower_door_{game.user_id}_1"),
             InlineKeyboardButton("🚪 3", callback_data=f"tower_door_{game.user_id}_2")
         ],
-        [InlineKeyboardButton("🪙 CASHOUT", callback_data=f"tower_cashout_{game.user_id}")]
+        [InlineKeyboardButton("💰 CASHOUT", callback_data=f"tower_cashout_{game.user_id}")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -6143,7 +5969,7 @@ async def tower(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "⚡ Max bet: 7,000\n"
             "🎯 Climb 6 floors to win 5x!\n"
             "💀 One wrong door = lose all!\n"
-            "🪙 Cashout anytime!",
+            "💰 Cashout anytime!",
             parse_mode="Markdown"
         )
         return
@@ -6168,17 +5994,17 @@ async def tower(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if balance is None:
         await update.message.reply_text("❌ User not found! Send /start first!")
-        await close_db(db)
+        await db.close()
         return
     
     if balance < bet:
         await update.message.reply_text(f"❌ Need {bet:,} coins, have {balance:,}")
-        await close_db(db)
+        await db.close()
         return
     
     # Deduct bet
     await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, user_id)
-    await close_db(db)
+    await db.close()
     
     # Create game
     game = TowerGame(user_id, bet)
@@ -6189,7 +6015,7 @@ async def tower(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         f"🏰 **TOWER CLIMB**\n\n"
-        f"🪙 Bet: {bet:,} coins\n"
+        f"💰 Bet: {bet:,} coins\n"
         f"📊 {floor_display}\n"
         f"💎 Win: {game.win_amount:,} coins\n\n"
         f"Choose a door:",
@@ -6240,10 +6066,10 @@ async def tower_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 db = await get_db()
                 current_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
                 await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", win_amount, user_id)
-                await close_db(db)
+                await db.close()
                 
                 await query.edit_message_text(
-                    f"🪙 **CASHOUT!**\n\n"
+                    f"💰 **CASHOUT!**\n\n"
                     f"🛗 Climbed {game.current_floor}/6 floors\n"
                     f"📈 Multiplier: {game.multiplier}x\n"
                     f"💎 You won: {win_amount:,} coins\n"
@@ -6276,7 +6102,7 @@ async def tower_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     db = await get_db()
                     current_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
                     await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", win_amount, user_id)
-                    await close_db(db)
+                    await db.close()
                     
                     await query.edit_message_text(
                         f"🎉 **YOU CONQUERED THE TOWER!** 🎉\n\n"
@@ -6297,7 +6123,7 @@ async def tower_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.edit_message_text(
                     f"🏰 **TOWER CLIMB**\n\n"
                     f"✅ **SAFE!** Floor {game.current_floor}/{len(FLOORS)} cleared!\n\n"
-                    f"🪙 Bet: {game.bet:,} coins\n"
+                    f"💰 Bet: {game.bet:,} coins\n"
                     f"📊 {floor_display}\n"
                     f"💎 Win: {game.win_amount:,} coins\n\n"
                     f"Choose a door:",
@@ -6331,7 +6157,7 @@ async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     db = await get_db()
     balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    await close_db(db)
+    await db.close()
     
     if balance is None:
         await update.message.reply_text("❌ User not found! Send /start first.")
@@ -6341,7 +6167,7 @@ async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = user.first_name if user.first_name else (user.username or "User")
     
     await update.message.reply_text(
-        f"🪙 **BALANCE**\n\n"
+        f"💰 **BALANCE**\n\n"
         f"👤 {name}\n"
         f"💳 Wallet: **{balance:,}** credits\n\n"
         f"💡 Use /bank to check bank balance",
@@ -6367,7 +6193,7 @@ async def fix_duplicates(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not duplicates:
         await update.message.reply_text("✅ No duplicate players found!")
-        await close_db(db)
+        await db.close()
         return
     
     removed = 0
@@ -6389,7 +6215,7 @@ async def fix_duplicates(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         removed += count - 1
     
-    await close_db(db)
+    await db.close()
     
     await update.message.reply_text(
         f"✅ FIXED DUPLICATES!\n\n"
@@ -6424,7 +6250,7 @@ async def fix_achievements(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # 3️⃣ GET FINAL COUNT
     count = await db.fetchval("SELECT COUNT(*) FROM achievements")
-    await close_db(db)
+    await db.close()
     
     await update.message.reply_text(
         f"✅ ACHIEVEMENTS FIXED!\n\n"
@@ -6532,7 +6358,7 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"💡 Wait for auction to end or use `/result_auction {active_player['id']}` to end it manually.",
                         parse_mode="Markdown"
                     )
-                    await close_db(db)
+                    await db.close()
                     return
 
         # Agar active player ka time khatam ho gaya hai
@@ -6543,7 +6369,7 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💡 Use `/result_auction {active_player['id']}` first.",
             parse_mode="Markdown"
         )
-        await close_db(db)
+        await db.close()
         return
 
     # Check duplicate ID
@@ -6553,7 +6379,7 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     if existing:
-        await close_db(db)
+        await db.close()
         await update.message.reply_text(
             f"*❌ Player ID `{player_id}` already exists!*",
             parse_mode="Markdown"
@@ -6576,12 +6402,12 @@ async def add_player(update: Update, context: ContextTypes.DEFAULT_TYPE):
         now
     )
 
-    await close_db(db)
+    await db.close()
 
     await update.message.reply_text(
         f"*✅ PLAYER ADDED!*\n\n"
         f"*🏏 Name:* {name}\n"
-        f"*🪙 Base Price:* {base_price:,}\n"
+        f"*💰 Base Price:* {base_price:,}\n"
         f"*🆔 ID:* {player_id}\n"
         f"*⏰ Time:* TBD\n\n"
         f"*💡 Use /players to see player*\n"
@@ -6608,7 +6434,7 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not players_data:
         await update.message.reply_text("*📭 No players available right now!*", parse_mode="Markdown")
-        await close_db(db)
+        await db.close()
         return
 
     now_naive_ist = datetime.now(IST).replace(tzinfo=None)
@@ -6661,7 +6487,7 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🏏 *PLAYER #{p['id']}*\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"👤 *Name:* {p['name']}\n"
-            f"🪙 *Base Price:* {p['base_price']:,}\n"
+            f"💰 *Base Price:* {p['base_price']:,}\n"
             f"🔥 *Current Bid:* {p['current_bid']:,}\n"
             f"👑 *Highest Bidder:* {bidder_name}\n"
             f"{time_left}\n"
@@ -6683,7 +6509,7 @@ async def players(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text(caption, parse_mode="Markdown")
 
-    await close_db(db)
+    await db.close()
 
 # ============ FAV PLAYER ============
 async def fav(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -6723,7 +6549,7 @@ async def fav(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "*💡 Use /myteam to see your players*",
             parse_mode="Markdown"
         )
-        await close_db(db)
+        await db.close()
         return
 
     # Get player name
@@ -6738,7 +6564,7 @@ async def fav(update: Update, context: ContextTypes.DEFAULT_TYPE):
         player_id, user_id
     )
 
-    await close_db(db)
+    await db.close()
 
     await update.message.reply_text(
         f"⭐ *FAV PLAYER SET!*\n\n"
@@ -6759,7 +6585,7 @@ async def unfav(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     db = await get_db()
     await db.execute("UPDATE users SET fav_player = 0 WHERE user_id = $1", user_id)
-    await close_db(db)
+    await db.close()
 
     await update.message.reply_text(
         "✅ *Favourite player removed!*",
@@ -6826,7 +6652,7 @@ async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not player:
         await update.message.reply_text("*❌ Player not found!*", parse_mode="Markdown")
-        await close_db(db)
+        await db.close()
         return
 
     if player["status"] != "active":
@@ -6834,7 +6660,7 @@ async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "*❌ Player is not active anymore!*",
             parse_mode="Markdown"
         )
-        await close_db(db)
+        await db.close()
         return
 
     # 🔥 FIX: Calculate end_time properly
@@ -6851,7 +6677,7 @@ async def settime(update: Update, context: ContextTypes.DEFAULT_TYPE):
         player_id
     )
 
-    await close_db(db)
+    await db.close()
 
     # 🔥 Pretty duration display
     if seconds >= 86400:
@@ -6923,7 +6749,7 @@ async def setplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not player:
         await update.message.reply_text("*❌ Player not found!*", parse_mode="Markdown")
-        await close_db(db)
+        await db.close()
         return
 
     await db.execute(
@@ -6932,7 +6758,7 @@ async def setplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         player_id
     )
 
-    await close_db(db)
+    await db.close()
 
     await update.message.reply_text(
         f"*✅ PLAYER PHOTO SET!*\n\n"
@@ -6995,7 +6821,7 @@ async def auction_auto_lock(app):
                             f"🔔 *AUCTION ENDED!*\n\n"
                             f"🏏 *Player:* {player_name}\n"
                             f"🆔 *ID:* `{player_id}`\n"
-                            f"🪙 *Final Bid:* {current_bid:,}\n"
+                            f"💰 *Final Bid:* {current_bid:,}\n"
                             f"👤 *Highest Bidder:* {winner_name}\n\n"
                             f"💡 Use `/result_auction {player_id}` to declare winner",
                             parse_mode="Markdown"
@@ -7004,7 +6830,7 @@ async def auction_auto_lock(app):
                         pass
 
             try:
-                await close_db(db)
+                await db.close()
             except:
                 pass
 
@@ -7079,7 +6905,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "*❌ Player not found or auction ended!*",
             parse_mode="Markdown"
         )
-        await close_db(db)
+        await db.close()
         return
 
     # ============ CHECK IF LOCKED ============
@@ -7092,7 +6918,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"*Stay tuned!*",
             parse_mode="Markdown"
         )
-        await close_db(db)
+        await db.close()
         return
 
     # ============ END TIME CHECK ============
@@ -7112,7 +6938,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "*⏰ Auction for this player has ended!*",
                 parse_mode="Markdown"
             )
-            await close_db(db)
+            await db.close()
             return
 
         remaining_seconds = int((end_time - now_naive_ist).total_seconds())
@@ -7140,7 +6966,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"*Minimum Bid:* {player['current_bid'] + 1:,}",
             parse_mode="Markdown"
         )
-        await close_db(db)
+        await db.close()
         return
 
     # ============ SAVE PREVIOUS INFO ============
@@ -7179,7 +7005,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"*Required:* {deduct_amount:,}",
             parse_mode="Markdown"
         )
-        await close_db(db)
+        await db.close()
         return
 
     # ============ REFUND PREVIOUS BIDDER ============
@@ -7220,7 +7046,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id
     )
 
-    await close_db(db)
+    await db.close()
 
     # ============ SEND OUTBID ALERT (DM) ============
     if refund_to and refund_to != user_id:
@@ -7229,7 +7055,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 refund_to,
                 f"⚠️ *YOU'VE BEEN OUTBID!*\n\n"
                 f"🏏 *Player:* {player['name']}\n"
-                f"🪙 *Your Bid:* {previous_bid:,}\n"
+                f"💰 *Your Bid:* {previous_bid:,}\n"
                 f"🔥 *New Bid:* {amount:,}\n\n"
                 f"✅ *Refunded:* {previous_bid:,} credits\n\n"
                 f"💡 Bid again to reclaim!\n"
@@ -7243,7 +7069,7 @@ async def bid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     caption = (
         f"✅ *BID PLACED!*\n\n"
         f"🏏 *Player:* {player['name']}\n"
-        f"🪙 *Your Bid:* {amount:,}\n"
+        f"💰 *Your Bid:* {amount:,}\n"
         f"👤 *Current Highest:* You\n"
         f"⏰ *Time left:* {remaining_time}\n\n"
         f"💳 *Your balance:* {new_balance:,}"
@@ -7292,7 +7118,7 @@ async def result_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "*❌ Player not found or already sold!*",
             parse_mode="Markdown"
         )
-        await close_db(db)
+        await db.close()
         return
 
     if not player['highest_bidder']:
@@ -7300,7 +7126,7 @@ async def result_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "*❌ No bids placed on this player!*",
             parse_mode="Markdown"
         )
-        await close_db(db)
+        await db.close()
         return
 
     winner_id = player['highest_bidder']
@@ -7323,7 +7149,7 @@ async def result_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
         winner_id, player_id, datetime.now(IST).replace(tzinfo=None)
     )
 
-    await close_db(db)
+    await db.close()
 
     # 🔥 DM winner
     try:
@@ -7331,7 +7157,7 @@ async def result_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
             winner_id,
             f"🎉 *CONGRATULATIONS!*\n\n"
             f"🏏 You won *{player['name']}*!\n"
-            f"🪙 Winning Bid: *{winning_bid:,}*\n\n"
+            f"💰 Winning Bid: *{winning_bid:,}*\n\n"
             f"💡 Check your team with /myteam",
             parse_mode="Markdown"
         )
@@ -7343,7 +7169,7 @@ async def result_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🏆 *AUCTION RESULT!*\n\n"
         f"🏏 *Player:* {player['name']}\n"
         f"👤 *Winner:* {winner_name} 🎉\n"
-        f"🪙 *Winning Bid:* {winning_bid:,}\n\n"
+        f"💰 *Winning Bid:* {winning_bid:,}\n\n"
         f"✅ *Player added to {winner_name}'s team!*",
         parse_mode="Markdown"
     )
@@ -7378,7 +7204,7 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "*💡 Bid on players using /players*",
             parse_mode="Markdown"
         )
-        await close_db(db)
+        await db.close()
         return
 
     total = sum(p['current_bid'] for p in players)
@@ -7418,7 +7244,7 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         msg += (
             f"{star}*{i}. {p['name']}*\n"
-            f"   🪙 Bought: {p['current_bid']:,}\n"
+            f"   💰 Bought: {p['current_bid']:,}\n"
             f"   📊 Base: {p['base_price']:,}\n"
             f"   📅 {date_str}\n\n"
         )
@@ -7426,7 +7252,7 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += (
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"🏆 *Total Players:* {count}\n"
-        f"🪙 *Total Value:* {total:,}\n"
+        f"💰 *Total Value:* {total:,}\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"💡 `/fav <id>` to set favourite player"
     )
@@ -7445,7 +7271,7 @@ async def myteam(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(msg, parse_mode="Markdown")
 
-    await close_db(db)
+    await db.close()
 
 # ============ RESET AUCTION (ADMIN) ============
 async def reset_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -7480,7 +7306,7 @@ async def reset_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Reset fav_player for all users
         await db.execute("UPDATE users SET fav_player = 0")
 
-        await close_db(db)
+        await db.close()
 
         await update.message.reply_text(
             "*✅ AUCTION RESET COMPLETE!*\n\n"
@@ -7498,7 +7324,7 @@ async def reset_auction(update: Update, context: ContextTypes.DEFAULT_TYPE):
         import traceback
         traceback.print_exc()
         try:
-            await close_db(db)
+            await db.close()
         except:
             pass
         await update.message.reply_text(
@@ -7527,17 +7353,17 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not tops:
         await update.message.reply_text("*🏆 TOP COLLECTORS*\n\n*No one has won any players yet!*", parse_mode="Markdown")
-        await close_db(db)
+        await db.close()
         return
 
     msg = "*🏆 TOP COLLECTORS*\n\n"
     medals = ["🥇", "🥈", "🥉"]
     for i, t in enumerate(tops, 1):
         medal = medals[i-1] if i <= 3 else f"{i}."
-        msg += f"*{medal} {t['name']} - {t['count']} players ({t['total']:,} 🪙)*\n"
+        msg += f"*{medal} {t['name']} - {t['count']} players ({t['total']:,} 💰)*\n"
 
     await update.message.reply_text(msg, parse_mode="Markdown")
-    await close_db(db)
+    await db.close()
 
 # ============ REMOVE PLAYER WITH REFUND ==========
 async def rmplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -7567,7 +7393,7 @@ async def rmplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     player = await db.fetchrow("SELECT name, highest_bidder, current_bid FROM auction_players WHERE id = $1", player_id)
     if not player:
         await update.message.reply_text("*❌ Player not found!*", parse_mode="Markdown")
-        await close_db(db)
+        await db.close()
         return
 
     # 🔥 GET ALL BIDDERS
@@ -7591,14 +7417,14 @@ async def rmplayer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 🔥 DELETE BID HISTORY
     await db.execute("DELETE FROM bid_history WHERE player_id = $1", player_id)
 
-    await close_db(db)
+    await db.close()
 
     await update.message.reply_text(
         f"*🗑️ PLAYER REMOVED + REFUNDED!*\n\n"
         f"*🏏 Name:* {player['name']}\n"
         f"*🆔 ID:* {player_id}\n\n"
-        f"*🪙 Refunded {refund_count} users*\n"
-        f"*🪙 Total Refund: {refund_total:,} 🪙*\n\n"
+        f"*💰 Refunded {refund_count} users*\n"
+        f"*💰 Total Refund: {refund_total:,} 💰*\n\n"
         f"*✅ Removed from auction, teams, and history!*",
         parse_mode="Markdown"
     )
@@ -7717,7 +7543,7 @@ async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     finally:
-        await close_db(db)
+        await db.close()
 
 # ============ DAILY PENALTY ============
 async def check_penalty():
@@ -7817,14 +7643,14 @@ async def check_penalty():
             """, user_id, penalty, today, new_total)
 
             print(
-                f"🪙 DAILY PENALTY | "
+                f"💰 DAILY PENALTY | "
                 f"User: {user_id} | "
                 f"Penalty: {penalty:,} | "
                 f"Remaining: {new_total:,}"
             )
 
     finally:
-        await close_db(db)
+        await db.close()
 
 
 # ============ DAILY PENALTY SCHEDULER ============
@@ -7924,7 +7750,7 @@ async def login_log(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg += f"🪙 Total wealth : {user_total:,}"
 
     await update.message.reply_text(msg)
-    await close_db(db)
+    await db.close()
 
 
 # ============ PENALTY HISTORY (ADMIN) ==========
@@ -7950,7 +7776,7 @@ async def penalty_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not penalties:
         await update.message.reply_text("✅ No pending penalties! All Top 10 users have logged in today.")
-        await close_db(db)
+        await db.close()
         return
     
     msg = f"📊 PENALTY HISTORY (Pending - Not Logged In Today)\n"
@@ -7959,11 +7785,11 @@ async def penalty_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     for p in penalties:
         msg += f"👤 {p['name']}\n"
-        msg += f"   🪙 -{p['amount']:,} (New Balance: {p['balance_after']:,})\n"
+        msg += f"   💰 -{p['amount']:,} (New Balance: {p['balance_after']:,})\n"
         msg += f"   📅 {p['penalty_date'].strftime('%d %b %Y')}\n\n"
     
     await update.message.reply_text(msg)
-    await close_db(db)
+    await db.close()
 
 # ============ PART 5 — OPTIONAL: PENALTY SETTINGS ============
 # Is part se penalty ko easily control kar sakte ho.
@@ -8024,7 +7850,7 @@ async def penalty_preview(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if total_wealth <= MIN_WEALTH_FOR_PENALTY:
 
-        await close_db(db)
+        await db.close()
 
         await update.message.reply_text(
             "🛡️ *PENALTY PREVIEW*\n\n"
@@ -8038,7 +7864,7 @@ async def penalty_preview(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rate = get_penalty_rate(total_wealth)
     penalty = max(1, int(total_wealth * rate))
 
-    await close_db(db)
+    await db.close()
 
     await update.message.reply_text(
         "⚠️ *PENALTY PREVIEW*\n\n"
@@ -8082,7 +7908,7 @@ async def penalty_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         WHERE penalty_date = $1
     """, today)
 
-    await close_db(db)
+    await db.close()
 
     await update.message.reply_text(
         "📊 *DAILY PENALTY STATUS*\n"
@@ -8092,7 +7918,7 @@ async def penalty_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💸 Penalized: *{penalty_count}*\n"
         f"🪙 Total Coins Removed: *{penalty_total:,}*\n\n"
         f"🔝 Penalty applies to Top *{PENALTY_TOP_PLAYERS}*\n"
-        f"🪙 Minimum Wealth: *{MIN_WEALTH_FOR_PENALTY:,}*",
+        f"💰 Minimum Wealth: *{MIN_WEALTH_FOR_PENALTY:,}*",
         parse_mode="Markdown"
     )
 
@@ -8103,8 +7929,8 @@ async def transferstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Admin only!")
         return
 
-    source_id = 8872262684
-    target_id = 8837837991
+    source_id = 8933480908
+    target_id = 8538402671
 
     # Extra stats to add
     extra_runs = 51
@@ -8246,7 +8072,129 @@ async def transferstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     finally:
-        await close_db(db)
+        await db.close()
+
+
+# ============ TRANSFER CRICKET STATS ============
+
+async def transferstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+
+    # 🔥 OLD ID (jisme stats hain) → NEW ID (jisme bhejne hain)
+    source_id = 8538402671
+    target_id = 8872262684
+
+    db = await get_db()
+
+    try:
+        # Source stats
+        source = await db.fetchrow(
+            """
+            SELECT runs, wickets, highest_score, wins, losses, ducks
+            FROM cricket_stats
+            WHERE user_id = $1
+            """,
+            source_id
+        )
+
+        if not source:
+            await update.message.reply_text(
+                f"❌ Source ID `{source_id}` ki stats nahi mili!",
+                parse_mode="Markdown"
+            )
+            return
+
+        # Target stats (agar exist karta hai)
+        target = await db.fetchrow(
+            """
+            SELECT runs, wickets, highest_score, wins, losses, ducks
+            FROM cricket_stats
+            WHERE user_id = $1
+            """,
+            target_id
+        )
+
+        if target:
+            # Dono ko jodo
+            total_runs = source["runs"] + target["runs"]
+            total_wickets = source["wickets"] + target["wickets"]
+            total_highest = max(source["highest_score"], target["highest_score"])
+            total_wins = source["wins"] + target["wins"]
+            total_losses = source["losses"] + target["losses"]
+            total_ducks = (source["ducks"] or 0) + (target["ducks"] or 0)
+
+            await db.execute(
+                """
+                UPDATE cricket_stats
+                SET runs = $1,
+                    wickets = $2,
+                    highest_score = $3,
+                    wins = $4,
+                    losses = $5,
+                    ducks = $6
+                WHERE user_id = $7
+                """,
+                total_runs, total_wickets, total_highest,
+                total_wins, total_losses, total_ducks,
+                target_id
+            )
+        else:
+            # Target nahi hai — sirf source ki values copy karo
+            total_runs = source["runs"]
+            total_wickets = source["wickets"]
+            total_highest = source["highest_score"]
+            total_wins = source["wins"]
+            total_losses = source["losses"]
+            total_ducks = source["ducks"] or 0
+
+            await db.execute(
+                """
+                INSERT INTO cricket_stats
+                (user_id, name, runs, wickets, highest_score, wins, losses, ducks)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                """,
+                target_id, "Player",
+                total_runs, total_wickets, total_highest,
+                total_wins, total_losses, total_ducks
+            )
+
+        # Source stats delete karo
+        await db.execute(
+            "DELETE FROM cricket_stats WHERE user_id = $1",
+            source_id
+        )
+
+        await update.message.reply_text(
+            "✅ *STATS TRANSFERRED!*\n\n"
+            f"🔄 From: `{source_id}`\n"
+            f"➡️ To: `{target_id}`\n\n"
+            "📊 *New Stats:*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"🏏 Runs: *{total_runs}*\n"
+            f"🎯 Wickets: *{total_wickets}*\n"
+            f"⭐ Highest Score: *{total_highest}*\n"
+            f"✅ Wins: *{total_wins}*\n"
+            f"❌ Losses: *{total_losses}*\n"
+            f"🦆 Ducks: *{total_ducks}*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "🗑️ Source stats deleted!",
+            parse_mode="Markdown"
+        )
+
+    except Exception as e:
+        import traceback
+        print("========== TRANSFER STATS ERROR ==========")
+        traceback.print_exc()
+
+        await update.message.reply_text(
+            f"❌ Error: `{type(e).__name__}: {e}`",
+            parse_mode="Markdown"
+        )
+
+    finally:
+        await db.close()
 
 # ============ LOCK BID (ADMIN) ============
 # ============ LOCK BID (ADMIN) ============
@@ -8311,7 +8259,7 @@ async def lockbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not player:
         await update.message.reply_text("*❌ Player not found!*", parse_mode="Markdown")
-        await close_db(db)
+        await db.close()
         return
 
     if player["status"] != "active":
@@ -8319,7 +8267,7 @@ async def lockbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "*❌ Player is not active anymore!*",
             parse_mode="Markdown"
         )
-        await close_db(db)
+        await db.close()
         return
 
     if player["locked"] == 1:
@@ -8328,7 +8276,7 @@ async def lockbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"*Current lock time:* {player.get('lock_time') or 'N/A'}",
             parse_mode="Markdown"
         )
-        await close_db(db)
+        await db.close()
         return
 
     await db.execute(
@@ -8337,7 +8285,7 @@ async def lockbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         player_id
     )
 
-    await close_db(db)
+    await db.close()
 
     await update.message.reply_text(
         f"🔒 *BID LOCKED!*\n\n"
@@ -8379,7 +8327,7 @@ async def unlockbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not player:
         await update.message.reply_text("*❌ Player not found!*", parse_mode="Markdown")
-        await close_db(db)
+        await db.close()
         return
 
     if player["status"] != "active":
@@ -8387,7 +8335,7 @@ async def unlockbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "*❌ Player is not active anymore!*",
             parse_mode="Markdown"
         )
-        await close_db(db)
+        await db.close()
         return
 
     if player["locked"] == 0:
@@ -8395,7 +8343,7 @@ async def unlockbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "*⚠️ Player is already unlocked!*",
             parse_mode="Markdown"
         )
-        await close_db(db)
+        await db.close()
         return
 
     await db.execute(
@@ -8403,7 +8351,7 @@ async def unlockbid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         player_id
     )
 
-    await close_db(db)
+    await db.close()
 
     await update.message.reply_text(
         f"🔓 *BID UNLOCKED!*\n\n"
@@ -8531,19 +8479,16 @@ def apply_font(text, font_id):
 # ============ FONT MENU ============
 async def font_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-
-    try:
-        await query.answer()
-    except:
-        pass
+    await query.answer()
 
     user_id = update.effective_user.id
     data = query.data
 
     if data == "font_menu":
+        # Show font menu
         db = await get_db()
         current = await db.fetchval("SELECT font FROM users WHERE user_id = $1", user_id)
-        await close_db(db)
+        await db.close()
         current = current or "1"
 
         current_name = FONT_NAMES.get(current, "Normal")
@@ -8569,1466 +8514,25 @@ async def font_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         font_id = data.split("_")[2]
 
         if font_id not in FONT_NAMES:
+            await query.answer("❌ Invalid font!", show_alert=True)
             return
 
         db = await get_db()
         await db.execute("UPDATE users SET font = $1 WHERE user_id = $2", font_id, user_id)
-        await close_db(db)
+        await db.close()
 
         font_name = FONT_NAMES[font_id]
+        preview = apply_font("Font Changed!", font_id)
 
-        # 🔥 Build preview profile with new font
-        user = update.effective_user
-        name = user.first_name if user.first_name else (user.username or "User")
+        await query.answer(f"✅ {preview} → {font_name}", show_alert=True)
 
-        db = await get_db()
-        data_row = await db.fetchrow(
-            "SELECT balance, points, won, total, photo, bio FROM users WHERE user_id = $1",
-            user_id
-        )
-        bank_bal = await db.fetchval("SELECT balance FROM bank WHERE user_id = $1", user_id) or 0
-        await close_db(db)
-
-        if data_row:
-            wallet_bal, points, won, total, photo, bio = data_row
-            total_wealth = wallet_bal + bank_bal
-
-            if won > total:
-                total = won
-
-            if total > 0:
-                win_rate = int((won / total) * 100)
-                if win_rate > 100:
-                    win_rate = 100
-            else:
-                win_rate = 0
-
-            DEFAULT_BIO = "I Play With CL Bot!"
-            bio_text = bio if bio else DEFAULT_BIO
-
-            # Apply font
-            profile_label = apply_font("PROFILE", font_id)
-            name_label = apply_font("Name", font_id)
-            bio_label = apply_font("Bio", font_id)
-            wallet_label = apply_font("Wallet", font_id)
-            bank_label = apply_font("Bank", font_id)
-            total_label = apply_font("Total", font_id)
-            points_label = apply_font("Points", font_id)
-            bets_label = apply_font("Bets", font_id)
-            winrate_label = apply_font("Win Rate", font_id)
-
-            name_escaped = escape_markdown(name)
-
-            profile_text = f"👤 *{profile_label}*\n\n"
-            profile_text += f"*{name_label}:* {name_escaped}\n"
-            profile_text += f"*{bio_label}:* {bio_text}\n\n"
-            profile_text += f"🪙 *{wallet_label}:* {wallet_bal:,}\n"
-            profile_text += f"🏦 *{bank_label}:* {bank_bal:,}\n"
-            profile_text += f"💎 *{total_label}:* {total_wealth:,}\n\n"
-            profile_text += f"🏆 *{points_label}:* {points}\n"
-            profile_text += f"📊 *{bets_label}:* {won}/{total}\n"
-            profile_text += f"📈 *{winrate_label}:* {win_rate}%"
-
-            # ✅ Font change hone ka message + button
-            keyboard = [
-                [InlineKeyboardButton("🎨 Change Font", callback_data="font_menu")]
-            ]
-
-            profile_text += f"\n\n✅ Font changed to *{font_name}*"
-
-            # Update the same message
-            try:
-                if photo:
-                    # Agar profile mein photo hai toh caption update karo
-                    await query.edit_message_caption(
-                        caption=profile_text,
-                        parse_mode="Markdown",
-                        reply_markup=InlineKeyboardMarkup(keyboard)
-                    )
-                else:
-                    # Sirf text hai
-                    await query.edit_message_text(
-                        text=profile_text,
-                        parse_mode="Markdown",
-                        reply_markup=InlineKeyboardMarkup(keyboard)
-                    )
-            except Exception as e:
-                # Agar edit fail ho toh sirf answer dikha
-                try:
-                    await query.answer(f"✅ Font changed to {font_name}!", show_alert=False)
-                except:
-                    pass
-
-        return
-
-
-# ============ SELL PLAYER ============
-async def sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    chat_id = update.message.chat.id
-    chat_type = update.message.chat.type
-
-    # 🔥 ONLY IN CL PLAYZONE GC
-    CL_PLAYZONE_GC_ID = -1003011263365
-
-    if chat_type not in ['group', 'supergroup'] or chat_id != CL_PLAYZONE_GC_ID:
-        await update.message.reply_text(
-            "*🚫 SELL ONLY IN CL PLAYZONE!*\n\n"
-            "*Join here:*",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("👥 JOIN CL PLAYZONE", url="https://t.me/clbotplayzone")]
-            ])
-        )
-        return
-
-    if not await is_registered(user_id):
-        await update.message.reply_text("*❌ Send /start first!*", parse_mode="Markdown")
-        return
-
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text(
-            "*❌ Usage:* `/sell <player_id>`\n\n"
-            "*Example:* `/sell 1`",
+        # Show preview of profile
+        await query.message.reply_text(
+            f"✅ *Font changed to {font_name}!*\n\n"
+            f"Use /profile to see new style.",
             parse_mode="Markdown"
         )
         return
-
-    try:
-        player_id = int(args[0])
-    except:
-        await update.message.reply_text("*❌ Invalid player ID!*", parse_mode="Markdown")
-        return
-
-    db = await get_db()
-
-    # Check ownership
-    owned = await db.fetchrow(
-        """
-        SELECT up.player_id, up.purchased_price, p.name, p.current_bid
-        FROM user_players up
-        JOIN auction_players p ON up.player_id = p.id
-        WHERE up.user_id = $1 AND up.player_id = $2
-        """,
-        user_id, player_id
-    )
-
-    if not owned:
-        await update.message.reply_text(
-            "*❌ Player not found in your team!*",
-            parse_mode="Markdown"
-        )
-        await close_db(db)
-        return
-
-    # Check fav
-    fav_id = await db.fetchval("SELECT fav_player FROM users WHERE user_id = $1", user_id)
-
-    if fav_id == player_id:
-        await update.message.reply_text(
-            "*⚠️ Cannot sell fav player!*\n\n"
-            "*💡 Use /unfav first, then sell.*",
-            parse_mode="Markdown"
-        )
-        await close_db(db)
-        return
-
-    # Calculate
-    bought_price = owned['purchased_price'] or owned['current_bid']
-    sell_price = int(bought_price * 0.90)
-    fee = bought_price - sell_price
-
-    await close_db(db)
-
-    # Confirmation
-    keyboard = [
-        [InlineKeyboardButton("✅ SELL", callback_data=f"sell_confirm_{player_id}"),
-         InlineKeyboardButton("❌ CANCEL", callback_data=f"sell_cancel_{player_id}")]
-    ]
-
-    await update.message.reply_text(
-        f"💰 *SELL PLAYER*\n\n"
-        f"🏏 *Player:* {owned['name']}\n"
-        f"💰 *Bought:* {bought_price:,}\n"
-        f"💵 *You'll Get:* {sell_price:,} (90%)\n"
-        f"📊 *Fee:* {fee:,}\n\n"
-        f"⚠️ Player will be destroyed permanently!",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-# ============ SELL CALLBACK ============
-async def sell_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    try:
-        await query.answer()
-    except:
-        pass
-
-    user_id = update.effective_user.id
-    data = query.data
-
-    if data.startswith("sell_cancel_"):
-        await query.edit_message_text(
-            "❌ *Sell cancelled.*",
-            parse_mode="Markdown"
-        )
-        return
-
-    if data.startswith("sell_confirm_"):
-        player_id = int(data.split("_")[2])
-
-        db = await get_db()
-
-        # Re-check ownership
-        owned = await db.fetchrow(
-            """
-            SELECT up.player_id, up.purchased_price, p.name, p.current_bid
-            FROM user_players up
-            JOIN auction_players p ON up.player_id = p.id
-            WHERE up.user_id = $1 AND up.player_id = $2
-            """,
-            user_id, player_id
-        )
-
-        if not owned:
-            await query.edit_message_text("*❌ Player not found!*", parse_mode="Markdown")
-            await close_db(db)
-            return
-
-        bought_price = owned['purchased_price'] or owned['current_bid']
-        sell_price = int(bought_price * 0.90)
-        fee = bought_price - sell_price
-
-        # Add balance
-        await db.execute(
-            "UPDATE users SET balance = balance + $1 WHERE user_id = $2",
-            sell_price, user_id
-        )
-
-        # Delete from user_players
-        await db.execute(
-            "DELETE FROM user_players WHERE user_id = $1 AND player_id = $2",
-            user_id, player_id
-        )
-
-        # Delete player (destroy)
-        await db.execute("DELETE FROM auction_players WHERE id = $1", player_id)
-        await db.execute("DELETE FROM bid_history WHERE player_id = $1", player_id)
-
-        # Save history
-        await db.execute(
-            """
-            INSERT INTO sell_history (user_id, player_id, player_name, bought_price, sold_price, fee, sold_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            """,
-            user_id, player_id, owned['name'], bought_price, sell_price, fee,
-            datetime.now(IST).replace(tzinfo=None)
-        )
-
-        new_balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-        await close_db(db)
-
-        # User message
-        await query.edit_message_text(
-            f"✅ *PLAYER SOLD!*\n\n"
-            f"🏏 *Player:* {owned['name']}\n"
-            f"💰 *You Received:* {sell_price:,}\n"
-            f"📊 *Fee:* {fee:,}\n"
-            f"💳 *New Balance:* {new_balance:,}",
-            parse_mode="Markdown"
-        )
-
-        # 🔥 Admin notification (silent)
-        user = update.effective_user
-        seller_name = user.first_name if user.first_name else (user.username or "User")
-        seller_username = f"@{user.username}" if user.username else "No username"
-
-        now_ist = datetime.now(IST).strftime("%d %b %Y, %I:%M %p IST")
-
-        for admin_id in ADMIN_IDS:
-            try:
-                await context.bot.send_message(
-                    admin_id,
-                    f"💰 *PLAYER SOLD!*\n\n"
-                    f"🏏 *Player:* {owned['name']} (ID: {player_id})\n"
-                    f"👤 *Seller:* {seller_name} ({seller_username})\n"
-                    f"🆔 *ID:* `{user_id}`\n"
-                    f"💰 *Sold For:* {sell_price:,}\n"
-                    f"📊 *Fee:* {fee:,}\n"
-                    f"💵 *New Balance:* {new_balance:,}\n"
-                    f"📅 {now_ist}",
-                    parse_mode="Markdown"
-                )
-            except:
-                pass
-
-        return
-
-# ============ GIFT PLAYER ============
-async def gift(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    chat_id = update.message.chat.id
-    chat_type = update.message.chat.type
-
-    CL_PLAYZONE_GC_ID = -1003011263365
-
-    # 🔥 ONLY IN GC
-    if chat_type not in ['group', 'supergroup'] or chat_id != CL_PLAYZONE_GC_ID:
-        await update.message.reply_text(
-            "*🚫 GIFT ONLY IN CL PLAYZONE!*\n\n"
-            "*Join here:*",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("👥 JOIN CL PLAYZONE", url="https://t.me/clbotplayzone")]
-            ])
-        )
-        return
-
-    if not await is_registered(user_id):
-        await update.message.reply_text("*❌ Send /start first!*", parse_mode="Markdown")
-        return
-
-    # 🔥 MUST REPLY
-    if not update.message.reply_to_message:
-        await update.message.reply_text(
-            "*❌ Reply to the user you want to gift!*\n\n"
-            "*Example:*\n"
-            "1. Reply to @friend's message\n"
-            "2. Send: `/gift 1`",
-            parse_mode="Markdown"
-        )
-        return
-
-    receiver = update.message.reply_to_message.from_user
-
-    if receiver.id == user_id:
-        await update.message.reply_text("*❌ Cannot gift to yourself!*", parse_mode="Markdown")
-        return
-
-    if receiver.is_bot:
-        await update.message.reply_text("*❌ Cannot gift to a bot!*", parse_mode="Markdown")
-        return
-
-    # Check receiver registered
-    if not await is_registered(receiver.id):
-        await update.message.reply_text(
-            f"*⚠️ {receiver.first_name} hasn't started the bot!*\n\n"
-            f"*💡 Ask them to /start first.*",
-            parse_mode="Markdown"
-        )
-        return
-
-    args = context.args
-    if len(args) < 1:
-        await update.message.reply_text(
-            "*❌ Usage:* `/gift <player_id>` (reply to user)",
-            parse_mode="Markdown"
-        )
-        return
-
-    try:
-        player_id = int(args[0])
-    except:
-        await update.message.reply_text("*❌ Invalid player ID!*", parse_mode="Markdown")
-        return
-
-    db = await get_db()
-
-    # Check ownership
-    owned = await db.fetchrow(
-        """
-        SELECT up.player_id, up.purchased_price, p.name, p.current_bid
-        FROM user_players up
-        JOIN auction_players p ON up.player_id = p.id
-        WHERE up.user_id = $1 AND up.player_id = $2
-        """,
-        user_id, player_id
-    )
-
-    if not owned:
-        await update.message.reply_text(
-            "*❌ Player not found in your team!*",
-            parse_mode="Markdown"
-        )
-        await close_db(db)
-        return
-
-    # Check fav
-    fav_id = await db.fetchval("SELECT fav_player FROM users WHERE user_id = $1", user_id)
-
-    if fav_id == player_id:
-        await update.message.reply_text(
-            "*⚠️ Cannot gift fav player!*\n\n"
-            "*💡 Use /unfav first, then gift.*",
-            parse_mode="Markdown"
-        )
-        await close_db(db)
-        return
-
-    bought_price = owned['purchased_price'] or owned['current_bid']
-
-    await close_db(db)
-
-    # Confirmation
-    keyboard = [
-        [InlineKeyboardButton("✅ GIFT", callback_data=f"gift_confirm_{player_id}_{receiver.id}"),
-         InlineKeyboardButton("❌ CANCEL", callback_data=f"gift_cancel_{player_id}")]
-    ]
-
-    await update.message.reply_text(
-        f"🎁 *GIFT PLAYER*\n\n"
-        f"🏏 *Player:* {owned['name']}\n"
-        f"💰 *Value:* {bought_price:,}\n"
-        f"📊 *Fee:* FREE\n"
-        f"👤 *To:* {receiver.first_name}\n\n"
-        f"⚠️ Player will be transferred permanently!\n\n"
-        f"*Confirm?*",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-# ============ GIFT CALLBACK ============
-async def gift_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    try:
-        await query.answer()
-    except:
-        pass
-
-    user_id = update.effective_user.id
-    data = query.data
-
-    if data.startswith("gift_cancel_"):
-        await query.edit_message_text("❌ *Gift cancelled.*", parse_mode="Markdown")
-        return
-
-    if data.startswith("gift_confirm_"):
-        parts = data.split("_")
-        player_id = int(parts[2])
-        receiver_id = int(parts[3])
-
-        db = await get_db()
-
-        # Re-check ownership
-        owned = await db.fetchrow(
-            """
-            SELECT up.player_id, up.purchased_price, p.name, p.current_bid
-            FROM user_players up
-            JOIN auction_players p ON up.player_id = p.id
-            WHERE up.user_id = $1 AND up.player_id = $2
-            """,
-            user_id, player_id
-        )
-
-        if not owned:
-            await query.edit_message_text("*❌ Player not found!*", parse_mode="Markdown")
-            await close_db(db)
-            return
-
-        # Transfer ownership
-        await db.execute(
-            "UPDATE user_players SET user_id = $1 WHERE user_id = $2 AND player_id = $3",
-            receiver_id, user_id, player_id
-        )
-
-        # Save history
-        await db.execute(
-            """
-            INSERT INTO gift_history (from_user, to_user, player_id, player_name, gifted_at)
-            VALUES ($1, $2, $3, $4, $5)
-            """,
-            user_id, receiver_id, player_id, owned['name'],
-            datetime.now(IST).replace(tzinfo=None)
-        )
-
-        # Get receiver name
-        receiver_name = await db.fetchval("SELECT name FROM users WHERE user_id = $1", receiver_id)
-        await close_db(db)
-
-        # Sender message
-        await query.edit_message_text(
-            f"✅ *PLAYER GIFTED!*\n\n"
-            f"🏏 *Player:* {owned['name']}\n"
-            f"👤 *To:* {receiver_name}\n"
-            f"📊 *Fee:* FREE",
-            parse_mode="Markdown"
-        )
-
-        # Receiver DM
-        try:
-            await context.bot.send_message(
-                receiver_id,
-                f"🎁 *YOU RECEIVED A GIFT!*\n\n"
-                f"🏏 *Player:* {owned['name']}\n"
-                f"👤 *From:* {update.effective_user.first_name}\n\n"
-                f"💡 Check /myteam",
-                parse_mode="Markdown"
-            )
-        except:
-            pass
-
-        # 🔥 Admin notification
-        sender = update.effective_user
-        sender_name = sender.first_name if sender.first_name else (sender.username or "User")
-        sender_username = f"@{sender.username}" if sender.username else "No username"
-
-        now_ist = datetime.now(IST).strftime("%d %b %Y, %I:%M %p IST")
-
-        for admin_id in ADMIN_IDS:
-            try:
-                await context.bot.send_message(
-                    admin_id,
-                    f"🎁 *PLAYER GIFTED!*\n\n"
-                    f"🏏 *Player:* {owned['name']} (ID: {player_id})\n"
-                    f"👤 *From:* {sender_name} ({sender_username}) — `{user_id}`\n"
-                    f"👤 *To:* {receiver_name} — `{receiver_id}`\n"
-                    f"📊 *Fee:* FREE\n"
-                    f"📅 {now_ist}",
-                    parse_mode="Markdown"
-                )
-            except:
-                pass
-
-        return
-
-# ============ EARN COMMAND ============
-async def earn(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not await is_registered(user_id):
-        await update.message.reply_text('*❌ Send /start first!*', parse_mode="Markdown")
-        return
-
-    db = await get_db()
-    balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-    await close_db(db)
-
-    balance = balance or 0
-
-    msg = (
-        "💰 *EARN CREDITS*\n"
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
-
-        "🏰 *TOWER CLIMB*\n"
-        "Climb 6 floors · Win 5x\n"
-        "`/tower 500`\n\n"
-
-        "🃏 *HILO*\n"
-        "Card game · Cashout anytime\n"
-        "`/hilo 1000`\n\n"
-
-        "💣 *MINES*\n"
-        "Reveal safe tiles · Cashout anytime\n"
-        "`/mines 1000 3`\n\n"
-
-        "🎲 *DICE*\n"
-        "Roll 1-6 · Win up to 2.5x\n"
-        "`/dice 1000`\n\n"
-
-        "🪙 *FLIP*\n"
-        "Heads or Tails · 2x win\n"
-        "`/flip heads 1000`\n\n"
-
-        "⭕ *TIC TAC TOE*\n"
-        "1v1 · Winner takes all\n"
-        "`/ttt 5000`\n\n"
-
-        "✊ *ROCK PAPER SCISSORS*\n"
-        "1v1 · 2x win\n"
-        "`/rps 5000`\n\n"
-
-        "🏏 *CRICKET GAME*\n"
-        "1v1 · Strategy + luck\n"
-        "`/CLcricket 1000`\n\n"
-
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
-
-        "🎁 *FREE DAILY:*\n"
-        "`/claim` · `/spin` · `/login`\n\n"
-
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
-
-        f"📊 *Balance:* {balance:,} 🪙"
-    )
-
-    keyboard = [
-        [InlineKeyboardButton("🏰 Tower", callback_data="earn_tower"),
-         InlineKeyboardButton("🃏 HiLo", callback_data="earn_hilo")],
-        [InlineKeyboardButton("💣 Mines", callback_data="earn_mines"),
-         InlineKeyboardButton("🎲 Dice", callback_data="earn_dice")],
-        [InlineKeyboardButton("🪙 Flip", callback_data="earn_flip"),
-         InlineKeyboardButton("⭕ TTT", callback_data="earn_ttt")],
-        [InlineKeyboardButton("✊ RPS", callback_data="earn_rps"),
-         InlineKeyboardButton("🏏 Cricket", callback_data="earn_cricket")],
-        [InlineKeyboardButton("🎁 Daily Rewards", callback_data="earn_daily")],
-        [InlineKeyboardButton("💳 Check Balance", callback_data="earn_balance")],
-    ]
-
-    await update.message.reply_text(
-        msg,
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-# ============ EARN CALLBACK ============
-async def earn_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    try:
-        await query.answer()
-    except:
-        pass
-
-    user_id = update.effective_user.id
-    data = query.data
-
-    # 🔥 OPEN EARN MENU
-    if data == "earn_open":
-        db = await get_db()
-        balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-        await close_db(db)
-        balance = balance or 0
-
-        msg = (
-            "💰 *EARN CREDITS*\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-
-            "🏰 *TOWER CLIMB*\n"
-            "Climb 6 floors · Win 5x\n"
-            "`/tower 500`\n\n"
-
-            "🃏 *HILO*\n"
-            "Card game · Cashout anytime\n"
-            "`/hilo 1000`\n\n"
-
-            "💣 *MINES*\n"
-            "Reveal safe tiles · Cashout anytime\n"
-            "`/mines 1000 3`\n\n"
-
-            "🎲 *DICE*\n"
-            "Roll 1-6 · Win up to 2.5x\n"
-            "`/dice 1000`\n\n"
-
-            "🪙 *FLIP*\n"
-            "Heads or Tails · 2x win\n"
-            "`/flip heads 1000`\n\n"
-
-            "⭕ *TIC TAC TOE*\n"
-            "1v1 · Winner takes all\n"
-            "`/ttt 5000`\n\n"
-
-            "✊ *ROCK PAPER SCISSORS*\n"
-            "1v1 · 2x win\n"
-            "`/rps 5000`\n\n"
-
-            "🏏 *CRICKET GAME*\n"
-            "1v1 · Strategy + luck\n"
-            "`/CLcricket 1000`\n\n"
-
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-
-            "🎁 *FREE DAILY:*\n"
-            "`/claim` · `/spin` · `/login`\n\n"
-
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-
-            f"📊 *Balance:* {balance:,} 🪙"
-        )
-
-        keyboard = [
-            [InlineKeyboardButton("🏰 Tower", callback_data="earn_tower"),
-             InlineKeyboardButton("🃏 HiLo", callback_data="earn_hilo")],
-            [InlineKeyboardButton("💣 Mines", callback_data="earn_mines"),
-             InlineKeyboardButton("🎲 Dice", callback_data="earn_dice")],
-            [InlineKeyboardButton("🪙 Flip", callback_data="earn_flip"),
-             InlineKeyboardButton("⭕ TTT", callback_data="earn_ttt")],
-            [InlineKeyboardButton("✊ RPS", callback_data="earn_rps"),
-             InlineKeyboardButton("🏏 Cricket", callback_data="earn_cricket")],
-            [InlineKeyboardButton("🎁 Daily Rewards", callback_data="earn_daily")],
-            [InlineKeyboardButton("💳 Check Balance", callback_data="earn_balance")],
-        ]
-
-        await query.edit_message_text(
-            msg,
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
-
-    # 🏰 TOWER
-    if data == "earn_tower":
-        keyboard = [
-            [InlineKeyboardButton("◀️ Back to Menu", callback_data="earn_open")]
-        ]
-        await query.edit_message_text(
-            "🏰 *TOWER CLIMB*\n\n"
-            "Climb 6 floors — Win 5x!\n"
-            "💀 One wrong door = lose all\n"
-            "💰 Cashout anytime\n\n"
-            "🎮 *How to play:*\n"
-            "`/tower <amount>`\n\n"
-            "💰 Min: 100 | Max: 7,000\n\n"
-            "💡 Example: `/tower 500`",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
-
-    # 🃏 HILO
-    if data == "earn_hilo":
-        keyboard = [
-            [InlineKeyboardButton("◀️ Back to Menu", callback_data="earn_open")]
-        ]
-        await query.edit_message_text(
-            "🃏 *HILO CARD GAME*\n\n"
-            "Guess higher or lower card!\n"
-            "💰 Cashout anytime\n"
-            "📈 Multiplier increases with each win\n\n"
-            "🎮 *How to play:*\n"
-            "`/hilo <amount>`\n\n"
-            "💰 Min: 100 | Max: 10,000\n\n"
-            "💡 Example: `/hilo 1000`",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
-
-    # 💣 MINES
-    if data == "earn_mines":
-        keyboard = [
-            [InlineKeyboardButton("◀️ Back to Menu", callback_data="earn_open")]
-        ]
-        await query.edit_message_text(
-            "💣 *MINES GAME*\n\n"
-            "Reveal safe tiles, avoid bombs!\n"
-            "💰 Cashout anytime\n"
-            "📈 Multiplier grows with each safe tile\n\n"
-            "🎮 *How to play:*\n"
-            "`/mines <amount> <bombs>`\n\n"
-            "💰 Min: 100 | Max: 10,000\n"
-            "💣 Bombs: 1-24\n\n"
-            "💡 Example: `/mines 1000 3`",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
-
-    # 🎲 DICE
-    if data == "earn_dice":
-        keyboard = [
-            [InlineKeyboardButton("◀️ Back to Menu", callback_data="earn_open")]
-        ]
-        await query.edit_message_text(
-            "🎲 *DICE GAME*\n\n"
-            "Roll 1-6 — Win up to 2.5x!\n\n"
-            "📊 *Multipliers:*\n"
-            "1 → 0x\n"
-            "2 → 0.25x\n"
-            "3 → 0.5x\n"
-            "4 → 1.25x\n"
-            "5 → 1.5x\n"
-            "6 → 2.5x\n\n"
-            "🎮 *How to play:*\n"
-            "`/dice <amount>`\n\n"
-            "💰 Min: 100 | Max: 20,000\n\n"
-            "💡 Example: `/dice 1000`",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
-
-    # 🪙 FLIP
-    if data == "earn_flip":
-        keyboard = [
-            [InlineKeyboardButton("◀️ Back to Menu", callback_data="earn_open")]
-        ]
-        await query.edit_message_text(
-            "🪙 *COIN FLIP*\n\n"
-            "Heads or Tails — 2x win!\n\n"
-            "🎮 *How to play:*\n"
-            "`/flip <heads/tails> <amount>`\n\n"
-            "💰 Min: 100 | Max: 20,000\n\n"
-            "💡 Example: `/flip heads 1000`",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
-
-    # ⭕ TTT
-    if data == "earn_ttt":
-        keyboard = [
-            [InlineKeyboardButton("◀️ Back to Menu", callback_data="earn_open")]
-        ]
-        await query.edit_message_text(
-            "⭕ *TIC TAC TOE*\n\n"
-            "1v1 — Winner takes all!\n"
-            "🎯 3 in a row to win\n\n"
-            "🎮 *How to play:*\n"
-            "`/ttt <amount>`\n\n"
-            "💰 Min: 100 | Any amount\n\n"
-            "💡 Example: `/ttt 5000`",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
-
-    # ✊ RPS
-    if data == "earn_rps":
-        keyboard = [
-            [InlineKeyboardButton("◀️ Back to Menu", callback_data="earn_open")]
-        ]
-        await query.edit_message_text(
-            "✊ *ROCK PAPER SCISSORS*\n\n"
-            "1v1 — 2x win!\n\n"
-            "🎮 *How to play:*\n"
-            "`/rps <amount>`\n\n"
-            "💰 Min: 100 | Any amount\n\n"
-            "💡 Example: `/rps 5000`",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
-
-    # 🏏 CRICKET
-    if data == "earn_cricket":
-        keyboard = [
-            [InlineKeyboardButton("◀️ Back to Menu", callback_data="earn_open")]
-        ]
-        await query.edit_message_text(
-            "🏏 *CRICKET GAME*\n\n"
-            "1v1 — Strategy + Luck!\n"
-            "🎯 Choose modes, bat, bowl\n"
-            "🏆 Winner takes all\n\n"
-            "🎮 *How to play:*\n"
-            "`/CLcricket <amount>`\n\n"
-            "💰 Min: 100 | Any amount\n\n"
-            "💡 Example: `/CLcricket 1000`",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
-
-    # 🎁 DAILY
-    if data == "earn_daily":
-        keyboard = [
-            [InlineKeyboardButton("◀️ Back to Menu", callback_data="earn_open")]
-        ]
-        await query.edit_message_text(
-            "🎁 *FREE DAILY REWARDS*\n\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-
-            "🎯 */claim*\n"
-            "Daily reward — 500 credits\n"
-            "1000 credits in CL Zone GC!\n\n"
-
-            "🎡 */spin*\n"
-            "Daily spin wheel — 1k-10k\n\n"
-
-            "🎯 */login*\n"
-            "Top 10 only — avoid penalty\n\n"
-
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-            "💡 Use these every day!",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
-
-    # 💳 BALANCE
-    if data == "earn_balance":
-        db = await get_db()
-        balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-        await close_db(db)
-        balance = balance or 0
-
-        keyboard = [
-            [InlineKeyboardButton("◀️ Back to Menu", callback_data="earn_open")]
-        ]
-
-        await query.edit_message_text(
-            f"💰 *YOUR BALANCE*\n\n"
-            f"🪙 *{balance:,}* credits\n\n"
-            f"💡 Play games to win more!",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
-
-# ============ ROB COMMAND ============
-# ============ ROB COMMAND ============
-async def rob(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    chat_id = update.message.chat.id
-    chat_type = update.message.chat.type
-
-    # 🔥 ANY GROUP ALLOWED (but not private)
-    if chat_type not in ['group', 'supergroup']:
-        await update.message.reply_text(
-            "*❌ Rob only works in groups!*",
-            parse_mode="Markdown"
-        )
-        return
-
-    if not await is_registered(user_id):
-        await update.message.reply_text("*❌ Send /start first!*", parse_mode="Markdown")
-        return
-
-    # 🔥 MUST REPLY
-    if not update.message.reply_to_message:
-        await update.message.reply_text(
-            "*❌ Reply to the user you want to rob!*\n\n"
-            "*Example:*\n"
-            "1. Reply to @friend's message\n"
-            "2. Send: `/rob`",
-            parse_mode="Markdown"
-        )
-        return
-
-    target = update.message.reply_to_message.from_user
-
-    if target.id == user_id:
-        await update.message.reply_text("*❌ Cannot rob yourself!*", parse_mode="Markdown")
-        return
-
-    if target.is_bot:
-        await update.message.reply_text("*❌ Cannot rob a bot!*", parse_mode="Markdown")
-        return
-
-    if not await is_registered(target.id):
-        await update.message.reply_text(
-            f"*❌ {target.first_name} hasn't started the bot!*",
-            parse_mode="Markdown"
-        )
-        return
-
-    db = await get_db()
-
-    # ============ CHECK TARGET PROTECTION ============
-    protection = await db.fetchval(
-        "SELECT protection_until FROM users WHERE user_id = $1",
-        target.id
-    )
-
-    now_ist = datetime.now(IST).replace(tzinfo=None)
-
-    if protection:
-        if isinstance(protection, str):
-            protection = datetime.fromisoformat(protection)
-        if protection.tzinfo is not None:
-            protection = protection.replace(tzinfo=None)
-
-        if now_ist < protection:
-            remaining = int((protection - now_ist).total_seconds())
-            hours = remaining // 3600
-            minutes = (remaining % 3600) // 60
-
-            await update.message.reply_text(
-                f"🛡️ *TARGET PROTECTED!*\n\n"
-                f"👤 *Target:* {target.first_name}\n"
-                f"🛡️ *Protection:* Active ({hours}h {minutes}m left)\n\n"
-                f"❌ *Cannot rob them!*",
-                parse_mode="Markdown"
-            )
-            await close_db(db)
-            return
-
-    # ============ CHECK TARGET COOLDOWN (3h) ============
-    last_robbed = await db.fetchval(
-        "SELECT last_robbed_time FROM users WHERE user_id = $1",
-        target.id
-    )
-
-    if last_robbed:
-        if isinstance(last_robbed, str):
-            last_robbed = datetime.fromisoformat(last_robbed)
-        if last_robbed.tzinfo is not None:
-            last_robbed = last_robbed.replace(tzinfo=None)
-
-        diff = (now_ist - last_robbed).total_seconds()
-
-        if diff < 10800:  # 3 hours
-            remaining = int(10800 - diff)
-            hours = remaining // 3600
-            minutes = (remaining % 3600) // 60
-
-            await update.message.reply_text(
-                f"⏰ *TARGET ON COOLDOWN!*\n\n"
-                f"👤 *Target:* {target.first_name}\n"
-                f"🕐 *Last robbed:* {int(diff // 3600)}h {int((diff % 3600) // 60)}m ago\n"
-                f"⏰ *Wait:* {hours}h {minutes}m\n\n"
-                f"❌ *Cannot rob them!*",
-                parse_mode="Markdown"
-            )
-            await close_db(db)
-            return
-
-    # ============ CHECK ROBBER COOLDOWN (1h) ============
-    last_attempt = await db.fetchval(
-        "SELECT last_rob_attempt FROM users WHERE user_id = $1",
-        user_id
-    )
-
-    if last_attempt:
-        if isinstance(last_attempt, str):
-            last_attempt = datetime.fromisoformat(last_attempt)
-        if last_attempt.tzinfo is not None:
-            last_attempt = last_attempt.replace(tzinfo=None)
-
-        diff = (now_ist - last_attempt).total_seconds()
-
-        if diff < 3600:  # 1 hour
-            remaining = int(3600 - diff)
-            minutes = remaining // 60
-
-            await update.message.reply_text(
-                f"⏰ *YOU'RE ON COOLDOWN!*\n\n"
-                f"🕐 *Last rob:* {int(diff // 60)}m ago\n"
-                f"⏰ *Wait:* {minutes}m\n\n"
-                f"💡 Come back later!",
-                parse_mode="Markdown"
-            )
-            await close_db(db)
-            return
-
-    # ============ CHECK DAILY LIMIT (3 robs) ============
-    today = now_ist.date()
-    last_reset = await db.fetchval(
-        "SELECT last_rob_reset FROM users WHERE user_id = $1",
-        user_id
-    )
-
-    rob_count = await db.fetchval(
-        "SELECT rob_count_today FROM users WHERE user_id = $1",
-        user_id
-    ) or 0
-
-    if last_reset != today:
-        await db.execute(
-            "UPDATE users SET rob_count_today = 0, last_rob_reset = $1 WHERE user_id = $2",
-            today, user_id
-        )
-        rob_count = 0
-
-    if rob_count >= 3:
-        await update.message.reply_text(
-            f"⚠️ *DAILY LIMIT REACHED!*\n\n"
-            f"🎯 *Robs Used:* 3/3\n"
-            f"🕐 *Reset:* 12 AM\n\n"
-            f"💡 Come back tomorrow!",
-            parse_mode="Markdown"
-        )
-        await close_db(db)
-        return
-
-    # ============ CHECK TARGET BALANCE (WALLET + BANK) ============
-    target_wallet = await db.fetchval(
-        "SELECT balance FROM users WHERE user_id = $1",
-        target.id
-    ) or 0
-
-    target_bank = await db.fetchval(
-        "SELECT balance FROM bank WHERE user_id = $1",
-        target.id
-    ) or 0
-
-    target_total = target_wallet + target_bank
-
-    if target_total < 1000:
-        await update.message.reply_text(
-            f"❌ *{target.first_name} has insufficient balance to rob!*\n\n"
-            f"💡 They need at least 1,000 credits (wallet + bank).",
-            parse_mode="Markdown"
-        )
-        await close_db(db)
-        return
-
-    await close_db(db)
-
-    # ============ CONFIRMATION ============
-    keyboard = [
-        [InlineKeyboardButton("✅ ROB", callback_data=f"rob_confirm_{target.id}"),
-         InlineKeyboardButton("❌ CANCEL", callback_data=f"rob_cancel_{target.id}")]
-    ]
-
-    await update.message.reply_text(
-        f"🎯 *ROB {target.first_name}?*\n\n"
-        f"⚠️ *50% Success / 50% Fail*\n"
-        f"💰 *Success:* Random 1k-10k\n"
-        f"💸 *Fail:* 1,000 fine\n\n"
-        f"🎯 *Daily limit:* 3 robs\n"
-        f"🕐 *Robber cooldown:* 1 hour\n"
-        f"🕐 *Target cooldown:* 3 hours",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-
-# ============ ROB CALLBACK ============
-# ============ ROB CALLBACK ============
-async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    try:
-        await query.answer()
-    except:
-        pass
-
-    user_id = update.effective_user.id
-    data = query.data
-
-    if data.startswith("rob_cancel_"):
-        await query.edit_message_text("❌ *Rob cancelled.*", parse_mode="Markdown")
-        return
-
-    if data.startswith("rob_confirm_"):
-        target_id = int(data.split("_")[2])
-
-        db = await get_db()
-
-        # Target name
-        target_name = await db.fetchval(
-            "SELECT name FROM users WHERE user_id = $1",
-            target_id
-        ) or "User"
-
-        # Robber balance
-        user_balance = await db.fetchval(
-            "SELECT balance FROM users WHERE user_id = $1",
-            user_id
-        ) or 0
-
-        # Target wallet + bank
-        target_wallet = await db.fetchval(
-            "SELECT balance FROM users WHERE user_id = $1",
-            target_id
-        ) or 0
-
-        target_bank = await db.fetchval(
-            "SELECT balance FROM bank WHERE user_id = $1",
-            target_id
-        ) or 0
-
-        target_total = target_wallet + target_bank
-
-        now_ist = datetime.now(IST).replace(tzinfo=None)
-
-        # 🔥 RANDOM 50/50
-        import random
-        success = random.choice([True, False])
-
-        # 🔥 ROBBER NAME
-        robber_user = update.effective_user
-        robber_display = robber_user.first_name if robber_user.first_name else (robber_user.username or "User")
-        robber_display_escaped = escape_markdown(robber_display)
-
-        if success:
-            amount = random.randint(1000, 10000)
-
-            # Cap to target total
-            if amount > target_total:
-                amount = target_total
-
-            # 🔥 Deduct from wallet first, then bank
-            remaining = amount
-
-            if target_wallet >= remaining:
-                # Wallet has enough
-                await db.execute(
-                    "UPDATE users SET balance = balance - $1 WHERE user_id = $2",
-                    remaining, target_id
-                )
-            else:
-                # Wallet empty, take from bank
-                wallet_taken = target_wallet
-                bank_taken = remaining - wallet_taken
-
-                await db.execute(
-                    "UPDATE users SET balance = 0 WHERE user_id = $1",
-                    target_id
-                )
-
-                # Ensure bank row exists
-                await db.execute(
-                    "INSERT INTO bank (user_id, balance) VALUES ($1, 0) ON CONFLICT (user_id) DO NOTHING",
-                    target_id
-                )
-
-                await db.execute(
-                    "UPDATE bank SET balance = balance - $1 WHERE user_id = $2",
-                    bank_taken, target_id
-                )
-
-            # 🔥 Add to robber
-            await db.execute(
-                "UPDATE users SET balance = balance + $1 WHERE user_id = $2",
-                amount, user_id
-            )
-
-            new_user_bal = user_balance + amount
-
-            # Save history
-            await db.execute(
-                """
-                INSERT INTO rob_history (robber_id, target_id, amount, success, robbed_at)
-                VALUES ($1, $2, $3, $4, $5)
-                """,
-                user_id, target_id, amount, True, now_ist
-            )
-
-            # Update target cooldown
-            await db.execute(
-                "UPDATE users SET last_robbed_time = $1 WHERE user_id = $2",
-                now_ist, target_id
-            )
-
-            # Update robber stats
-            await db.execute(
-                """
-                UPDATE users 
-                SET last_rob_attempt = $1,
-                    rob_count_today = rob_count_today + 1,
-                    last_rob_reset = $2
-                WHERE user_id = $3
-                """,
-                now_ist, now_ist.date(), user_id
-            )
-
-            new_count = await db.fetchval(
-                "SELECT rob_count_today FROM users WHERE user_id = $1",
-                user_id
-            )
-
-            await close_db(db)
-
-            await query.edit_message_text(
-                f"🎉 *ROB SUCCESSFUL!*\n\n"
-                f"👤 *Target:* {target_name}\n"
-                f"💰 *Stolen:* {amount:,}\n"
-                f"📊 *Your Balance:* {new_user_bal:,}\n\n"
-                f"🎯 *Robs Left:* {3 - new_count}/3\n"
-                f"🕐 *Robber cooldown:* 1 hour\n"
-                f"🕐 *Target cooldown:* 3 hours",
-                parse_mode="Markdown"
-            )
-
-            # 🔥 Target ko DM with robber name
-            try:
-                await context.bot.send_message(
-                    target_id,
-                    f"🚨 *YOU WERE ROBBED!*\n\n"
-                    f"👤 *Robber:* {robber_display_escaped}\n"
-                    f"💰 *Lost:* {amount:,}\n\n"
-                    f"💡 Buy /protection next time!",
-                    parse_mode="Markdown"
-                )
-            except:
-                pass
-
-        else:
-            fine = 1000
-
-            if user_balance < fine:
-                fine = user_balance
-
-            await db.execute(
-                "UPDATE users SET balance = balance - $1 WHERE user_id = $2",
-                fine, user_id
-            )
-
-            new_user_bal = user_balance - fine
-
-            await db.execute(
-                """
-                INSERT INTO rob_history (robber_id, target_id, amount, success, robbed_at)
-                VALUES ($1, $2, $3, $4, $5)
-                """,
-                user_id, target_id, fine, False, now_ist
-            )
-
-            await db.execute(
-                """
-                UPDATE users 
-                SET last_rob_attempt = $1,
-                    rob_count_today = rob_count_today + 1,
-                    last_rob_reset = $2
-                WHERE user_id = $3
-                """,
-                now_ist, now_ist.date(), user_id
-            )
-
-            new_count = await db.fetchval(
-                "SELECT rob_count_today FROM users WHERE user_id = $1",
-                user_id
-            )
-
-            await close_db(db)
-
-            await query.edit_message_text(
-                f"❌ *ROB FAILED!*\n\n"
-                f"👤 *Target:* {target_name}\n"
-                f"💸 *Fine:* {fine:,}\n"
-                f"📊 *Your Balance:* {new_user_bal:,}\n\n"
-                f"🎯 *Robs Left:* {3 - new_count}/3\n"
-                f"🕐 *Robber cooldown:* 1 hour",
-                parse_mode="Markdown"
-            )
-
-        return
-
-
-# ============ PROTECTION COMMAND ============
-async def protection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    chat_id = update.message.chat.id
-    chat_type = update.message.chat.type
-
-    # 🔥 ANY GROUP ALLOWED
-    if chat_type not in ['group', 'supergroup']:
-        await update.message.reply_text(
-            "*❌ Protection only works in groups!*",
-            parse_mode="Markdown"
-        )
-        return
-
-    if not await is_registered(user_id):
-        await update.message.reply_text("*❌ Send /start first!*", parse_mode="Markdown")
-        return
-
-    db = await get_db()
-
-    existing = await db.fetchval(
-        "SELECT protection_until FROM users WHERE user_id = $1",
-        user_id
-    )
-
-    now_ist = datetime.now(IST).replace(tzinfo=None)
-
-    if existing:
-        if isinstance(existing, str):
-            existing = datetime.fromisoformat(existing)
-        if existing.tzinfo is not None:
-            existing = existing.replace(tzinfo=None)
-
-        if now_ist < existing:
-            remaining = int((existing - now_ist).total_seconds())
-            hours = remaining // 3600
-            minutes = (remaining % 3600) // 60
-
-            await update.message.reply_text(
-                f"🛡️ *PROTECTION ACTIVE!*\n\n"
-                f"⏰ *Remaining:* {hours}h {minutes}m\n"
-                f"📅 *Expires:* {existing.strftime('%d %b %Y, %I:%M %p')} IST\n\n"
-                f"💡 You're already protected!",
-                parse_mode="Markdown"
-            )
-            await close_db(db)
-            return
-
-    balance = await db.fetchval(
-        "SELECT balance FROM users WHERE user_id = $1",
-        user_id
-    ) or 0
-
-    await close_db(db)
-
-    if balance < 5000:
-        await update.message.reply_text(
-            f"❌ *Insufficient balance!*\n\n"
-            f"🪙 *Need:* 5,000\n"
-            f"💳 *Have:* {balance:,}\n\n"
-            f"💡 Earn credits first!",
-            parse_mode="Markdown"
-        )
-        return
-
-    keyboard = [
-        [InlineKeyboardButton("✅ PAY 5,000", callback_data="protect_confirm"),
-         InlineKeyboardButton("❌ CANCEL", callback_data="protect_cancel")]
-    ]
-
-    await update.message.reply_text(
-        f"🛡️ *BUY PROTECTION*\n\n"
-        f"💰 *Price:* 5,000\n"
-        f"⏰ *Duration:* 24 hours\n"
-        f"🛡️ *Protects from rob attempts*\n\n"
-        f"⚠️ *Cannot be robbed for 24h!*",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-# ============ PROTECTION CALLBACK ============
-async def protection_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    try:
-        await query.answer()
-    except:
-        pass
-
-    user_id = update.effective_user.id
-    data = query.data
-
-    if data == "protect_cancel":
-        await query.edit_message_text("❌ *Cancelled.*", parse_mode="Markdown")
-        return
-
-    if data == "protect_confirm":
-        db = await get_db()
-
-        balance = await db.fetchval(
-            "SELECT balance FROM users WHERE user_id = $1",
-            user_id
-        ) or 0
-
-        if balance < 5000:
-            await query.edit_message_text(
-                f"❌ *Insufficient balance!*\n\n"
-                f"💳 *Have:* {balance:,}",
-                parse_mode="Markdown"
-            )
-            await close_db(db)
-            return
-
-        now_ist = datetime.now(IST).replace(tzinfo=None)
-        protection_until = now_ist + timedelta(hours=24)
-
-        await db.execute(
-            "UPDATE users SET balance = balance - 5000 WHERE user_id = $1",
-            user_id
-        )
-
-        await db.execute(
-            "UPDATE users SET protection_until = $1 WHERE user_id = $2",
-            protection_until, user_id
-        )
-
-        new_bal = balance - 5000
-
-        await close_db(db)
-
-        await query.edit_message_text(
-            f"✅ *PROTECTION ACTIVATED!*\n\n"
-            f"🛡️ *Protection:* 24 hours\n"
-            f"📅 *Expires:* {protection_until.strftime('%d %b %Y, %I:%M %p')} IST\n"
-            f"💰 *Paid:* 5,000\n"
-            f"📊 *Balance:* {new_bal:,}\n\n"
-            f"💡 *No one can rob you for 24 hours!*",
-            parse_mode="Markdown"
-        )
-        return
-
-
-# ============ GLOBAL ERROR HANDLER ============
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    err = context.error
-    err_str = str(err)
-
-    if "Message is not modified" in err_str:
-        return
-    if "Query is too old" in err_str:
-        return
-    if "query id is invalid" in err_str:
-        return
-
-    print(f"❌ ERROR: {type(err).__name__}: {err}")
 
 
 
@@ -10042,22 +8546,15 @@ async def main():
 
     app = Application.builder().token(TOKEN).build()
 
-    # 🔥 ADD GLOBAL ERROR HANDLER
-    app.add_error_handler(error_handler)
-
     # 🔥 START AUCTION AUTO-LOCK TASK
     asyncio.create_task(auction_auto_lock(app))
     print("✅ Auction auto-lock task started!")
-   
-   # 🔥 START IQ SCHEDULER (after app starts)
-
 
     # ============ USER COMMANDS ==========
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("refer", refer))
     app.add_handler(CommandHandler("help", help))
     app.add_handler(CommandHandler("profile", profile))
-    app.add_handler(CallbackQueryHandler(font_callback, pattern="^font_"))
     app.add_handler(CommandHandler("setbio", setbio))
     app.add_handler(CommandHandler("rmbio", rmbio))
     app.add_handler(CommandHandler("setpfp", setpfp))
@@ -10099,15 +8596,7 @@ async def main():
     app.add_handler(CallbackQueryHandler(rps_join_callback, pattern="^rps_join_"))
     app.add_handler(CallbackQueryHandler(rps_move_callback, pattern="^rps_move_"))
     app.add_handler(CallbackQueryHandler(rps_none_callback, pattern="^rps_none"))
-    # ============ SELL / GIFT ============
-    app.add_handler(CommandHandler("sell", sell))
-    app.add_handler(CallbackQueryHandler(sell_callback, pattern="^sell_"))
-    app.add_handler(CommandHandler("gift", gift))
-    app.add_handler(CallbackQueryHandler(gift_callback, pattern="^gift_"))
-    app.add_handler(CommandHandler("rob", rob))
-    app.add_handler(CallbackQueryHandler(rob_callback, pattern="^rob_"))
-    app.add_handler(CommandHandler("protection", protection))
-    app.add_handler(CallbackQueryHandler(protection_callback, pattern="^protect_"))
+
     # ============ LOGIN / PENALTY ==========
     app.add_handler(CommandHandler("login", login))
     app.add_handler(CommandHandler("login_log", login_log))
@@ -10129,8 +8618,6 @@ async def main():
     app.add_handler(CommandHandler("reset_lottery", reset_lottery))
     app.add_handler(CommandHandler("lottery_coupon", lottery_coupon))
     app.add_handler(CommandHandler("claim_coupon", claim_coupon))
-    app.add_handler(CommandHandler("earn", earn))
-    app.add_handler(CallbackQueryHandler(earn_callback, pattern="^earn_"))
 
     # ============ NUMPUZ ==========
     app.add_handler(CommandHandler("numpuz", numpuz))
