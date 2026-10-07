@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Cormorant+Garamond:wght@600&display=swap');
+  
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  body {
+    width: 1122px;
+    height: 1402px;
+    font-family: 'Cinzel', serif;
+    background: url('card_template.png') center/cover no-repeat;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .pfp {
+    position: absolute;
+    top: 140px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 300px;
+    height: 300px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 4px solid #FFD700;
+    box-shadow: 0 0 30px rgba(255, 215, 0, 0.6);
+  }
+  
+  .pfp img { width: 100%; height: 100%; object-fit: cover; }
+  
+  .name {
+    position: absolute;
+    top: 555px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 42px;
+    font-weight: 700;
+    color: #FFD700;
+    text-shadow: 2px 2px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 0 0 20px rgba(255, 215, 0, 0.8);
+    letter-spacing: 3px;
+    white-space: nowrap;
+  }
+  
+  .stats {
+    position: absolute;
+    top: 690px;
+    left: 0;
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 0 120px;
+  }
+  
+  .stat-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 130px;
+  }
+  
+  .stat-label {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 20px;
+    font-weight: 600;
+    color: #FFD700;
+    text-shadow: 1px 1px 2px #000;
+    letter-spacing: 1px;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+  }
+  
+  .stat-value {
+    font-family: 'Cinzel', serif;
+    font-size: 40px;
+    font-weight: 700;
+    color: #F5F0E1;
+    text-shadow: 2px 2px 0 #000, 0 0 10px rgba(0, 0, 0, 0.8);
+  }
+  
+  .rank {
+    position: absolute;
+    bottom: 130px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 32px;
+    font-weight: 700;
+    color: #FFD700;
+    text-shadow: 2px 2px 0 #000, 0 0 15px rgba(255, 215, 0, 0.8);
+    letter-spacing: 2px;
+  }
+</style>
+</head>
+<body>
+  <div class="pfp"><img src="pfp.jpg" alt="Profile"></div>
+  <div class="name">{{NAME}}</div>
+  <div class="stats">
+    <div class="stat-box"><div class="stat-label">Runs Scored</div><div class="stat-value">{{RUNS}}</div></div>
+    <div class="stat-box"><div class="stat-label">Wins/Losses</div><div class="stat-value">{{WINS}}/{{LOSSES}}</div></div>
+    <div class="stat-box"><div class="stat-label">Wickets</div><div class="stat-value">{{WICKETS}}</div></div>
+    <div class="stat-box"><div class="stat-label">Players Owned</div><div class="stat-value">{{PLAYERS}}</div></div>
+    <div class="stat-box"><div class="stat-label">Highest Score</div><div class="stat-value">{{HIGHEST}}</div></div>
+    <div class="stat-box"><div class="stat-label">Credits</div><div class="stat-value">{{CREDITS}}</div></div>
+  </div>
+  <div class="rank">🏆 RANK #{{RANK}}</div>
+</body>
+</html>

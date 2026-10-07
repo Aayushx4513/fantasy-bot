@@ -10130,117 +10130,40 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.edit_text(f"❌ *Error:* `{e}`", parse_mode="Markdown")
 
 
-# ============ CARD IMAGE GENERATOR ============
+# ============ CARD IMAGE GENERATOR (HTML+CSS) ============
+from html2image import Html2Image
+import shutil
+
 def generate_card_image(display_name, runs, wickets, highest, wins, losses, players_count, credits, rank, pfp_path=None):
-    """Generate cricket player card image"""
+    """Generate card using HTML+CSS"""
     
-    card = Image.open("data/card_template.png").convert("RGBA")
-    width, height = card.size  # 1122 x 1402
+    with open("data/card_template.html", "r", encoding="utf-8") as f:
+        html = f.read()
     
-    # ============ PFP PASTE ============
+    html = html.replace("{{NAME}}", display_name.upper())
+    html = html.replace("{{RUNS}}", f"{runs:,}")
+    html = html.replace("{{WICKETS}}", str(wickets))
+    html = html.replace("{{HIGHEST}}", str(highest))
+    html = html.replace("{{WINS}}", str(wins))
+    html = html.replace("{{LOSSES}}", str(losses))
+    html = html.replace("{{PLAYERS}}", str(players_count))
+    html = html.replace("{{CREDITS}}", f"{credits:,}")
+    html = html.replace("{{RANK}}", str(rank))
+    
     if pfp_path and os.path.exists(pfp_path):
-        try:
-            pfp = Image.open(pfp_path).convert("RGBA")
-            
-            # Crop to square
-            pfp_size = min(pfp.size)
-            left = (pfp.width - pfp_size) // 2
-            top = (pfp.height - pfp_size) // 2
-            pfp = pfp.crop((left, top, left + pfp_size, top + pfp_size))
-            
-            # Circle coordinates (verified)
-            cx = 561
-            cy = 290
-            radius = 175
-            
-            # Resize to circle diameter
-            pfp = pfp.resize((radius * 2, radius * 2), Image.LANCZOS)
-            
-            # Circular mask
-            mask = Image.new("L", pfp.size, 0)
-            mask_draw = ImageDraw.Draw(mask)
-            mask_draw.ellipse((0, 0, pfp.size[0], pfp.size[1]), fill=255)
-            
-            # Paste at position
-            paste_x = cx - radius
-            paste_y = cy - radius
-            card.paste(pfp, (paste_x, paste_y), mask)
-        except Exception as e:
-            print(f"❌ PFP paste error: {e}")
+        shutil.copy(pfp_path, "data/pfp.jpg")
     
-    # ============ FONTS ============
-    try:
-        # 🔥 Chhota font size — taaki box mein fit ho
-        font_name = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 42)
-        font_label = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 20)
-        font_value = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 38)
-        font_footer = ImageFont.truetype("data/fonts/Montserrat-Bold.ttf", 30)
-    except Exception as e:
-        print(f"❌ Font error: {e}")
-        font_name = ImageFont.load_default()
-        font_label = ImageFont.load_default()
-        font_value = ImageFont.load_default()
-        font_footer = ImageFont.load_default()
+    with open("data/card_temp.html", "w", encoding="utf-8") as f:
+        f.write(html)
     
-    draw = ImageDraw.Draw(card)
+    output_name = f"output_card_{display_name.replace(' ', '_')}.png"
+    output_path = f"data/{output_name}"
     
-    # ============ NAME (FIT IN BOX) ============
-    # Name plate Y = 570 (box ke andar)
-    draw.text(
-        (561, 570),
-        display_name.upper(),
-        font=font_name,
-        fill="#FFD700",
-        anchor="mm",
-        stroke_width=1,
-        stroke_fill="#000000"
+    hti = Html2Image(output_path="data/", size=(1122, 1402))
+    hti.screenshot(
+        html_file="data/card_temp.html",
+        save_as=output_name
     )
-    
-    # ============ STATS ============
-    def draw_stat(x, y, label, value):
-        # Label
-        draw.text(
-            (x, y - 22),
-            label.upper(),
-            font=font_label,
-            fill="#FFD700",
-            anchor="mm"
-        )
-        # Value
-        draw.text(
-            (x, y + 18),
-            str(value),
-            font=font_value,
-            fill="white",
-            anchor="mm"
-        )
-    
-    # Left Column X ~ 330, Right Column X ~ 800
-    # Rows Y ~ 730, 865, 1000
-    
-    draw_stat(330, 730, "Runs Scored", f"{runs:,}")
-    draw_stat(330, 865, "Wickets", f"{wickets}")
-    draw_stat(330, 1000, "Highest Score", f"{highest}")
-    
-    draw_stat(800, 730, "Wins/Losses", f"{wins}/{losses}")
-    draw_stat(800, 865, "Players Owned", f"{players_count}")
-    draw_stat(800, 1000, "Credits", f"{credits:,}")
-    
-    # ============ FOOTER (Rank) ============
-    draw.text(
-        (561, 1255),
-        f"🏆 RANK #{rank}",
-        font=font_footer,
-        fill="#FFD700",
-        anchor="mm",
-        stroke_width=1,
-        stroke_fill="#000000"
-    )
-    
-    # ============ SAVE ============
-    output_path = f"data/output_card_{display_name.replace(' ', '_')}.png"
-    os.makedirs("data", exist_ok=True)
-    card.save(output_path, "PNG", optimize=True)
     
     return output_path
 
