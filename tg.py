@@ -10017,21 +10017,7 @@ async def protection_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
 # ============ MY CARD ============
-# ============ MY CARD (DEBUG) ============
 async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 🔥 DEBUG 1: Admin ko notification
-    for admin_id in ADMIN_IDS:
-        try:
-            await context.bot.send_message(
-                admin_id,
-                f"🔍 *MYCARD CALLED*\n\n"
-                f"👤 User ID: `{update.effective_user.id}`\n"
-                f"📝 Name: {update.effective_user.first_name}",
-                parse_mode="Markdown"
-            )
-        except Exception as e:
-            print(f"Debug 1 error: {e}")
-
     user_id = update.effective_user.id
     user = update.effective_user
 
@@ -10084,113 +10070,64 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wins = stats_row["wins"] if stats_row else 0
         losses = stats_row["losses"] if stats_row else 0
 
-        # 🔥 DEBUG 2: Data check
-        for admin_id in ADMIN_IDS:
-            try:
-                await context.bot.send_message(
-                    admin_id,
-                    f"🔍 *DATA FETCHED*\n\n"
-                    f"Name: {display_name}\n"
-                    f"Runs: {runs}, Wickets: {wickets}\n"
-                    f"Wins: {wins}, Losses: {losses}\n"
-                    f"Credits: {total_credits:,}\n"
-                    f"Rank: #{rank}",
-                    parse_mode="Markdown"
-                )
-            except:
-                pass
-
-        # ============ DOWNLOAD PFP ============
+        # ============ DOWNLOAD PFP (WITH TIMEOUT) ============
         pfp_path = None
         try:
-            photos = await context.bot.get_user_profile_photos(user_id, limit=1)
-            if photos.total_count > 0:
-                file_id = photos.photos[0][-1].file_id
-                file = await context.bot.get_file(file_id)
-                pfp_path = f"data/pfp_{user_id}.jpg"
-                await file.download_to_drive(pfp_path)
-
-                # 🔥 DEBUG 3: PFP check
-                for admin_id in ADMIN_IDS:
-                    try:
-                        await context.bot.send_message(admin_id, f"✅ PFP downloaded: `{pfp_path}`", parse_mode="Markdown")
-                    except:
-                        pass
-            else:
-                # 🔥 DEBUG: No PFP
-                for admin_id in ADMIN_IDS:
-                    try:
-                        await context.bot.send_message(admin_id, "⚠️ No PFP available for this user")
-                    except:
-                        pass
-        except Exception as e:
-            for admin_id in ADMIN_IDS:
-                try:
-                    await context.bot.send_message(admin_id, f"❌ PFP error: `{e}`", parse_mode="Markdown")
-                except:
-                    pass
-
-        # ============ GENERATE CARD ============
-        try:
-            card_path = generate_card_image(
-                display_name=display_name,
-                runs=runs,
-                wickets=wickets,
-                highest=highest,
-                wins=wins,
-                losses=losses,
-                players_count=players_count,
-                credits=total_credits,
-                rank=rank,
-                pfp_path=pfp_path
+            photos = await asyncio.wait_for(
+                context.bot.get_user_profile_photos(user_id, limit=1),
+                timeout=15
             )
 
-            # 🔥 DEBUG 4: Card generated
-            for admin_id in ADMIN_IDS:
-                try:
-                    await context.bot.send_message(admin_id, f"✅ Card generated: `{card_path}`", parse_mode="Markdown")
-                except:
-                    pass
+            if photos.total_count > 0:
+                # 🔥 Smallest size use karo (fast download)
+                file_id = photos.photos[0][0].file_id
 
+                file = await asyncio.wait_for(
+                    context.bot.get_file(file_id),
+                    timeout=15
+                )
+
+                pfp_path = f"data/pfp_{user_id}.jpg"
+
+                await asyncio.wait_for(
+                    file.download_to_drive(pfp_path),
+                    timeout=20
+                )
+
+                print(f"✅ PFP downloaded: {pfp_path}")
+
+        except asyncio.TimeoutError:
+            print("❌ PFP timeout")
+            pfp_path = None
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            for admin_id in ADMIN_IDS:
-                try:
-                    await context.bot.send_message(admin_id, f"❌ Card gen error: `{e}`", parse_mode="Markdown")
-                except:
-                    pass
-            await msg.edit_text(f"❌ *Card generation failed:* `{e}`", parse_mode="Markdown")
-            return
+            print(f"❌ PFP error: {e}")
+            pfp_path = None
+
+        # ============ GENERATE CARD ============
+        card_path = generate_card_image(
+            display_name=display_name,
+            runs=runs,
+            wickets=wickets,
+            highest=highest,
+            wins=wins,
+            losses=losses,
+            players_count=players_count,
+            credits=total_credits,
+            rank=rank,
+            pfp_path=pfp_path
+        )
 
         try:
             await msg.delete()
         except:
             pass
 
-        # ============ SEND CARD ============
-        try:
-            with open(card_path, "rb") as f:
-                await update.message.reply_photo(
-                    photo=f,
-                    caption=f"🏏 *{display_name}'s Card*\n📊 Rank: #{rank}",
-                    parse_mode="Markdown"
-                )
-
-            # 🔥 DEBUG 5: Sent
-            for admin_id in ADMIN_IDS:
-                try:
-                    await context.bot.send_message(admin_id, "✅ Card sent to user!")
-                except:
-                    pass
-
-        except Exception as e:
-            for admin_id in ADMIN_IDS:
-                try:
-                    await context.bot.send_message(admin_id, f"❌ Send error: `{e}`", parse_mode="Markdown")
-                except:
-                    pass
-            await msg.edit_text(f"❌ *Send failed:* `{e}`", parse_mode="Markdown")
+        with open(card_path, "rb") as f:
+            await update.message.reply_photo(
+                photo=f,
+                caption=f"🏏 *{display_name}'s Card*\n📊 Rank: #{rank}",
+                parse_mode="Markdown"
+            )
 
         # Cleanup
         try:
@@ -10208,16 +10145,7 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await close_db(db)
         except:
             pass
-
-        # 🔥 DEBUG: Error
-        for admin_id in ADMIN_IDS:
-            try:
-                await context.bot.send_message(admin_id, f"❌ Main error: `{e}`", parse_mode="Markdown")
-            except:
-                pass
-
         await msg.edit_text(f"❌ *Error:* `{e}`", parse_mode="Markdown")
-
 
 # ============ CARD IMAGE GENERATOR (PILLOW) ============
 def generate_card_image(display_name, runs, wickets, highest, wins, losses, players_count, credits, rank, pfp_path=None):
