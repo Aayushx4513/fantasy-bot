@@ -10017,7 +10017,21 @@ async def protection_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
 # ============ MY CARD ============
+# ============ MY CARD (DEBUG) ============
 async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # 🔥 DEBUG 1: Admin ko notification
+    for admin_id in ADMIN_IDS:
+        try:
+            await context.bot.send_message(
+                admin_id,
+                f"🔍 *MYCARD CALLED*\n\n"
+                f"👤 User ID: `{update.effective_user.id}`\n"
+                f"📝 Name: {update.effective_user.first_name}",
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            print(f"Debug 1 error: {e}")
+
     user_id = update.effective_user.id
     user = update.effective_user
 
@@ -10070,6 +10084,22 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wins = stats_row["wins"] if stats_row else 0
         losses = stats_row["losses"] if stats_row else 0
 
+        # 🔥 DEBUG 2: Data check
+        for admin_id in ADMIN_IDS:
+            try:
+                await context.bot.send_message(
+                    admin_id,
+                    f"🔍 *DATA FETCHED*\n\n"
+                    f"Name: {display_name}\n"
+                    f"Runs: {runs}, Wickets: {wickets}\n"
+                    f"Wins: {wins}, Losses: {losses}\n"
+                    f"Credits: {total_credits:,}\n"
+                    f"Rank: #{rank}",
+                    parse_mode="Markdown"
+                )
+            except:
+                pass
+
         # ============ DOWNLOAD PFP ============
         pfp_path = None
         try:
@@ -10079,34 +10109,88 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 file = await context.bot.get_file(file_id)
                 pfp_path = f"data/pfp_{user_id}.jpg"
                 await file.download_to_drive(pfp_path)
+
+                # 🔥 DEBUG 3: PFP check
+                for admin_id in ADMIN_IDS:
+                    try:
+                        await context.bot.send_message(admin_id, f"✅ PFP downloaded: `{pfp_path}`", parse_mode="Markdown")
+                    except:
+                        pass
+            else:
+                # 🔥 DEBUG: No PFP
+                for admin_id in ADMIN_IDS:
+                    try:
+                        await context.bot.send_message(admin_id, "⚠️ No PFP available for this user")
+                    except:
+                        pass
         except Exception as e:
-            print(f"❌ PFP download error: {e}")
+            for admin_id in ADMIN_IDS:
+                try:
+                    await context.bot.send_message(admin_id, f"❌ PFP error: `{e}`", parse_mode="Markdown")
+                except:
+                    pass
 
         # ============ GENERATE CARD ============
-        card_path = generate_card_image(
-            display_name=display_name,
-            runs=runs,
-            wickets=wickets,
-            highest=highest,
-            wins=wins,
-            losses=losses,
-            players_count=players_count,
-            credits=total_credits,
-            rank=rank,
-            pfp_path=pfp_path
-        )
+        try:
+            card_path = generate_card_image(
+                display_name=display_name,
+                runs=runs,
+                wickets=wickets,
+                highest=highest,
+                wins=wins,
+                losses=losses,
+                players_count=players_count,
+                credits=total_credits,
+                rank=rank,
+                pfp_path=pfp_path
+            )
+
+            # 🔥 DEBUG 4: Card generated
+            for admin_id in ADMIN_IDS:
+                try:
+                    await context.bot.send_message(admin_id, f"✅ Card generated: `{card_path}`", parse_mode="Markdown")
+                except:
+                    pass
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            for admin_id in ADMIN_IDS:
+                try:
+                    await context.bot.send_message(admin_id, f"❌ Card gen error: `{e}`", parse_mode="Markdown")
+                except:
+                    pass
+            await msg.edit_text(f"❌ *Card generation failed:* `{e}`", parse_mode="Markdown")
+            return
 
         try:
             await msg.delete()
         except:
             pass
 
-        with open(card_path, "rb") as f:
-            await update.message.reply_photo(
-                photo=f,
-                caption=f"🏏 *{display_name}'s Card*\n📊 Rank: #{rank}",
-                parse_mode="Markdown"
-            )
+        # ============ SEND CARD ============
+        try:
+            with open(card_path, "rb") as f:
+                await update.message.reply_photo(
+                    photo=f,
+                    caption=f"🏏 *{display_name}'s Card*\n📊 Rank: #{rank}",
+                    parse_mode="Markdown"
+                )
+
+            # 🔥 DEBUG 5: Sent
+            for admin_id in ADMIN_IDS:
+                try:
+                    await context.bot.send_message(admin_id, "✅ Card sent to user!")
+                except:
+                    pass
+
+        except Exception as e:
+            for admin_id in ADMIN_IDS:
+                try:
+                    await context.bot.send_message(admin_id, f"❌ Send error: `{e}`", parse_mode="Markdown")
+                except:
+                    pass
+            await msg.edit_text(f"❌ *Send failed:* `{e}`", parse_mode="Markdown")
 
         # Cleanup
         try:
@@ -10124,6 +10208,14 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await close_db(db)
         except:
             pass
+
+        # 🔥 DEBUG: Error
+        for admin_id in ADMIN_IDS:
+            try:
+                await context.bot.send_message(admin_id, f"❌ Main error: `{e}`", parse_mode="Markdown")
+            except:
+                pass
+
         await msg.edit_text(f"❌ *Error:* `{e}`", parse_mode="Markdown")
 
 
