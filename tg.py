@@ -1,3 +1,4 @@
+from PIL import Image, ImageDraw, ImageFont
 from flask import Flask
 import pytz
 from datetime import datetime, timezone, timedelta
@@ -10015,6 +10016,214 @@ async def protection_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
         return
 
+# ============ MY CARD ============
+async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user = update.effective_user
+
+    if not await is_registered(user_id):
+        await update.message.reply_text("*❌ Send /start first!*", parse_mode="Markdown")
+        return
+
+    msg = await update.message.reply_text("*🎨 Generating your card...*", parse_mode="Markdown")
+
+    db = await get_db()
+
+    try:
+        # ============ FETCH DATA ============
+        user_row = await db.fetchrow(
+            "SELECT balance, name FROM users WHERE user_id = $1",
+            user_id
+        )
+
+        stats_row = await db.fetchrow(
+            "SELECT runs, wickets, highest_score, wins, losses FROM cricket_stats WHERE user_id = $1",
+            user_id
+        )
+
+        bank_bal = await db.fetchval(
+            "SELECT COALESCE(balance, 0) FROM bank WHERE user_id = $1",
+            user_id
+        ) or 0
+
+        players_count = await db.fetchval(
+            "SELECT COUNT(*) FROM user_players WHERE user_id = $1",
+            user_id
+        ) or 0
+
+        my_runs = stats_row["runs"] if stats_row else 0
+        rank = await db.fetchval(
+            "SELECT COUNT(*) + 1 FROM cricket_stats WHERE runs > $1",
+            my_runs
+        ) or 1
+
+        await close_db(db)
+
+        # ============ DATA PREPARE ============
+        display_name = user.first_name if user.first_name else (user.username or "User")
+        wallet = user_row["balance"] if user_row else 0
+        total_credits = wallet + bank_bal
+
+        runs = stats_row["runs"] if stats_row else 0
+        wickets = stats_row["wickets"] if stats_row else 0
+        highest = stats_row["highest_score"] if stats_row else 0
+        wins = stats_row["wins"] if stats_row else 0
+        losses = stats_row["losses"] if stats_row else 0
+
+        # ============ DOWNLOAD PFP ============
+        pfp_path = None
+        try:
+            photos = await context.bot.get_user_profile_photos(user_id, limit=1)
+            if photos.total_count > 0:
+                file_id = photos.photos[0][-1].file_id
+                file = await context.bot.get_file(file_id)
+                pfp_path = f"data/pfp_{user_id}.jpg"
+                await file.download_to_drive(pfp_path)
+        except Exception as e:
+            print(f"❌ PFP download error: {e}")
+
+        # ============ GENERATE CARD ============
+        card_path = generate_card_image(
+            display_name=display_name,
+            runs=runs,
+            wickets=wickets,
+            highest=highest,
+            wins=wins,
+            losses=losses,
+            players_count=players_count,
+            credits=total_credits,
+            rank=rank,
+            pfp_path=pfp_path
+        )
+
+        try:
+            await msg.delete()
+        except:
+            pass
+
+        with open(card_path, "rb") as f:
+            await update.message.reply_photo(
+                photo=f,
+                caption=f"🏏 *{display_name}'s Card*\n📊 Rank: #{rank}",
+                parse_mode="Markdown"
+            )
+
+        # Cleanup
+        try:
+            if pfp_path and os.path.exists(pfp_path):
+                os.remove(pfp_path)
+            if card_path and os.path.exists(card_path):
+                os.remove(card_path)
+        except:
+            pass
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        try:
+            await close_db(db)
+        except:
+            pass
+        await msg.edit_text(f"❌ *Error:* `{e}`", parse_mode="Markdown")
+
+
+# ============ CARD IMAGE GENERATOR (PILLOW) ============
+def generate_card_image(display_name, runs, wickets, highest, wins, losses, players_count, credits, rank, pfp_path=None):
+    """Generate cricket card using Pillow"""
+    
+    card = Image.open("data/card_template.png").convert("RGBA")
+    
+    # ============ PFP PASTE (CIRCLE) ============
+    if pfp_path and os.path.exists(pfp_path):
+        try:
+            pfp = Image.open(pfp_path).convert("RGBA")
+            
+            pfp_size = min(pfp.size)
+            left = (pfp.width - pfp_size) // 2
+            top = (pfp.height - pfp_size) // 2
+            pfp = pfp.crop((left, top, left + pfp_size, top + pfp_size))
+            
+            # Circle coords (for 1122x1402)
+            cx = 561
+            cy = 290
+            radius = 175
+            
+            pfp = pfp.resize((radius * 2, radius * 2), Image.LANCZOS)
+            
+            # Anti-aliased mask
+            mask = Image.new("L", (radius * 4, radius * 4), 0)
+            mask_draw = ImageDraw.Draw(mask)
+            mask_draw.ellipse((0, 0, radius * 4, radius * 4), fill=255)
+            mask = mask.resize((radius * 2, radius * 2), Image.LANCZOS)
+            
+            card.paste(pfp, (cx - radius, cy - radius), mask)
+        except Exception as e:
+            print(f"❌ PFP error: {e}")
+    
+    draw = ImageDraw.Draw(card)
+    
+    # ============ FONTS ============
+    try:
+        font_name = ImageFont.truetype("data/fonts/Cinzel-Bold.ttf", 42)
+        font_label = ImageFont.truetype("data/fonts/Cinzel-Bold.ttf", 22)
+        font_value = ImageFont.truetype("data/fonts/Cinzel-Bold.ttf", 40)
+        font_footer = ImageFont.truetype("data/fonts/Cinzel-Bold.ttf", 34)
+    except Exception as e:
+        print(f"❌ Font error: {e}")
+        font_name = ImageFont.load_default()
+        font_label = ImageFont.load_default()
+        font_value = ImageFont.load_default()
+        font_footer = ImageFont.load_default()
+    
+    # ============ TEXT WITH SHADOW ============
+    def draw_text_shadow(x, y, text, font, fill_color, anchor="mm", shadow_offset=2, stroke=1):
+        draw.text((x + shadow_offset, y + shadow_offset), text, font=font, fill="#000000", anchor=anchor)
+        draw.text((x, y), text, font=font, fill=fill_color, anchor=anchor,
+                  stroke_width=stroke, stroke_fill="#000000")
+    
+    # ============ NAME ============
+    draw_text_shadow(
+        561, 580,
+        display_name.upper()[:12],
+        font_name,
+        "#FFD700",
+        shadow_offset=3,
+        stroke=2
+    )
+    
+    # ============ STATS ============
+    def draw_stat(x, y, label, value):
+        draw_text_shadow(x, y - 30, label.upper(), font_label, "#FFD700", shadow_offset=1, stroke=1)
+        draw_text_shadow(x, y + 25, str(value), font_value, "#F5F0E1", shadow_offset=2, stroke=1)
+    
+    # Left Column
+    draw_stat(320, 720, "Runs", f"{runs:,}")
+    draw_stat(320, 880, "Wickets", str(wickets))
+    draw_stat(320, 1040, "Highest", str(highest))
+    
+    # Right Column
+    draw_stat(800, 720, "Wins/Losses", f"{wins}/{losses}")
+    draw_stat(800, 880, "Players", str(players_count))
+    draw_stat(800, 1040, "Credits", f"{credits:,}")
+    
+    # ============ FOOTER ============
+    draw_text_shadow(
+        561, 1280,
+        f"RANK #{rank}",
+        font_footer,
+        "#FFD700",
+        shadow_offset=2,
+        stroke=2
+    )
+    
+    # ============ SAVE ============
+    output_path = f"data/output_card_{display_name.replace(' ', '_')}.png"
+    os.makedirs("data", exist_ok=True)
+    card.save(output_path, "PNG", optimize=True)
+    
+    return output_path
+
+
 
 # ============ GLOBAL ERROR HANDLER ============
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -10114,6 +10323,8 @@ async def main():
     app.add_handler(CommandHandler("penalty_history", penalty_history))
     app.add_handler(CommandHandler("penalty", penalty_preview))
     app.add_handler(CommandHandler("penaltystatus", penalty_status))
+    app.add_handler(CommandHandler("profile", profile))
+    app.add_handler(CommandHandler("mycard", mycard))
 
     # ============ HILO GAME ==========
     app.add_handler(CommandHandler("hilo", hilo))
