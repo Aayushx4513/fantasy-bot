@@ -10146,7 +10146,7 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ============ CARD IMAGE GENERATOR ============
 def generate_card_image(display_name, runs, wickets, highest, wins, losses, players_count, credits, rank, pfp_path=None):
-    """Generate cricket player card"""
+    """Generate cricket player card (FINAL COORDINATES)"""
     
     card = Image.open("data/card_template.png").convert("RGBA")
     
@@ -10160,9 +10160,10 @@ def generate_card_image(display_name, runs, wickets, highest, wins, losses, play
             top = (pfp.height - pfp_size) // 2
             pfp = pfp.crop((left, top, left + pfp_size, top + pfp_size))
             
+            # ✅ FINAL COORDINATES
             cx = 561
-            cy = 290
-            radius = 175
+            cy = 280
+            radius = 165
             
             pfp = pfp.resize((radius * 2, radius * 2), Image.LANCZOS)
             
@@ -10174,71 +10175,50 @@ def generate_card_image(display_name, runs, wickets, highest, wins, losses, play
             
             card.paste(pfp, (cx - radius, cy - radius), mask)
         except Exception as e:
-            print(f"❌ PFP paste error: {e}")
+            print(f"❌ PFP error: {e}")
     
     draw = ImageDraw.Draw(card)
     
-    # ============ FONTS (BADA SIZE) ============
+    # ============ FONTS (BADA) ============
     try:
-        font_name = ImageFont.truetype("data/fonts/Cinzel-Bold.ttf", 55)
-        font_label = ImageFont.truetype("data/fonts/Cinzel-Bold.ttf", 26)
-        font_value = ImageFont.truetype("data/fonts/Cinzel-Bold.ttf", 50)
-        font_footer = ImageFont.truetype("data/fonts/Cinzel-Bold.ttf", 42)
-    except Exception as e:
-        print(f"❌ Font error: {e}")
+        font_name = ImageFont.truetype("data/fonts/Cinzel-Bold.ttf", 50)
+        font_label = ImageFont.truetype("data/fonts/Cinzel-Bold.ttf", 24)
+        font_value = ImageFont.truetype("data/fonts/Cinzel-Bold.ttf", 46)
+        font_footer = ImageFont.truetype("data/fonts/Cinzel-Bold.ttf", 38)
+    except:
         font_name = ImageFont.load_default()
         font_label = ImageFont.load_default()
         font_value = ImageFont.load_default()
         font_footer = ImageFont.load_default()
     
     # ============ TEXT WITH SHADOW ============
-    def draw_text_shadow(x, y, text, font, fill_color, anchor="mm", shadow_offset=3, stroke=1):
-        # Shadow
-        draw.text(
-            (x + shadow_offset, y + shadow_offset),
-            text, font=font, fill="#000000", anchor=anchor
-        )
-        # Main text with stroke
-        draw.text(
-            (x, y),
-            text, font=font, fill=fill_color, anchor=anchor,
-            stroke_width=stroke, stroke_fill="#000000"
-        )
+    def draw_text_shadow(x, y, text, font, fill_color, shadow_offset=2, stroke=1):
+        draw.text((x + shadow_offset, y + shadow_offset), text, font=font, fill="#000000", anchor="mm")
+        draw.text((x, y), text, font=font, fill=fill_color, anchor="mm",
+                  stroke_width=stroke, stroke_fill="#000000")
     
-    # ============ NAME ============
-    draw_text_shadow(
-        561, 575,
-        display_name.upper()[:12],
-        font_name,
-        "#FFD700",
-        shadow_offset=3,
-        stroke=2
-    )
+    # ============ NAME (Y=620) ============
+    draw_text_shadow(561, 620, display_name.upper()[:14], font_name, "#FFD700", shadow_offset=3, stroke=2)
     
     # ============ STATS ============
     def draw_stat(x, y, label, value):
-        draw_text_shadow(x, y - 45, label.upper(), font_label, "#FFD700", shadow_offset=2, stroke=1)
-        draw_text_shadow(x, y + 20, str(value), font_value, "#F5F0E1", shadow_offset=3, stroke=1)
+        # Label — box ke top
+        draw_text_shadow(x, y - 35, label.upper(), font_label, "#FFD700", shadow_offset=1, stroke=1)
+        # Value — box ke middle
+        draw_text_shadow(x, y + 20, str(value), font_value, "#F5F0E1", shadow_offset=2, stroke=1)
     
     # LEFT Column (X = 320)
-    draw_stat(320, 745, "Runs", f"{runs:,}")
-    draw_stat(320, 905, "Wickets", str(wickets))
-    draw_stat(320, 1065, "Highest", str(highest))
+    draw_stat(320, 760, "Runs", f"{runs:,}")
+    draw_stat(320, 930, "Wickets", str(wickets))
+    draw_stat(320, 1100, "Highest", str(highest))
     
     # RIGHT Column (X = 800)
-    draw_stat(800, 745, "Wins/Losses", f"{wins}/{losses}")
-    draw_stat(800, 905, "Players", str(players_count))
-    draw_stat(800, 1065, "Credits", f"{credits:,}")
+    draw_stat(800, 760, "Wins/Losses", f"{wins}/{losses}")
+    draw_stat(800, 930, "Players", str(players_count))
+    draw_stat(800, 1100, "Credits", f"{credits:,}")
     
-    # ============ FOOTER (RANK) ============
-    draw_text_shadow(
-        561, 1285,
-        f"RANK #{rank}",
-        font_footer,
-        "#FFD700",
-        shadow_offset=3,
-        stroke=1
-    )
+    # ============ FOOTER (Y=1320) ============
+    draw_text_shadow(561, 1320, f"RANK #{rank}", font_footer, "#FFD700", shadow_offset=2, stroke=1)
     
     # ============ SAVE ============
     output_path = f"data/output_card_{display_name.replace(' ', '_')}.png"
