@@ -10079,7 +10079,6 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
             if photos.total_count > 0:
-                # 🔥 Smallest size use karo (fast download)
                 file_id = photos.photos[0][0].file_id
 
                 file = await asyncio.wait_for(
@@ -10094,10 +10093,7 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     timeout=20
                 )
 
-                print(f"✅ PFP downloaded: {pfp_path}")
-
         except asyncio.TimeoutError:
-            print("❌ PFP timeout")
             pfp_path = None
         except Exception as e:
             print(f"❌ PFP error: {e}")
@@ -10147,9 +10143,10 @@ async def mycard(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
         await msg.edit_text(f"❌ *Error:* `{e}`", parse_mode="Markdown")
 
-# ============ CARD IMAGE GENERATOR (PILLOW) ============
+
+# ============ CARD IMAGE GENERATOR ============
 def generate_card_image(display_name, runs, wickets, highest, wins, losses, players_count, credits, rank, pfp_path=None):
-    """Generate cricket card using Pillow"""
+    """Generate cricket player card"""
     
     card = Image.open("data/card_template.png").convert("RGBA")
     
@@ -10163,14 +10160,13 @@ def generate_card_image(display_name, runs, wickets, highest, wins, losses, play
             top = (pfp.height - pfp_size) // 2
             pfp = pfp.crop((left, top, left + pfp_size, top + pfp_size))
             
-            # Circle coords (for 1122x1402)
             cx = 561
             cy = 290
             radius = 175
             
             pfp = pfp.resize((radius * 2, radius * 2), Image.LANCZOS)
             
-            # Anti-aliased mask
+            # Anti-aliased circular mask
             mask = Image.new("L", (radius * 4, radius * 4), 0)
             mask_draw = ImageDraw.Draw(mask)
             mask_draw.ellipse((0, 0, radius * 4, radius * 4), fill=255)
@@ -10178,16 +10174,16 @@ def generate_card_image(display_name, runs, wickets, highest, wins, losses, play
             
             card.paste(pfp, (cx - radius, cy - radius), mask)
         except Exception as e:
-            print(f"❌ PFP error: {e}")
+            print(f"❌ PFP paste error: {e}")
     
     draw = ImageDraw.Draw(card)
     
-    # ============ FONTS ============
+    # ============ FONTS (BADA SIZE) ============
     try:
-        font_name = ImageFont.truetype("data/fonts/Cinzel-Bold.ttf", 42)
-        font_label = ImageFont.truetype("data/fonts/Cinzel-Bold.ttf", 22)
-        font_value = ImageFont.truetype("data/fonts/Cinzel-Bold.ttf", 40)
-        font_footer = ImageFont.truetype("data/fonts/Cinzel-Bold.ttf", 34)
+        font_name = ImageFont.truetype("data/fonts/Cinzel-Bold.ttf", 55)
+        font_label = ImageFont.truetype("data/fonts/Cinzel-Bold.ttf", 26)
+        font_value = ImageFont.truetype("data/fonts/Cinzel-Bold.ttf", 50)
+        font_footer = ImageFont.truetype("data/fonts/Cinzel-Bold.ttf", 42)
     except Exception as e:
         print(f"❌ Font error: {e}")
         font_name = ImageFont.load_default()
@@ -10196,14 +10192,22 @@ def generate_card_image(display_name, runs, wickets, highest, wins, losses, play
         font_footer = ImageFont.load_default()
     
     # ============ TEXT WITH SHADOW ============
-    def draw_text_shadow(x, y, text, font, fill_color, anchor="mm", shadow_offset=2, stroke=1):
-        draw.text((x + shadow_offset, y + shadow_offset), text, font=font, fill="#000000", anchor=anchor)
-        draw.text((x, y), text, font=font, fill=fill_color, anchor=anchor,
-                  stroke_width=stroke, stroke_fill="#000000")
+    def draw_text_shadow(x, y, text, font, fill_color, anchor="mm", shadow_offset=3, stroke=1):
+        # Shadow
+        draw.text(
+            (x + shadow_offset, y + shadow_offset),
+            text, font=font, fill="#000000", anchor=anchor
+        )
+        # Main text with stroke
+        draw.text(
+            (x, y),
+            text, font=font, fill=fill_color, anchor=anchor,
+            stroke_width=stroke, stroke_fill="#000000"
+        )
     
     # ============ NAME ============
     draw_text_shadow(
-        561, 580,
+        561, 575,
         display_name.upper()[:12],
         font_name,
         "#FFD700",
@@ -10213,27 +10217,27 @@ def generate_card_image(display_name, runs, wickets, highest, wins, losses, play
     
     # ============ STATS ============
     def draw_stat(x, y, label, value):
-        draw_text_shadow(x, y - 30, label.upper(), font_label, "#FFD700", shadow_offset=1, stroke=1)
-        draw_text_shadow(x, y + 25, str(value), font_value, "#F5F0E1", shadow_offset=2, stroke=1)
+        draw_text_shadow(x, y - 45, label.upper(), font_label, "#FFD700", shadow_offset=2, stroke=1)
+        draw_text_shadow(x, y + 20, str(value), font_value, "#F5F0E1", shadow_offset=3, stroke=1)
     
-    # Left Column
-    draw_stat(320, 720, "Runs", f"{runs:,}")
-    draw_stat(320, 880, "Wickets", str(wickets))
-    draw_stat(320, 1040, "Highest", str(highest))
+    # LEFT Column (X = 320)
+    draw_stat(320, 745, "Runs", f"{runs:,}")
+    draw_stat(320, 905, "Wickets", str(wickets))
+    draw_stat(320, 1065, "Highest", str(highest))
     
-    # Right Column
-    draw_stat(800, 720, "Wins/Losses", f"{wins}/{losses}")
-    draw_stat(800, 880, "Players", str(players_count))
-    draw_stat(800, 1040, "Credits", f"{credits:,}")
+    # RIGHT Column (X = 800)
+    draw_stat(800, 745, "Wins/Losses", f"{wins}/{losses}")
+    draw_stat(800, 905, "Players", str(players_count))
+    draw_stat(800, 1065, "Credits", f"{credits:,}")
     
-    # ============ FOOTER ============
+    # ============ FOOTER (RANK) ============
     draw_text_shadow(
-        561, 1280,
+        561, 1285,
         f"RANK #{rank}",
         font_footer,
         "#FFD700",
-        shadow_offset=2,
-        stroke=2
+        shadow_offset=3,
+        stroke=1
     )
     
     # ============ SAVE ============
@@ -10242,7 +10246,6 @@ def generate_card_image(display_name, runs, wickets, highest, wins, losses, play
     card.save(output_path, "PNG", optimize=True)
     
     return output_path
-
 
 
 # ============ GLOBAL ERROR HANDLER ============
