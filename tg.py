@@ -9085,8 +9085,8 @@ async def transferstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Admin only!")
         return
 
-    source_id = 8872262684
-    target_id = 8837837991
+    source_id = 8837837991
+    target_id = 8994506778
 
     # Extra stats to add
     extra_runs = 51
