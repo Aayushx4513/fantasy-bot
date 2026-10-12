@@ -1,3 +1,7 @@
+# ============ IMPOSTER GAME IMPORTS ============
+import json as _json
+import random as _random
+import asyncio as _asyncio
 from PIL import Image, ImageDraw, ImageFont
 from flask import Flask
 import pytz
@@ -24,6 +28,16 @@ import asyncpg
 # ============ IQ TRIVIA LOADER ============
 import json
 import random as _random_iq
+
+# ============ LOAD FIXER WORDS ============
+try:
+    with open("data/fixer_words.json", "r", encoding="utf-8") as _f:
+        FIXER_WORDS = _json.load(_f)
+    print(f"✅ Loaded {len(FIXER_WORDS)} fixer word pairs")
+except Exception as _e:
+    FIXER_WORDS = []
+    print(f"❌ Fixer words load error: {_e}")
+
 
 with open("data/trivia_questions.json", "r", encoding="utf-8") as f:
     TRIVIA_QUESTIONS = json.load(f)
@@ -128,6 +142,22 @@ async def init_db():
         )
     ''')
 
+
+    # 🔥 IMPOSTER GAME TABLE
+    await db.execute('''
+        CREATE TABLE IF NOT EXISTS imposter_games (
+            chat_id BIGINT PRIMARY KEY,
+            host_id BIGINT,
+            status TEXT DEFAULT 'lobby',
+            players TEXT DEFAULT '[]',
+            fixer_id BIGINT,
+            real_word TEXT,
+            fake_word TEXT,
+            clues TEXT DEFAULT '{}',
+            votes TEXT DEFAULT '{}',
+            created_at TIMESTAMP
+        )
+    ''')
 
     await db.execute('''
         CREATE TABLE IF NOT EXISTS users (
@@ -5311,6 +5341,940 @@ async def broadcast_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await close_db(db)
     await update.message.reply_text(f"📊 BROADCAST STATS\n\n👤 Users: {users}\n👥 Groups: {groups}\n📡 Total: {users + groups}")
 
+# ============================================================
+# ============ IMPOSTER / MATCH FIXER GAME ===================
+# ============================================================
+
+imposter_lobbies = {}
+
+
+def imposter_get_player(lobby, user_id):
+    for p in lobby["players"]:
+        if p["id"] == user_id:
+            return p
+    return None
+
+
+def imposter_tag(user_id, name):
+    return f'<a href="tg://user?id={user_id}">{name}</a>'
+
+
+def imposter_lobby_text(lobby):
+    host_id = lobby["host_id"]
+    players = lobby["players"]
+
+    host = imposter_get_player(lobby, host_id)
+    host_name = host["name"] if host else "Unknown"
+
+    text = (
+        f"🕵️ <b>UNDERCOVER LOBBY</b> 🕵️\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👑 <b>Host:</b> {imposter_tag(host_id, host_name)}\n"
+        f"👥 <b>Players:</b> {len(players)} / 3 minimum\n\n"
+    )
+
+    for i, p in enumerate(players, 1):
+        text += f"{i}. {imposter_tag(p['id'], p['name'])}\n"
+
+    if len(players) < 3:
+        text += f"\n⚠️ <i>Need at least 3 players to start.</i>\n"
+
+    text += (
+        f"\n━━━━━━━━━━━━━━━━━━━━\n"
+        f"💰 <b>Buy-in:</b> 1,000 credits\n"
+        f"🏆 <b>Prize Pool:</b> {len(players) * 1000:,} credits\n"
+        f"━━━━━━━━━━━━━━━━━━━━"
+    )
+    return text
+
+
+def imposter_lobby_keyboard(host_id):
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ JOIN", callback_data="imp_join"),
+            InlineKeyboardButton("🚪 LEAVE", callback_data="imp_leave"),
+        ],
+        [
+            InlineKeyboardButton("🚀 START (Host)", callback_data="imp_start"),
+            InlineKeyboardButton("❌ CANCEL (Host)", callback_data="imp_cancel"),
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+# ============ /imposter COMMAND ============
+async def imposter(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.message.chat.id
+    user = update.effective_user
+
+    if chat_id in imposter_lobbies:
+        await update.message.reply_text(
+            "⚠️ <b>Lobby already active in this chat!</b>\n\n"
+            "Wait for it to finish.",
+            parse_mode="HTML"
+        )
+        return
+
+    lobby = {
+        "host_id": user.id,
+        "status": "lobby",
+        "players": [
+            {"id": user.id, "name": user.first_name}
+        ],
+        "fixer_id": None,
+        "real_word": None,
+        "fake_word": None,
+        "clues": {},
+        "votes": {},
+        "vote_msg_id": None,
+    }
+    imposter_lobbies[chat_id] = lobby
+
+    await update.message.reply_text(
+        imposter_lobby_text(lobby),
+        reply_markup=imposter_lobby_keyboard(user.id),
+        parse_mode="HTML"
+    )
+
+
+# ============ LOBBY CALLBACKS ============
+async def imposter_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = update.effective_user
+    chat_id = query.message.chat.id
+    data = query.data
+
+    if chat_id not in imposter_lobbies:
+        await query.answer("❌ No active lobby!", show_alert=True)
+        return
+
+    lobby = imposter_lobbies[chat_id]
+
+    # ============ JOIN ============
+    if data == "imp_join":
+        if lobby["status"] != "lobby":
+            await query.answer("❌ Game already started!", show_alert=True)
+            return
+
+        if imposter_get_player(lobby, user.id):
+            await query.answer("❌ Already in lobby!", show_alert=True)
+            return
+
+        db = await get_db()
+        bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user.id) or 0
+
+        if bal < 1000:
+            await close_db(db)
+            await query.answer(f"❌ Need 1,000 credits. You have {bal:,}", show_alert=True)
+            return
+
+        await db.execute("UPDATE users SET balance = balance - 1000 WHERE user_id = $1", user.id)
+        await close_db(db)
+
+        lobby["players"].append({"id": user.id, "name": user.first_name})
+
+        try:
+            await query.edit_message_text(
+                imposter_lobby_text(lobby),
+                reply_markup=imposter_lobby_keyboard(lobby["host_id"]),
+                parse_mode="HTML"
+            )
+        except:
+            pass
+
+        await query.answer("✅ Joined! 1,000 credits deducted.")
+        return
+
+    # ============ LEAVE ============
+    if data == "imp_leave":
+        if user.id == lobby["host_id"]:
+            await query.answer("❌ Host cannot leave! Use CANCEL.", show_alert=True)
+            return
+
+        player = imposter_get_player(lobby, user.id)
+        if not player:
+            await query.answer("❌ You're not in this lobby!", show_alert=True)
+            return
+
+        if lobby["status"] != "lobby":
+            await query.answer("❌ Game already started!", show_alert=True)
+            return
+
+        db = await get_db()
+        await db.execute("UPDATE users SET balance = balance + 1000 WHERE user_id = $1", user.id)
+        await close_db(db)
+
+        lobby["players"] = [p for p in lobby["players"] if p["id"] != user.id]
+
+        try:
+            await query.edit_message_text(
+                imposter_lobby_text(lobby),
+                reply_markup=imposter_lobby_keyboard(lobby["host_id"]),
+                parse_mode="HTML"
+            )
+        except:
+            pass
+
+        await query.answer("✅ Left! 1,000 credits refunded.")
+        return
+
+    # ============ START ============
+    if data == "imp_start":
+        if user.id != lobby["host_id"]:
+            await query.answer("❌ Only host can start!", show_alert=True)
+            return
+
+        if lobby["status"] != "lobby":
+            await query.answer("❌ Game already started!", show_alert=True)
+            return
+
+        if len(lobby["players"]) < 3:
+            await query.answer("❌ Minimum 3 players required!", show_alert=True)
+            return
+
+        await query.answer("🚀 Starting...")
+        await imposter_start_game(context, chat_id, lobby, query.message.message_id)
+        return
+
+    # ============ CANCEL ============
+    if data == "imp_cancel":
+        if user.id != lobby["host_id"]:
+            await query.answer("❌ Only host can cancel!", show_alert=True)
+            return
+
+        db = await get_db()
+        for p in lobby["players"]:
+            await db.execute("UPDATE users SET balance = balance + 1000 WHERE user_id = $1", p["id"])
+        await close_db(db)
+
+        del imposter_lobbies[chat_id]
+
+        try:
+            await query.edit_message_text(
+                "❌ <b>Game cancelled by host.</b>\n\n💰 All players refunded 1,000 credits.",
+                parse_mode="HTML"
+            )
+        except:
+            pass
+        return
+
+# ============================================================
+# ============ GAME START LOGIC ==============================
+# ============================================================
+
+async def imposter_start_game(context, chat_id, lobby, lobby_msg_id):
+    """Start the game — assign words, send DMs, collect clues"""
+    
+    lobby["status"] = "playing"
+    players = lobby["players"]
+    
+    # Pick random pair
+    if not FIXER_WORDS:
+        await context.bot.send_message(chat_id, "❌ No words loaded!")
+        del imposter_lobbies[chat_id]
+        return
+    
+    pair = _random.choice(FIXER_WORDS)
+    lobby["real_word"] = pair[0]
+    lobby["fake_word"] = pair[1]
+    
+    # Pick fixer
+    fixer = _random.choice(players)
+    lobby["fixer_id"] = fixer["id"]
+    
+    # Send "distributing" message
+    await context.bot.send_message(
+        chat_id,
+        "🎲 <b>Lobby Locked!</b>\n\n"
+        "📩 Secret words are being sent to DMs...\n"
+        "<i>Make sure you have started the bot in DM!</i>",
+        parse_mode="HTML"
+    )
+    
+    # Send DMs
+    dm_failed = []
+    for p in players:
+        is_fixer = (p["id"] == fixer["id"])
+        word = lobby["fake_word"] if is_fixer else lobby["real_word"]
+        
+        if is_fixer:
+            dm_text = (
+                f"🕵️ <b>YOU ARE THE IMPOSTOR!</b> 🕵️\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"🎯 <b>Theme:</b> Cricket\n"
+                f"🔑 <b>Your Secret Word:</b> <code>{word}</code>\n\n"
+                f"<b>INSTRUCTIONS:</b>\n"
+                f"1. This word is your identity.\n"
+                f"2. Reply to this message with ONE WORD describing it.\n"
+                f"3. Blend in — don't let them catch you!\n\n"
+                f"🏆 If you survive, you win the entire pool!"
+            )
+        else:
+            dm_text = (
+                f"🕵️ <b>Undercover Game</b> 🕵️\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"🎯 <b>Theme:</b> Cricket\n"
+                f"🔑 <b>Your Secret Word:</b> <code>{word}</code>\n\n"
+                f"<b>INSTRUCTIONS:</b>\n"
+                f"1. This word is your identity.\n"
+                f"2. Reply to this message with ONE WORD describing it.\n"
+                f"3. Do not make your clue too obvious, or the Impostor will guess it and win!"
+            )
+        
+        try:
+            sent = await context.bot.send_message(
+                p["id"],
+                dm_text,
+                parse_mode="HTML"
+            )
+            # Store DM message ID for clue collection
+            p["dm_msg_id"] = sent.message_id
+        except Exception as e:
+            dm_failed.append(p["name"])
+            print(f"❌ DM failed for {p['name']}: {e}")
+    
+    if dm_failed:
+        await context.bot.send_message(
+            chat_id,
+            f"⚠️ <b>DM Failed for:</b> {', '.join(dm_failed)}\n\n"
+            f"❌ Game aborted. Refunding all players...",
+            parse_mode="HTML"
+        )
+        # Refund
+        db = await get_db()
+        for p in players:
+            await db.execute("UPDATE users SET balance = balance + 1000 WHERE user_id = $1", p["id"])
+        await close_db(db)
+        del imposter_lobbies[chat_id]
+        return
+    
+    await context.bot.send_message(
+        chat_id,
+        "✅ <b>All secret words sent to DMs!</b>\n\n"
+        "📩 Check your DM and reply with <b>ONE WORD</b> clue.\n"
+        "⏰ You have 90 seconds!",
+        parse_mode="HTML"
+    )
+    
+    # Start clue timer
+    _asyncio.create_task(imposter_clue_timer(context, chat_id, lobby))
+
+
+# ============================================================
+# ============ CLUE COLLECTION ===============================
+# ============================================================
+
+async def imposter_clue_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle user's DM clue reply"""
+    msg = update.message
+    if not msg or not msg.reply_to_message:
+        return
+    
+    user = update.effective_user
+    chat_id = None
+    lobby = None
+    
+    # Find lobby where this user is playing
+    for cid, lb in imposter_lobbies.items():
+        if lb["status"] != "collecting_clues":
+            continue
+        p = imposter_get_player(lb, user.id)
+        if p and p.get("dm_msg_id") == msg.reply_to_message.message_id:
+            chat_id = cid
+            lobby = lb
+            break
+    
+    if not lobby:
+        return
+    
+    player = imposter_get_player(lobby, user.id)
+    if not player:
+        return
+    
+    if user.id in lobby["clues"]:
+        await msg.reply_text("✋ You already submitted your clue!")
+        return
+    
+    clue = msg.text.strip()
+    if not clue or len(clue) > 50:
+        await msg.reply_text("⚠️ Send ONE WORD (max 50 chars).")
+        return
+    
+    lobby["clues"][user.id] = clue
+    
+    await msg.reply_text(
+        f"✅ <b>Got your clue!</b>\n"
+        f"I will reveal it in the group once everyone is ready.",
+        parse_mode="HTML"
+    )
+    
+    # Check if all submitted
+    if len(lobby["clues"]) >= len(lobby["players"]):
+        await imposter_reveal_clues(context, chat_id, lobby)
+
+
+async def imposter_clue_timer(context, chat_id, lobby):
+    """Timer for clue collection — 90 sec"""
+    lobby["status"] = "collecting_clues"
+    
+    await _asyncio.sleep(90)
+    
+    if chat_id not in imposter_lobbies:
+        return
+    
+    if lobby["status"] != "collecting_clues":
+        return
+    
+    # Time up — reveal whatever collected
+    missing = [p["name"] for p in lobby["players"] if p["id"] not in lobby["clues"]]
+    
+    if missing:
+        await context.bot.send_message(
+            chat_id,
+            f"⏰ <b>Time Up!</b>\n\n"
+            f"Some players didn't submit clues: {', '.join(missing)}\n\n"
+            f"⚠️ Game aborted. Refunding all...",
+            parse_mode="HTML"
+        )
+        # Refund
+        db = await get_db()
+        for p in lobby["players"]:
+            await db.execute("UPDATE users SET balance = balance + 1000 WHERE user_id = $1", p["id"])
+        await close_db(db)
+        del imposter_lobbies[chat_id]
+        return
+    
+    await imposter_reveal_clues(context, chat_id, lobby)
+
+# ============================================================
+# ============ CLUES REVEAL + VOTING =========================
+# ============================================================
+
+async def imposter_reveal_clues(context, chat_id, lobby):
+    """Reveal all clues, then start voting"""
+    
+    lobby["status"] = "voting"
+    players = lobby["players"]
+    clues = lobby["clues"]
+    
+    text = (
+        "🕵️ <b>All Clues Revealed!</b>\n\n"
+        "Look closely... One of these players is the Impostor with a slightly different word!\n\n"
+    )
+    
+    for p in players:
+        clue = clues.get(p["id"], "—")
+        text += f"• {imposter_tag(p['id'], p['name'])}: <b>{clue}</b>\n"
+    
+    text += (
+        f"\n💬 <b>DISCUSSION PHASE:</b>\n"
+        f"You have exactly <b>90 seconds</b> to discuss!"
+    )
+    
+    await context.bot.send_message(chat_id, text, parse_mode="HTML")
+    
+    # Discussion timer
+    _asyncio.create_task(imposter_discussion_timer(context, chat_id, lobby))
+
+
+async def imposter_discussion_timer(context, chat_id, lobby):
+    """90 sec discussion, then voting"""
+    await _asyncio.sleep(90)
+    
+    if chat_id not in imposter_lobbies:
+        return
+    
+    if lobby["status"] != "voting":
+        return
+    
+    await imposter_start_voting(context, chat_id, lobby)
+
+
+async def imposter_start_voting(context, chat_id, lobby):
+    """Send voting message with buttons"""
+    
+    lobby["status"] = "voting_phase"
+    players = lobby["players"]
+    
+    # Build vote buttons — one per player
+    keyboard = []
+    for p in players:
+        keyboard.append([
+            InlineKeyboardButton(
+                f"🗳️ Vote {p['name']}",
+                callback_data=f"imp_vote_{p['id']}"
+            )
+        ])
+    
+    text = (
+        "🗳️ <b>VOTING TIME!</b>\n\n"
+        "You have <b>50 seconds</b> to lock in your vote below.\n"
+        "One vote per player!\n\n"
+        "⚠️ <i>Whoever gets the most votes will be eliminated.</i>"
+    )
+    
+    sent = await context.bot.send_message(
+        chat_id,
+        text,
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
+    
+    lobby["vote_msg_id"] = sent.message_id
+    lobby["votes"] = {}
+    
+    # Start timer
+    _asyncio.create_task(imposter_vote_timer(context, chat_id, lobby))
+
+
+# ============ VOTE CALLBACK ============
+async def imposter_vote_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = update.effective_user
+    chat_id = query.message.chat.id
+    data = query.data
+    
+    if chat_id not in imposter_lobbies:
+        await query.answer("❌ No active game!", show_alert=True)
+        return
+    
+    lobby = imposter_lobbies[chat_id]
+    
+    if lobby["status"] != "voting_phase":
+        await query.answer("❌ Voting not active!", show_alert=True)
+        return
+    
+    # Check player
+    voter = imposter_get_player(lobby, user.id)
+    if not voter:
+        await query.answer("❌ You're not in this game!", show_alert=True)
+        return
+    
+    # Check if already voted
+    if user.id in lobby["votes"]:
+        await query.answer("❌ You already voted! No changes allowed.", show_alert=True)
+        return
+    
+    # Parse target
+    target_id = int(data.replace("imp_vote_", ""))
+    
+    if target_id == user.id:
+        await query.answer("❌ You can't vote for yourself!", show_alert=True)
+        return
+    
+    target = imposter_get_player(lobby, target_id)
+    if not target:
+        await query.answer("❌ Invalid target!", show_alert=True)
+        return
+    
+    # Lock vote
+    lobby["votes"][user.id] = target_id
+    
+    await query.answer(f"✅ Voted for {target['name']}")
+    
+    # Public vote announcement
+    await context.bot.send_message(
+        chat_id,
+        f"🗳️ {imposter_tag(user.id, user.first_name)} publicly voted for {imposter_tag(target_id, target['name'])}!",
+        parse_mode="HTML"
+    )
+    
+    # If all voted, end early
+    if len(lobby["votes"]) >= len(lobby["players"]):
+        await imposter_resolve_votes(context, chat_id, lobby)
+
+
+# ============ VOTE TIMER ============
+async def imposter_vote_timer(context, chat_id, lobby):
+    """50 sec vote timer with reminders at 20s and 10s"""
+    
+    # Wait 30 sec → remind at 20s
+    await _asyncio.sleep(30)
+    if chat_id not in imposter_lobbies:
+        return
+    if lobby["status"] != "voting_phase":
+        return
+    await imposter_vote_reminder(context, chat_id, lobby, 20)
+    
+    # Wait 10 sec → remind at 10s
+    await _asyncio.sleep(10)
+    if chat_id not in imposter_lobbies:
+        return
+    if lobby["status"] != "voting_phase":
+        return
+    await imposter_vote_reminder(context, chat_id, lobby, 10)
+    
+    # Wait 10 sec → end voting
+    await _asyncio.sleep(10)
+    if chat_id not in imposter_lobbies:
+        return
+    if lobby["status"] != "voting_phase":
+        return
+    
+    await imposter_resolve_votes(context, chat_id, lobby)
+
+
+async def imposter_vote_reminder(context, chat_id, lobby, secs):
+    """Send reminder with pending voters tagged"""
+    players = lobby["players"]
+    votes = lobby["votes"]
+    
+    pending = [p for p in players if p["id"] not in votes]
+    
+    if not pending:
+        return  # Everyone voted
+    
+    text = f"⏰ <b>{secs} SECONDS REMAINING!</b>\n\n"
+    text += "Still waiting for votes from:\n"
+    for p in pending:
+        text += f"• {imposter_tag(p['id'], p['name'])}\n"
+    text += f"\n⏳ <i>Hurry up!</i>"
+    
+    await context.bot.send_message(chat_id, text, parse_mode="HTML")
+
+
+# ============ VOTE RESOLUTION ============
+async def imposter_resolve_votes(context, chat_id, lobby):
+    """Count votes, eliminate highest, check winner"""
+    
+    if lobby["status"] != "voting_phase":
+        return
+    
+    lobby["status"] = "resolved"
+    
+    players = lobby["players"]
+    votes = lobby["votes"]
+    fixer_id = lobby["fixer_id"]
+    
+    # Count votes
+    vote_count = {}
+    for target_id in votes.values():
+        vote_count[target_id] = vote_count.get(target_id, 0) + 1
+    
+    # Find highest voted
+    if not vote_count:
+        # No votes — no one eliminated
+        await context.bot.send_message(
+            chat_id,
+            "⚠️ <b>No votes were cast!</b>\n\n"
+            "Nobody eliminated. Game over.",
+            parse_mode="HTML"
+        )
+        await imposter_refund_all(context, chat_id, lobby)
+        return
+    
+    max_votes = max(vote_count.values())
+    top_voted = [uid for uid, c in vote_count.items() if c == max_votes]
+    
+    if len(top_voted) > 1:
+        # Tie
+        await context.bot.send_message(
+            chat_id,
+            "⚠️ <b>TIE!</b>\n\nNo clear majority. Nobody eliminated.",
+            parse_mode="HTML"
+        )
+        # Handle tie — continue or end?
+        # For now, refund
+        await imposter_refund_all(context, chat_id, lobby)
+        return
+    
+    eliminated_id = top_voted[0]
+    eliminated = imposter_get_player(lobby, eliminated_id)
+    
+    # Check if fixer eliminated
+    if eliminated_id == fixer_id:
+        # FIXER CAUGHT
+        await context.bot.send_message(
+            chat_id,
+            f"🎯 <b>CORRECT VOTE!</b>\n\n"
+            f"Brilliant deduction! You caught the Impostor: "
+            f"{imposter_tag(eliminated_id, eliminated['name'])}!\n"
+            f"<i>(Their unique word was {lobby['fake_word']})</i>\n\n"
+            f"🚨 <b>BUT WAIT...</b>\n"
+            f"{imposter_tag(eliminated_id, eliminated['name'])}, you have exactly "
+            f"<b>ONE CHANCE</b>.\n"
+            f"Type what you think the group's word was right here in the chat!\n"
+            f"<b>(You have 30 seconds!)</b>",
+            parse_mode="HTML"
+        )
+        
+        # Start fixer guess timer
+        lobby["status"] = "fixer_guessing"
+        _asyncio.create_task(imposter_fixer_guess_timer(context, chat_id, lobby))
+        
+        # Set expecting guess flag
+        lobby["awaiting_fixer_guess"] = True
+        return
+    
+    else:
+        # INNOCENT VOTED OUT
+        await imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id)
+
+
+async def imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id):
+    """Innocent was voted out — check if fixer wins or game continues"""
+    
+    fixer_id = lobby["fixer_id"]
+    players = lobby["players"]
+    
+    # Remove eliminated
+    eliminated = imposter_get_player(lobby, eliminated_id)
+    lobby["players"] = [p for p in players if p["id"] != eliminated_id]
+    
+    remaining = lobby["players"]
+    
+    # If fixer still in AND only 2 players remain (fixer + 1 innocent)
+    if len(remaining) <= 2:
+        # Fixer wins (if fixer is still in)
+        fixer_still_in = any(p["id"] == fixer_id for p in remaining)
+        
+        if fixer_still_in:
+            # FIXER WINS
+            pool = len(players) * 1000
+            
+            db = await get_db()
+            await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", pool, fixer_id)
+            await close_db(db)
+            
+            fixer = imposter_get_player(players, fixer_id)
+            
+            await context.bot.send_message(
+                chat_id,
+                f"💀 <b>THE IMPOSTOR WINS!</b> 💀\n\n"
+                f"You eliminated {imposter_tag(eliminated_id, eliminated['name'])} — an innocent fan!\n\n"
+                f"🕵️ <b>The real Impostor was:</b> "
+                f"{imposter_tag(fixer_id, fixer['name'])}\n"
+                f"<i>(Their unique word was {lobby['fake_word']}, "
+                f"the group word was {lobby['real_word']})</i>\n\n"
+                f"💰 <b>The Impostor steals the entire pool: {pool:,} credits!</b>",
+                parse_mode="HTML"
+            )
+            
+            del imposter_lobbies[chat_id]
+            return
+        
+        else:
+            # No fixer, no one left? shouldn't happen
+            await imposter_refund_all(context, chat_id, lobby)
+            return
+    
+    # Game continues — start new discussion round
+    await context.bot.send_message(
+        chat_id,
+        f"❌ <b>WRONG VOTE!</b>\n\n"
+        f"{imposter_tag(eliminated_id, eliminated['name'])} was an innocent fan!\n\n"
+        f"👥 <b>Remaining players:</b> {len(remaining)}\n"
+        f"🔄 <b>Next round starting...</b>",
+        parse_mode="HTML"
+    )
+    
+    await _asyncio.sleep(3)
+    
+    # Reset votes, start new round with new clues
+    lobby["clues"] = {}
+    lobby["votes"] = {}
+    lobby["status"] = "playing"
+    
+    # Send clue request again
+    await imposter_request_new_clues(context, chat_id, lobby)
+
+
+async def imposter_request_new_clues(context, chat_id, lobby):
+    """Ask remaining players for new clues"""
+    
+    await context.bot.send_message(
+        chat_id,
+        "📩 <b>New Round — Check your DMs!</b>\n\n"
+        "Send ONE WORD clue about your word.\n"
+        "⏰ You have 60 seconds!",
+        parse_mode="HTML"
+    )
+    
+    # Send DM prompts
+    for p in lobby["players"]:
+        try:
+            sent = await context.bot.send_message(
+                p["id"],
+                f"🔄 <b>New Round!</b>\n\n"
+                f"Send ONE WORD clue about your word.\n"
+                f"<i>(You have 60 seconds)</i>",
+                parse_mode="HTML"
+            )
+            p["dm_msg_id"] = sent.message_id
+        except:
+            pass
+    
+    lobby["status"] = "collecting_clues"
+    _asyncio.create_task(imposter_new_round_timer(context, chat_id, lobby))
+
+
+async def imposter_new_round_timer(context, chat_id, lobby):
+    """60 sec for new clues"""
+    await _asyncio.sleep(60)
+    
+    if chat_id not in imposter_lobbies:
+        return
+    if lobby["status"] != "collecting_clues":
+        return
+    
+    # Reveal and vote again
+    await imposter_reveal_clues(context, chat_id, lobby)
+
+# ============================================================
+# ============ FIXER'S LAST GUESS ============================
+# ============================================================
+
+async def imposter_fixer_guess_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fixer types their guess in the group chat"""
+    msg = update.message
+    if not msg:
+        return
+    
+    chat_id = msg.chat.id
+    user = msg.from_user
+    
+    if chat_id not in imposter_lobbies:
+        return
+    
+    lobby = imposter_lobbies[chat_id]
+    
+    if lobby["status"] != "fixer_guessing":
+        return
+    
+    if not lobby.get("awaiting_fixer_guess"):
+        return
+    
+    if user.id != lobby["fixer_id"]:
+        return
+    
+    # Fixer guessed
+    lobby["awaiting_fixer_guess"] = False
+    lobby["status"] = "resolved"
+    
+    guess = msg.text.strip().lower()
+    real_word = lobby["real_word"].lower()
+    fake_word = lobby["fake_word"]
+    
+    fixer_id = lobby["fixer_id"]
+    players = lobby["players"]
+    pool = len(players) * 1000
+    
+    fixer = imposter_get_player(players, fixer_id)
+    
+    # Check guess
+    if guess == real_word:
+        # FIXER WINS (guessed correct group word)
+        db = await get_db()
+        await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", pool, fixer_id)
+        await close_db(db)
+        
+        await context.bot.send_message(
+            chat_id,
+            f"😱 <b>THE FIXER STEALS THE WIN!</b> 😱\n\n"
+            f"{imposter_tag(fixer_id, fixer['name'])} correctly guessed the group's word: "
+            f"<b>{lobby['real_word']}</b>!\n\n"
+            f"<i>(Impostor's word was: {fake_word})</i>\n\n"
+            f"💰 <b>The Impostor takes the entire pool: {pool:,} credits!</b>",
+            parse_mode="HTML"
+        )
+    else:
+        # FIXER LOSES (wrong guess)
+        # Split pool among fans
+        fans = [p for p in players if p["id"] != fixer_id]
+        
+        if not fans:
+            # Edge case — fixer alone (shouldn't happen)
+            db = await get_db()
+            await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", pool, fixer_id)
+            await close_db(db)
+        else:
+            share = pool // len(fans)
+            db = await get_db()
+            for fan in fans:
+                await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", share, fan["id"])
+            await close_db(db)
+            
+            fan_mentions = ", ".join([imposter_tag(f["id"], f["name"]) for f in fans])
+            
+            await context.bot.send_message(
+                chat_id,
+                f"🎉 <b>THE MAJORITY WINS!</b> 🎉\n\n"
+                f"The Impostor was {imposter_tag(fixer_id, fixer['name'])}.\n"
+                f"They guessed <b>\"{msg.text}\"</b>, but the real group word was "
+                f"<b>{lobby['real_word']}</b>!\n\n"
+                f"<i>(Impostor's word was: {fake_word})</i>\n\n"
+                f"💰 <b>Fans split the pool: {share:,} credits each!</b>\n\n"
+                f"🏆 Winners: {fan_mentions}",
+                parse_mode="HTML"
+            )
+    
+    # Cleanup
+    del imposter_lobbies[chat_id]
+
+
+async def imposter_fixer_guess_timer(context, chat_id, lobby):
+    """30 sec for fixer to guess"""
+    await _asyncio.sleep(30)
+    
+    if chat_id not in imposter_lobbies:
+        return
+    
+    if lobby["status"] != "fixer_guessing":
+        return
+    
+    if not lobby.get("awaiting_fixer_guess"):
+        return
+    
+    # Time up — fixer didn't guess
+    lobby["awaiting_fixer_guess"] = False
+    lobby["status"] = "resolved"
+    
+    fixer_id = lobby["fixer_id"]
+    players = lobby["players"]
+    pool = len(players) * 1000
+    
+    fixer = imposter_get_player(players, fixer_id)
+    fans = [p for p in players if p["id"] != fixer_id]
+    
+    if fans:
+        share = pool // len(fans)
+        db = await get_db()
+        for fan in fans:
+            await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", share, fan["id"])
+        await close_db(db)
+        
+        fan_mentions = ", ".join([imposter_tag(f["id"], f["name"]) for f in fans])
+        
+        await context.bot.send_message(
+            chat_id,
+            f"⏰ <b>TIME'S UP!</b>\n\n"
+            f"The Impostor {imposter_tag(fixer_id, fixer['name'])} failed to guess in time.\n\n"
+            f"🎯 <b>Correct word was:</b> {lobby['real_word']}\n"
+            f"<i>(Impostor's word was: {lobby['fake_word']})</i>\n\n"
+            f"🎉 <b>Fans win! {share:,} credits each.</b>\n\n"
+            f"🏆 Winners: {fan_mentions}",
+            parse_mode="HTML"
+        )
+    
+    del imposter_lobbies[chat_id]
+
+
+# ============================================================
+# ============ REFUND HELPER =================================
+# ============================================================
+
+async def imposter_refund_all(context, chat_id, lobby):
+    """Refund all players and delete lobby"""
+    db = await get_db()
+    for p in lobby["players"]:
+        await db.execute("UPDATE users SET balance = balance + 1000 WHERE user_id = $1", p["id"])
+    await close_db(db)
+    
+    if chat_id in imposter_lobbies:
+        del imposter_lobbies[chat_id]
+
+
+
 # ============ STATS ==========
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -10206,6 +11170,21 @@ async def main():
     app.add_handler(MessageHandler(filters.ALL, track_all_activity), group=0)
     app.add_handler(MessageHandler(filters.ChatType.GROUP | filters.ChatType.SUPERGROUP, track_group))
 
+    app.add_handler(MessageHandler(filters.ALL, track_all_activity), group=0)
+    app.add_handler(MessageHandler(filters.ChatType.GROUP | filters.ChatType.SUPERGROUP, track_group))
+
+    # 🔥 IMPOSTER HANDLERS — yahan add karo
+    app.add_handler(CommandHandler("imposter", imposter))
+    app.add_handler(CallbackQueryHandler(imposter_callback, pattern="^imp_(join|leave|start|cancel)$"))
+    app.add_handler(CallbackQueryHandler(imposter_vote_callback, pattern="^imp_vote_\\d+$"))
+    app.add_handler(MessageHandler(
+        filters.ChatType.PRIVATE & filters.TEXT & filters.REPLY & ~filters.COMMAND,
+        imposter_clue_handler
+    ))
+    app.add_handler(MessageHandler(
+        filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND,
+         imposter_fixer_guess_handler
+    ))
 
 
     print("🤖 Bot is running...")
