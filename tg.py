@@ -5436,7 +5436,6 @@ async def imposter(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
 
-
 # ============ LOBBY CALLBACKS ============
 async def imposter_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -5461,14 +5460,31 @@ async def imposter_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         db = await get_db()
-        bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user.id) or 0
 
-        if bal < 1000:
+        # Wallet + Bank dono check karo
+        wallet = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user.id) or 0
+        bank = await db.fetchval("SELECT COALESCE(balance, 0) FROM bank WHERE user_id = $1", user.id) or 0
+        total_bal = wallet + bank
+
+        if total_bal < 1000:
             await close_db(db)
-            await query.answer(f"❌ Need 1,000 credits. You have {bal:,}", show_alert=True)
+            await query.answer(f"❌ Need 1,000 credits. You have {total_bal:,}", show_alert=True)
             return
 
-        await db.execute("UPDATE users SET balance = balance - 1000 WHERE user_id = $1", user.id)
+        # Wallet se pehle, phir bank se
+        if wallet >= 1000:
+            await db.execute("UPDATE users SET balance = balance - 1000 WHERE user_id = $1", user.id)
+        else:
+            wallet_taken = wallet
+            bank_taken = 1000 - wallet_taken
+
+            await db.execute("UPDATE users SET balance = 0 WHERE user_id = $1", user.id)
+            await db.execute(
+                "INSERT INTO bank (user_id, balance) VALUES ($1, 0) ON CONFLICT (user_id) DO NOTHING",
+                user.id
+            )
+            await db.execute("UPDATE bank SET balance = balance - $1 WHERE user_id = $2", bank_taken, user.id)
+
         await close_db(db)
 
         lobby["players"].append({"id": user.id, "name": user.first_name})
@@ -5500,6 +5516,7 @@ async def imposter_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("❌ Game already started!", show_alert=True)
             return
 
+        # Refund wallet mein
         db = await get_db()
         await db.execute("UPDATE users SET balance = balance + 1000 WHERE user_id = $1", user.id)
         await close_db(db)
@@ -5558,7 +5575,7 @@ async def imposter_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
         return
 
-# ============================================================
+# ============ LOBBY CALLBACKS ============
 # ============ GAME START LOGIC ==============================
 # ============================================================
 
@@ -5665,9 +5682,9 @@ async def imposter_start_game(context, chat_id, lobby, lobby_msg_id):
 # ============================================================
 
 async def imposter_clue_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle user's DM clue reply"""
+    """Handle user's DM clue (no reply needed)"""
     msg = update.message
-    if not msg or not msg.reply_to_message:
+    if not msg:
         return
     
     user = update.effective_user
@@ -5679,7 +5696,7 @@ async def imposter_clue_handler(update: Update, context: ContextTypes.DEFAULT_TY
         if lb["status"] != "collecting_clues":
             continue
         p = imposter_get_player(lb, user.id)
-        if p and p.get("dm_msg_id") == msg.reply_to_message.message_id:
+        if p:
             chat_id = cid
             lobby = lb
             break
@@ -11159,9 +11176,9 @@ async def main():
     app.add_handler(CallbackQueryHandler(imposter_callback, pattern="^imp_(join|leave|start|cancel)$"), group=1)
     app.add_handler(CallbackQueryHandler(imposter_vote_callback, pattern="^imp_vote_\\d+$"), group=1)
     app.add_handler(MessageHandler(
-        filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
-        imposter_clue_handler
-     ), group=1)
+            filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
+            imposter_clue_handler
+        ), group=1)
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND,
