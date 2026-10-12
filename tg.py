@@ -5652,7 +5652,7 @@ async def imposter_start_game(context, chat_id, lobby, lobby_msg_id):
         chat_id,
         "✅ <b>All secret words sent to DMs!</b>\n\n"
         "📩 Check your DM and reply with <b>ONE WORD</b> clue.\n"
-        "⏰ You have 90 seconds!",
+        "⏰ You have 60 seconds!",
         parse_mode="HTML"
     )
     
@@ -5714,10 +5714,10 @@ async def imposter_clue_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def imposter_clue_timer(context, chat_id, lobby):
-    """Timer for clue collection — 90 sec"""
+    """Timer for clue collection — 60 sec"""
     lobby["status"] = "collecting_clues"
     
-    await _asyncio.sleep(90)
+    await _asyncio.sleep(60)
     
     if chat_id not in imposter_lobbies:
         return
@@ -5768,7 +5768,7 @@ async def imposter_reveal_clues(context, chat_id, lobby):
     
     text += (
         f"\n💬 <b>DISCUSSION PHASE:</b>\n"
-        f"You have exactly <b>90 seconds</b> to discuss!"
+        f"You have exactly <b>60 seconds</b> to discuss!"
     )
     
     await context.bot.send_message(chat_id, text, parse_mode="HTML")
@@ -5778,8 +5778,8 @@ async def imposter_reveal_clues(context, chat_id, lobby):
 
 
 async def imposter_discussion_timer(context, chat_id, lobby):
-    """90 sec discussion, then voting"""
-    await _asyncio.sleep(90)
+    """60 sec discussion, then voting"""
+    await _asyncio.sleep(60)
     
     if chat_id not in imposter_lobbies:
         return
@@ -11152,18 +11152,25 @@ async def main():
     app.add_handler(CommandHandler("createcode", createcode))
     app.add_handler(CommandHandler("deletecode", deletecode))
     app.add_handler(CommandHandler("codestats", codestats))
-    # ============ IMPOSTER GAME HANDLERS ============
+    app.add_handler(MessageHandler(filters.ALL, track_all_activity), group=0)
+app.add_handler(MessageHandler(filters.ChatType.GROUP | filters.ChatType.SUPERGROUP, track_group))
+
+# 🔥 IMPOSTER HANDLERS — yahan paste karo
     app.add_handler(CommandHandler("imposter", imposter))
     app.add_handler(CallbackQueryHandler(imposter_callback, pattern="^imp_(join|leave|start|cancel)$"))
     app.add_handler(CallbackQueryHandler(imposter_vote_callback, pattern="^imp_vote_\\d+$"))
     app.add_handler(MessageHandler(
         filters.ChatType.PRIVATE & filters.TEXT & filters.REPLY & ~filters.COMMAND,
         imposter_clue_handler
-     ))
-    app.add_handler(MessageHandler(
-        filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND,
-        imposter_fixer_guess_handler
     ))
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND,
+            imposter_fixer_guess_handler
+        ),
+        group=1
+    )
+
 
     # ============ TIC TAC TOE ==========
     app.add_handler(CommandHandler("ttt", ttt))
