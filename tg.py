@@ -5839,9 +5839,10 @@ async def imposter_start_voting(context, chat_id, lobby):
     
     lobby["vote_msg_id"] = sent.message_id
     lobby["votes"] = {}
+    lobby["vote_start_time"] = _asyncio.get_event_loop().time()
     
-    # Start timer
-    _asyncio.create_task(imposter_vote_timer(context, chat_id, lobby))
+    # Start timer — save task so we can cancel
+    lobby["vote_task"] = _asyncio.create_task(imposter_vote_timer(context, chat_id, lobby))
 
 
 # ============ VOTE CALLBACK ============
