@@ -11155,14 +11155,13 @@ async def main():
     app.add_handler(MessageHandler(filters.ALL, track_all_activity), group=0)
     app.add_handler(MessageHandler(filters.ChatType.GROUP | filters.ChatType.SUPERGROUP, track_group))
 
-# 🔥 IMPOSTER HANDLERS — yahan paste karo
-    app.add_handler(CommandHandler("imposter", imposter))
-    app.add_handler(CallbackQueryHandler(imposter_callback, pattern="^imp_(join|leave|start|cancel)$"))
-    app.add_handler(CallbackQueryHandler(imposter_vote_callback, pattern="^imp_vote_\\d+$"))
+    app.add_handler(CommandHandler("imposter", imposter), group=1)
+    app.add_handler(CallbackQueryHandler(imposter_callback, pattern="^imp_(join|leave|start|cancel)$"), group=1)
+    app.add_handler(CallbackQueryHandler(imposter_vote_callback, pattern="^imp_vote_\\d+$"), group=1)
     app.add_handler(MessageHandler(
-        filters.ChatType.PRIVATE & filters.TEXT & filters.REPLY & ~filters.COMMAND,
+        filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
         imposter_clue_handler
-    ))
+     ), group=1)
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND,
