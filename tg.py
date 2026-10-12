@@ -6193,19 +6193,25 @@ async def imposter_fixer_guess_handler(update: Update, context: ContextTypes.DEF
     if not msg:
         return
     
+    print(f"🔍 FIXER GUESS HANDLER: chat_id={msg.chat.id}, text={msg.text}")
+    
     chat_id = msg.chat.id
     user = msg.from_user
     
     if chat_id not in imposter_lobbies:
+        print(f"❌ Lobby not found for chat {chat_id}")
         return
     
     lobby = imposter_lobbies[chat_id]
+    print(f"🔍 Lobby status: {lobby['status']}, awaiting: {lobby.get('awaiting_fixer_guess')}")
     
     if lobby["status"] != "fixer_guessing":
         return
     
     if not lobby.get("awaiting_fixer_guess"):
         return
+    
+    print(f"🔍 Fixer ID: {lobby['fixer_id']}, User ID: {user.id}")
     
     if user.id != lobby["fixer_id"]:
         return
@@ -6224,9 +6230,11 @@ async def imposter_fixer_guess_handler(update: Update, context: ContextTypes.DEF
     
     fixer = imposter_get_player(players, fixer_id)
     
+    print(f"🔍 Guess: '{guess}', Real: '{real_word}'")
+    
     # Check guess
     if guess == real_word:
-        # FIXER WINS (guessed correct group word)
+        # FIXER WINS
         db = await get_db()
         await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", pool, fixer_id)
         await close_db(db)
@@ -6241,12 +6249,10 @@ async def imposter_fixer_guess_handler(update: Update, context: ContextTypes.DEF
             parse_mode="HTML"
         )
     else:
-        # FIXER LOSES (wrong guess)
-        # Split pool among fans
+        # FIXER LOSES
         fans = [p for p in players if p["id"] != fixer_id]
         
         if not fans:
-            # Edge case — fixer alone (shouldn't happen)
             db = await get_db()
             await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", pool, fixer_id)
             await close_db(db)
@@ -6273,7 +6279,6 @@ async def imposter_fixer_guess_handler(update: Update, context: ContextTypes.DEF
     
     # Cleanup
     del imposter_lobbies[chat_id]
-
 
 async def imposter_fixer_guess_timer(context, chat_id, lobby):
     """30 sec for fixer to guess"""
