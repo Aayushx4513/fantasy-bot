@@ -5367,7 +5367,7 @@ def imposter_lobby_text(lobby):
     host_name = host["name"] if host else "Unknown"
 
     text = (
-        f"🕵️ <b>UNDERCOVER LOBBY</b> 🕵️\n"
+        f"🕵️ <b>IMPOSTER LOBBY</b> 🕵️\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
         f"👑 <b>Host:</b> {imposter_tag(host_id, host_name)}\n"
         f"👥 <b>Players:</b> {len(players)} / 3 minimum\n\n"
@@ -5611,7 +5611,7 @@ async def imposter_start_game(context, chat_id, lobby, lobby_msg_id):
             )
         else:
             dm_text = (
-                f"🕵️ <b>Undercover Game</b> 🕵️\n"
+                f"🕵️ <b>Imposter Game</b> 🕵️\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"🎯 <b>Theme:</b> Cricket\n"
                 f"🔑 <b>Your Secret Word:</b> <code>{word}</code>\n\n"
