@@ -5813,7 +5813,6 @@ async def imposter_start_voting(context, chat_id, lobby):
     lobby["status"] = "voting_phase"
     players = lobby["players"]
     
-    # Build vote buttons — one per player
     keyboard = []
     for p in players:
         keyboard.append([
@@ -5839,13 +5838,10 @@ async def imposter_start_voting(context, chat_id, lobby):
     
     lobby["vote_msg_id"] = sent.message_id
     lobby["votes"] = {}
-    lobby["vote_start_time"] = _asyncio.get_event_loop().time()
     
-    # Start timer — save task so we can cancel
+    # Save task for cancellation
     lobby["vote_task"] = _asyncio.create_task(imposter_vote_timer(context, chat_id, lobby))
 
-
-# ============ VOTE CALLBACK ============
 async def imposter_vote_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = update.effective_user
@@ -5862,18 +5858,15 @@ async def imposter_vote_callback(update: Update, context: ContextTypes.DEFAULT_T
         await query.answer("❌ Voting not active!", show_alert=True)
         return
     
-    # Check player
     voter = imposter_get_player(lobby, user.id)
     if not voter:
         await query.answer("❌ You're not in this game!", show_alert=True)
         return
     
-    # Check if already voted
     if user.id in lobby["votes"]:
         await query.answer("❌ You already voted! No changes allowed.", show_alert=True)
         return
     
-    # Parse target
     target_id = int(data.replace("imp_vote_", ""))
     
     if target_id == user.id:
@@ -5885,51 +5878,85 @@ async def imposter_vote_callback(update: Update, context: ContextTypes.DEFAULT_T
         await query.answer("❌ Invalid target!", show_alert=True)
         return
     
-    # Lock vote
     lobby["votes"][user.id] = target_id
     
     await query.answer(f"✅ Voted for {target['name']}")
     
-    # Public vote announcement
     await context.bot.send_message(
         chat_id,
         f"🗳️ {imposter_tag(user.id, user.first_name)} publicly voted for {imposter_tag(target_id, target['name'])}!",
         parse_mode="HTML"
     )
     
-    # If all voted, end early
+    # 🔥 If all voted, cancel timer and resolve
     if len(lobby["votes"]) >= len(lobby["players"]):
+        if lobby.get("vote_task") and not lobby["vote_task"].done():
+            lobby["vote_task"].cancel()
+            lobby["vote_task"] = None
+        
         await imposter_resolve_votes(context, chat_id, lobby)
 
-
-# ============ VOTE TIMER ============
 async def imposter_vote_timer(context, chat_id, lobby):
-    """50 sec vote timer with reminders at 20s and 10s"""
+    """50 sec vote timer with reminders + auto-eliminate if 1 pending"""
     
-    # Wait 30 sec → remind at 20s
-    await _asyncio.sleep(30)
-    if chat_id not in imposter_lobbies:
-        return
-    if lobby["status"] != "voting_phase":
-        return
-    await imposter_vote_reminder(context, chat_id, lobby, 20)
+    try:
+        # Wait 30 sec → remind at 20s
+        await _asyncio.sleep(30)
+        
+        if chat_id not in imposter_lobbies:
+            return
+        if lobby["status"] != "voting_phase":
+            return
+        
+        await imposter_vote_reminder(context, chat_id, lobby, 20)
+        
+        # Check if only 1 player pending → auto-eliminate after 5 sec
+        pending = [p for p in lobby["players"] if p["id"] not in lobby["votes"]]
+        
+        if len(pending) == 1:
+            await _asyncio.sleep(5)
+            if chat_id not in imposter_lobbies:
+                return
+            if lobby["status"] != "voting_phase":
+                return
+            
+            if pending[0]["id"] not in lobby["votes"]:
+                await context.bot.send_message(
+                    chat_id,
+                    f"⏰ <b>Time's up!</b>\n\n"
+                    f"{imposter_tag(pending[0]['id'], pending[0]['name'])} didn't vote in time — auto-eliminated!",
+                    parse_mode="HTML"
+                )
+                
+                lobby["vote_task"] = None
+                await imposter_resolve_votes(context, chat_id, lobby, force_eliminate=pending[0]["id"])
+                return
+        
+        # Wait 10 sec → remind at 10s
+        await _asyncio.sleep(10)
+        if chat_id not in imposter_lobbies:
+            return
+        if lobby["status"] != "voting_phase":
+            return
+        
+        await imposter_vote_reminder(context, chat_id, lobby, 10)
+        
+        # Wait 10 sec → end voting
+        await _asyncio.sleep(10)
+        if chat_id not in imposter_lobbies:
+            return
+        if lobby["status"] != "voting_phase":
+            return
+        
+        lobby["vote_task"] = None
+        await imposter_resolve_votes(context, chat_id, lobby)
     
-    # Wait 10 sec → remind at 10s
-    await _asyncio.sleep(10)
-    if chat_id not in imposter_lobbies:
+    except _asyncio.CancelledError:
+        print(f"✅ Vote timer cancelled for {chat_id}")
         return
-    if lobby["status"] != "voting_phase":
-        return
-    await imposter_vote_reminder(context, chat_id, lobby, 10)
-    
-    # Wait 10 sec → end voting
-    await _asyncio.sleep(10)
-    if chat_id not in imposter_lobbies:
-        return
-    if lobby["status"] != "voting_phase":
-        return
-    
-    await imposter_resolve_votes(context, chat_id, lobby)
+    except Exception as e:
+        print(f"❌ Vote timer error: {e}")
+
 
 
 async def imposter_vote_reminder(context, chat_id, lobby, secs):
@@ -5951,11 +5978,10 @@ async def imposter_vote_reminder(context, chat_id, lobby, secs):
     await context.bot.send_message(chat_id, text, parse_mode="HTML")
 
 
-# ============ VOTE RESOLUTION ============
-async def imposter_resolve_votes(context, chat_id, lobby):
+async def imposter_resolve_votes(context, chat_id, lobby, force_eliminate=None):
     """Count votes, eliminate highest, check winner"""
     
-    if lobby["status"] != "voting_phase":
+    if lobby["status"] not in ["voting_phase", "resolved"]:
         return
     
     lobby["status"] = "resolved"
@@ -5964,14 +5990,43 @@ async def imposter_resolve_votes(context, chat_id, lobby):
     votes = lobby["votes"]
     fixer_id = lobby["fixer_id"]
     
+    # 🔥 Force eliminate (auto-eliminate)
+    if force_eliminate:
+        eliminated_id = force_eliminate
+        eliminated = imposter_get_player(lobby, eliminated_id)
+        
+        if not eliminated:
+            await imposter_refund_all(context, chat_id, lobby)
+            return
+        
+        if eliminated_id == fixer_id:
+            await context.bot.send_message(
+                chat_id,
+                f"🎯 <b>CORRECT VOTE!</b>\n\n"
+                f"Brilliant deduction! You caught the Impostor: "
+                f"{imposter_tag(eliminated_id, eliminated['name'])}!\n"
+                f"<i>(Their unique word was {lobby['fake_word']})</i>\n\n"
+                f"🚨 <b>BUT WAIT...</b>\n"
+                f"{imposter_tag(eliminated_id, eliminated['name'])}, you have exactly "
+                f"<b>ONE CHANCE</b>.\n"
+                f"Type what you think the group's word was right here in the chat!\n"
+                f"<b>(You have 30 seconds!)</b>",
+                parse_mode="HTML"
+            )
+            lobby["status"] = "fixer_guessing"
+            _asyncio.create_task(imposter_fixer_guess_timer(context, chat_id, lobby))
+            lobby["awaiting_fixer_guess"] = True
+            return
+        else:
+            await imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id)
+            return
+    
     # Count votes
     vote_count = {}
     for target_id in votes.values():
         vote_count[target_id] = vote_count.get(target_id, 0) + 1
     
-    # Find highest voted
     if not vote_count:
-        # No votes — no one eliminated
         await context.bot.send_message(
             chat_id,
             "⚠️ <b>No votes were cast!</b>\n\n"
@@ -5985,14 +6040,11 @@ async def imposter_resolve_votes(context, chat_id, lobby):
     top_voted = [uid for uid, c in vote_count.items() if c == max_votes]
     
     if len(top_voted) > 1:
-        # Tie
         await context.bot.send_message(
             chat_id,
             "⚠️ <b>TIE!</b>\n\nNo clear majority. Nobody eliminated.",
             parse_mode="HTML"
         )
-        # Handle tie — continue or end?
-        # For now, refund
         await imposter_refund_all(context, chat_id, lobby)
         return
     
@@ -6001,7 +6053,6 @@ async def imposter_resolve_votes(context, chat_id, lobby):
     
     # Check if fixer eliminated
     if eliminated_id == fixer_id:
-        # FIXER CAUGHT
         await context.bot.send_message(
             chat_id,
             f"🎯 <b>CORRECT VOTE!</b>\n\n"
@@ -6015,17 +6066,11 @@ async def imposter_resolve_votes(context, chat_id, lobby):
             f"<b>(You have 30 seconds!)</b>",
             parse_mode="HTML"
         )
-        
-        # Start fixer guess timer
         lobby["status"] = "fixer_guessing"
         _asyncio.create_task(imposter_fixer_guess_timer(context, chat_id, lobby))
-        
-        # Set expecting guess flag
         lobby["awaiting_fixer_guess"] = True
         return
-    
     else:
-        # INNOCENT VOTED OUT
         await imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id)
 
 
