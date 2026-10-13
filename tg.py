@@ -6257,43 +6257,58 @@ async def imposter_new_round_timer(context, chat_id, lobby):
     await imposter_reveal_clues(context, chat_id, lobby)
 
 async def imposter_fixer_guess_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Fixer types their guess in the group chat"""
+    """Fixer guess handler with heavy debug"""
     msg = update.message
     if not msg:
+        print("❌ NO MSG")
         return
     
     chat_id = msg.chat.id
     user = msg.from_user
+    text = msg.text or ""
     
-    print(f"🔍 FIXER HANDLER: chat={chat_id}, user={user.id}, text={msg.text}")
+    print(f"\n{'='*50}")
+    print(f"🔍 FIXER HANDLER CALLED")
+    print(f"   chat_id: {chat_id}")
+    print(f"   user_id: {user.id}")
+    print(f"   text: {text[:50]}")
+    print(f"   active lobbies: {list(imposter_lobbies.keys())}")
     
     if chat_id not in imposter_lobbies:
-        print(f"❌ No lobby for {chat_id}")
+        print(f"   ❌ No lobby for {chat_id}")
+        print(f"{'='*50}\n")
         return
     
     lobby = imposter_lobbies[chat_id]
-    print(f"🔍 Status: {lobby['status']}, awaiting: {lobby.get('awaiting_fixer_guess')}, fixer: {lobby['fixer_id']}")
     
-    # 🔥 FIX: Sirf fixer_guessing status accept karo
+    print(f"   lobby status: {lobby['status']}")
+    print(f"   awaiting_fixer_guess: {lobby.get('awaiting_fixer_guess')}")
+    print(f"   fixer_id: {lobby['fixer_id']}")
+    print(f"   user is fixer: {user.id == lobby['fixer_id']}")
+    
     if lobby["status"] != "fixer_guessing":
-        print(f"❌ Wrong status: {lobby['status']}")
+        print(f"   ❌ Wrong status: {lobby['status']}")
+        print(f"{'='*50}\n")
         return
     
     if not lobby.get("awaiting_fixer_guess"):
-        print(f"❌ awaiting_fixer_guess not set")
+        print(f"   ❌ awaiting not set")
+        print(f"{'='*50}\n")
         return
     
     if user.id != lobby["fixer_id"]:
-        print(f"❌ Not the fixer")
+        print(f"   ❌ Not fixer")
+        print(f"{'='*50}\n")
         return
     
-    print(f"✅ Fixer guess captured!")
+    print(f"   ✅ ALL CHECKS PASSED — PROCESSING GUESS")
+    print(f"{'='*50}\n")
     
     # Fixer guessed
     lobby["awaiting_fixer_guess"] = False
     lobby["status"] = "resolved"
     
-    guess = msg.text.strip().lower()
+    guess = text.strip().lower()
     real_word = lobby["real_word"].lower()
     fake_word = lobby["fake_word"]
     
@@ -6303,9 +6318,6 @@ async def imposter_fixer_guess_handler(update: Update, context: ContextTypes.DEF
     
     fixer = imposter_get_player(players, fixer_id)
     
-    print(f"🔍 Guess: '{guess}', Real: '{real_word}'")
-    
-    # Check guess
     if guess == real_word:
         # FIXER WINS
         db = await get_db()
@@ -6351,7 +6363,8 @@ async def imposter_fixer_guess_handler(update: Update, context: ContextTypes.DEF
             )
     
     # Cleanup
-    del imposter_lobbies[chat_id]
+    if chat_id in imposter_lobbies:
+        del imposter_lobbies[chat_id]
 
 async def imposter_fixer_guess_timer(context, chat_id, lobby):
     """30 sec for fixer to guess"""
@@ -11302,7 +11315,7 @@ async def main():
         imposter_clue_handler
     ))
     app.add_handler(MessageHandler(
-        filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND,
+        filters.TEXT & ~filters.COMMAND,
         imposter_fixer_guess_handler
     ))
 
