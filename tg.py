@@ -5785,7 +5785,7 @@ async def imposter_reveal_clues(context, chat_id, lobby):
     
     text += (
         f"\n💬 <b>DISCUSSION PHASE:</b>\n"
-        f"You have exactly <b>60 seconds</b> to discuss!"
+        f"You have exactly <b>30 seconds</b> to discuss!"
     )
     
     await context.bot.send_message(chat_id, text, parse_mode="HTML")
@@ -5795,8 +5795,8 @@ async def imposter_reveal_clues(context, chat_id, lobby):
 
 
 async def imposter_discussion_timer(context, chat_id, lobby):
-    """60 sec discussion, then voting"""
-    await _asyncio.sleep(60)
+    """30 sec discussion, then voting"""
+    await _asyncio.sleep(30)
     
     if chat_id not in imposter_lobbies:
         return
@@ -11228,13 +11228,11 @@ async def main():
         filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
         imposter_clue_handler
     ))
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND,
-            imposter_fixer_guess_handler
-        ),
-        group=1
-    )
+        app.add_handler(MessageHandler(
+        filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND,
+        imposter_fixer_guess_handler
+    ))
+
 
 
     # ============ TIC TAC TOE ==========
