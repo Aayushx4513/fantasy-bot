@@ -11228,7 +11228,7 @@ async def main():
         filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
         imposter_clue_handler
     ))
-        app.add_handler(MessageHandler(
+    app.add_handler(MessageHandler(
         filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND,
         imposter_fixer_guess_handler
     ))
