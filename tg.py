@@ -5891,10 +5891,12 @@ async def imposter_vote_callback(update: Update, context: ContextTypes.DEFAULT_T
             lobby["vote_task"].cancel()
             lobby["vote_task"] = None
         
-        await imposter_resolve_votes(context, chat_id, lobby)
+        # 🔥 RACE CONDITION FIX
+        if not lobby.get("resolved_flag"):
+            await imposter_resolve_votes(context, chat_id, lobby)
 
 async def imposter_vote_timer(context, chat_id, lobby):
-    """50 sec vote timer with reminders + auto-eliminate if 1 pending"""
+    """50 sec vote timer with reminders + auto-eliminate"""
     
     try:
         # Wait 30 sec → remind at 20s
@@ -5905,40 +5907,50 @@ async def imposter_vote_timer(context, chat_id, lobby):
         if lobby["status"] != "voting_phase":
             return
         
-        await imposter_vote_reminder(context, chat_id, lobby, 20)
-        
-        # Check if only 1 player pending → auto-eliminate after 5 sec
+        # 20s reminder
         pending = [p for p in lobby["players"] if p["id"] not in lobby["votes"]]
+        if pending:
+            text = f"⏰ <b>20 SECONDS REMAINING!</b>\n\nStill waiting:\n"
+            for p in pending:
+                text += f"• {imposter_tag(p['id'], p['name'])}\n"
+            await context.bot.send_message(chat_id, text, parse_mode="HTML")
         
+        # Auto-eliminate if only 1 pending
         if len(pending) == 1:
             await _asyncio.sleep(5)
             if chat_id not in imposter_lobbies:
                 return
             if lobby["status"] != "voting_phase":
                 return
+            if lobby.get("resolved_flag"):
+                return
             
             if pending[0]["id"] not in lobby["votes"]:
                 await context.bot.send_message(
                     chat_id,
                     f"⏰ <b>Time's up!</b>\n\n"
-                    f"{imposter_tag(pending[0]['id'], pending[0]['name'])} didn't vote in time — auto-eliminated!",
+                    f"{imposter_tag(pending[0]['id'], pending[0]['name'])} didn't vote — auto-eliminated!",
                     parse_mode="HTML"
                 )
-                
                 lobby["vote_task"] = None
                 await imposter_resolve_votes(context, chat_id, lobby, force_eliminate=pending[0]["id"])
                 return
         
-        # Wait 10 sec → remind at 10s
+        # Wait 10 sec → 10s reminder
         await _asyncio.sleep(10)
         if chat_id not in imposter_lobbies:
             return
         if lobby["status"] != "voting_phase":
             return
         
-        await imposter_vote_reminder(context, chat_id, lobby, 10)
+        pending = [p for p in lobby["players"] if p["id"] not in lobby["votes"]]
+        if pending:
+            text = f"⏰ <b>10 SECONDS REMAINING!</b>\n\nStill waiting:\n"
+            for p in pending:
+                text += f"• {imposter_tag(p['id'], p['name'])}\n"
+            await context.bot.send_message(chat_id, text, parse_mode="HTML")
         
-        # Wait 10 sec → end voting
+        # Wait 10 sec → end
         await _asyncio.sleep(10)
         if chat_id not in imposter_lobbies:
             return
@@ -5946,10 +5958,13 @@ async def imposter_vote_timer(context, chat_id, lobby):
             return
         
         lobby["vote_task"] = None
-        await imposter_resolve_votes(context, chat_id, lobby)
+        
+        # 🔥 RACE CONDITION FIX
+        if not lobby.get("resolved_flag"):
+            await imposter_resolve_votes(context, chat_id, lobby)
     
     except _asyncio.CancelledError:
-        print(f"✅ Vote timer cancelled for {chat_id}")
+        print(f"✅ Vote timer cancelled: {chat_id}")
         return
     except Exception as e:
         print(f"❌ Vote timer error: {e}")
@@ -5978,11 +5993,17 @@ async def imposter_vote_reminder(context, chat_id, lobby, secs):
 async def imposter_resolve_votes(context, chat_id, lobby, force_eliminate=None):
     """Count votes, eliminate highest, check winner"""
     
-    # 🔥 FIX: accepted statuses
-    if lobby["status"] not in ["voting_phase", "resolved"]:
+    # 🔥 RACE CONDITION FIX
+    if lobby.get("resolved_flag"):
+        print(f"⚠️ Already resolved for {chat_id}")
+        return
+    
+    if lobby["status"] not in ["voting_phase"]:
         print(f"❌ Resolve: wrong status {lobby['status']}")
         return
     
+    # Set flag immediately to prevent double processing
+    lobby["resolved_flag"] = True
     lobby["status"] = "resolved"
     
     players = lobby["players"]
