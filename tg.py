@@ -6206,7 +6206,6 @@ async def imposter_new_round_timer(context, chat_id, lobby):
     # Reveal and vote again
     await imposter_reveal_clues(context, chat_id, lobby)
 
-# ============================================================
 async def imposter_fixer_guess_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Fixer types their guess in the group chat"""
     msg = update.message
@@ -6216,24 +6215,29 @@ async def imposter_fixer_guess_handler(update: Update, context: ContextTypes.DEF
     chat_id = msg.chat.id
     user = msg.from_user
     
+    print(f"🔍 FIXER HANDLER: chat={chat_id}, user={user.id}, text={msg.text}")
+    
     if chat_id not in imposter_lobbies:
+        print(f"❌ No lobby for {chat_id}")
         return
     
     lobby = imposter_lobbies[chat_id]
+    print(f"🔍 Status: {lobby['status']}, awaiting: {lobby.get('awaiting_fixer_guess')}, fixer: {lobby['fixer_id']}")
     
-    # 🔥 FIX: Accept all relevant statuses
-    if lobby["status"] not in ["fixer_guessing", "voting", "voting_phase", "resolved"]:
+    # 🔥 FIX: Sirf fixer_guessing status accept karo
+    if lobby["status"] != "fixer_guessing":
+        print(f"❌ Wrong status: {lobby['status']}")
         return
     
-    # 🔥 If status is voting but fixer pakda gaya hai (awaiting set nahi), toh set karo
-    if lobby["status"] in ["voting", "voting_phase"] and not lobby.get("awaiting_fixer_guess"):
-        return  # Voting phase mein fixer ka guess nahi
-    
     if not lobby.get("awaiting_fixer_guess"):
+        print(f"❌ awaiting_fixer_guess not set")
         return
     
     if user.id != lobby["fixer_id"]:
+        print(f"❌ Not the fixer")
         return
+    
+    print(f"✅ Fixer guess captured!")
     
     # Fixer guessed
     lobby["awaiting_fixer_guess"] = False
@@ -6249,6 +6253,9 @@ async def imposter_fixer_guess_handler(update: Update, context: ContextTypes.DEF
     
     fixer = imposter_get_player(players, fixer_id)
     
+    print(f"🔍 Guess: '{guess}', Real: '{real_word}'")
+    
+    # Check guess
     if guess == real_word:
         # FIXER WINS
         db = await get_db()
