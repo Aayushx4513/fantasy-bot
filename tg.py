@@ -5763,14 +5763,11 @@ async def imposter_clue_timer(context, chat_id, lobby):
     
     await imposter_reveal_clues(context, chat_id, lobby)
 
-# ============================================================
-# ============ CLUES REVEAL + VOTING =========================
-# ============================================================
-
 async def imposter_reveal_clues(context, chat_id, lobby):
     """Reveal all clues, then start voting"""
     
-    lobby["status"] = "voting"
+    # 🔥 FIX: "voting_phase" use karo, "voting" nahi
+    lobby["status"] = "voting_phase"
     players = lobby["players"]
     clues = lobby["clues"]
     
@@ -5801,7 +5798,7 @@ async def imposter_discussion_timer(context, chat_id, lobby):
     if chat_id not in imposter_lobbies:
         return
     
-    if lobby["status"] != "voting":
+    if lobby["status"] != "voting_phase":
         return
     
     await imposter_start_voting(context, chat_id, lobby)
@@ -5981,7 +5978,9 @@ async def imposter_vote_reminder(context, chat_id, lobby, secs):
 async def imposter_resolve_votes(context, chat_id, lobby, force_eliminate=None):
     """Count votes, eliminate highest, check winner"""
     
+    # 🔥 FIX: accepted statuses
     if lobby["status"] not in ["voting_phase", "resolved"]:
+        print(f"❌ Resolve: wrong status {lobby['status']}")
         return
     
     lobby["status"] = "resolved"
@@ -5990,7 +5989,7 @@ async def imposter_resolve_votes(context, chat_id, lobby, force_eliminate=None):
     votes = lobby["votes"]
     fixer_id = lobby["fixer_id"]
     
-    # 🔥 Force eliminate (auto-eliminate)
+    # 🔥 FORCE ELIMINATE (auto-eliminate case)
     if force_eliminate:
         eliminated_id = force_eliminate
         eliminated = imposter_get_player(lobby, eliminated_id)
@@ -6014,8 +6013,8 @@ async def imposter_resolve_votes(context, chat_id, lobby, force_eliminate=None):
                 parse_mode="HTML"
             )
             lobby["status"] = "fixer_guessing"
-            _asyncio.create_task(imposter_fixer_guess_timer(context, chat_id, lobby))
             lobby["awaiting_fixer_guess"] = True
+            _asyncio.create_task(imposter_fixer_guess_timer(context, chat_id, lobby))
             return
         else:
             await imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id)
@@ -6029,8 +6028,7 @@ async def imposter_resolve_votes(context, chat_id, lobby, force_eliminate=None):
     if not vote_count:
         await context.bot.send_message(
             chat_id,
-            "⚠️ <b>No votes were cast!</b>\n\n"
-            "Nobody eliminated. Game over.",
+            "⚠️ <b>No votes were cast!</b>\n\nNobody eliminated. Game over.",
             parse_mode="HTML"
         )
         await imposter_refund_all(context, chat_id, lobby)
@@ -6051,8 +6049,12 @@ async def imposter_resolve_votes(context, chat_id, lobby, force_eliminate=None):
     eliminated_id = top_voted[0]
     eliminated = imposter_get_player(lobby, eliminated_id)
     
-    # Check if fixer eliminated
+    if not eliminated:
+        await imposter_refund_all(context, chat_id, lobby)
+        return
+    
     if eliminated_id == fixer_id:
+        # FIXER CAUGHT
         await context.bot.send_message(
             chat_id,
             f"🎯 <b>CORRECT VOTE!</b>\n\n"
@@ -6067,8 +6069,8 @@ async def imposter_resolve_votes(context, chat_id, lobby, force_eliminate=None):
             parse_mode="HTML"
         )
         lobby["status"] = "fixer_guessing"
-        _asyncio.create_task(imposter_fixer_guess_timer(context, chat_id, lobby))
         lobby["awaiting_fixer_guess"] = True
+        _asyncio.create_task(imposter_fixer_guess_timer(context, chat_id, lobby))
         return
     else:
         await imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id)
@@ -6184,34 +6186,30 @@ async def imposter_new_round_timer(context, chat_id, lobby):
     await imposter_reveal_clues(context, chat_id, lobby)
 
 # ============================================================
-# ============ FIXER'S LAST GUESS ============================
-# ============================================================
-
 async def imposter_fixer_guess_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Fixer types their guess in the group chat"""
     msg = update.message
     if not msg:
         return
     
-    print(f"🔍 FIXER GUESS HANDLER: chat_id={msg.chat.id}, text={msg.text}")
-    
     chat_id = msg.chat.id
     user = msg.from_user
     
     if chat_id not in imposter_lobbies:
-        print(f"❌ Lobby not found for chat {chat_id}")
         return
     
     lobby = imposter_lobbies[chat_id]
-    print(f"🔍 Lobby status: {lobby['status']}, awaiting: {lobby.get('awaiting_fixer_guess')}")
     
-    if lobby["status"] != "fixer_guessing":
+    # 🔥 FIX: Accept all relevant statuses
+    if lobby["status"] not in ["fixer_guessing", "voting", "voting_phase", "resolved"]:
         return
+    
+    # 🔥 If status is voting but fixer pakda gaya hai (awaiting set nahi), toh set karo
+    if lobby["status"] in ["voting", "voting_phase"] and not lobby.get("awaiting_fixer_guess"):
+        return  # Voting phase mein fixer ka guess nahi
     
     if not lobby.get("awaiting_fixer_guess"):
         return
-    
-    print(f"🔍 Fixer ID: {lobby['fixer_id']}, User ID: {user.id}")
     
     if user.id != lobby["fixer_id"]:
         return
@@ -6230,9 +6228,6 @@ async def imposter_fixer_guess_handler(update: Update, context: ContextTypes.DEF
     
     fixer = imposter_get_player(players, fixer_id)
     
-    print(f"🔍 Guess: '{guess}', Real: '{real_word}'")
-    
-    # Check guess
     if guess == real_word:
         # FIXER WINS
         db = await get_db()
