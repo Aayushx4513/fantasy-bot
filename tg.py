@@ -11235,7 +11235,6 @@ async def main():
     app.add_handler(CommandHandler("penalty", penalty_preview))
     app.add_handler(CommandHandler("penaltystatus", penalty_status))
     app.add_handler(CommandHandler("profile", profile))
-    app.add_handler(CommandHandler("imposter", imposter))
     # ============ HILO GAME ==========
     app.add_handler(CommandHandler("hilo", hilo))
     app.add_handler(CallbackQueryHandler(hilo_callback, pattern="^hilo_"))
@@ -11306,7 +11305,7 @@ async def main():
     app.add_handler(CommandHandler("createcode", createcode))
     app.add_handler(CommandHandler("deletecode", deletecode))
     app.add_handler(CommandHandler("codestats", codestats))
-
+    app.add_handler(CommandHandler("end_imposter", end_imposter))
     app.add_handler(CommandHandler("imposter", imposter))
     app.add_handler(CallbackQueryHandler(imposter_callback, pattern="^imp_(join|leave|start|cancel)$"))
     app.add_handler(CallbackQueryHandler(imposter_vote_callback, pattern="^imp_vote_\\d+$"))
