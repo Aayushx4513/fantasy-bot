@@ -5575,6 +5575,61 @@ async def imposter_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
         return
 
+
+
+# ============ END IMPOSTER (Group Admin / Bot Admin / Host) ============
+async def end_imposter(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """End imposter game — only group admin, bot admin, or host"""
+    chat_id = update.message.chat.id
+    user = update.effective_user
+    
+    if chat_id not in imposter_lobbies:
+        await update.message.reply_text("❌ No active game!")
+        return
+    
+    lobby = imposter_lobbies[chat_id]
+    
+    # Check permission
+    is_bot_admin = user.id in ADMIN_IDS
+    is_host = user.id == lobby["host_id"]
+    
+    # Check group admin
+    is_group_admin = False
+    try:
+        member = await context.bot.get_chat_member(chat_id, user.id)
+        if member.status in ["administrator", "creator"]:
+            is_group_admin = True
+    except:
+        pass
+    
+    if not (is_bot_admin or is_host or is_group_admin):
+        await update.message.reply_text("❌ Only admins or host can end the game!")
+        return
+    
+    # Cancel vote timer
+    if lobby.get("vote_task") and not lobby["vote_task"].done():
+        lobby["vote_task"].cancel()
+        lobby["vote_task"] = None
+    
+    # Refund all players
+    db = await get_db()
+    for p in lobby["players"]:
+        await db.execute("UPDATE users SET balance = balance + 1000 WHERE user_id = $1", p["id"])
+    await close_db(db)
+    
+    # Send end message
+    await context.bot.send_message(
+        chat_id,
+        f"🛑 <b>GAME ENDED!</b>\n\n"
+        f"Ended by: {imposter_tag(user.id, user.first_name)}\n\n"
+        f"💰 All {len(lobby['players'])} players refunded 1,000 credits each.",
+        parse_mode="HTML"
+    )
+    
+    # Delete lobby
+    if chat_id in imposter_lobbies:
+        del imposter_lobbies[chat_id]
+
 # ============ LOBBY CALLBACKS ============
 # ============ GAME START LOGIC ==============================
 # ============================================================
@@ -5993,16 +6048,12 @@ async def imposter_vote_reminder(context, chat_id, lobby, secs):
 async def imposter_resolve_votes(context, chat_id, lobby, force_eliminate=None):
     """Count votes, eliminate highest, check winner"""
     
-    # 🔥 RACE CONDITION FIX
     if lobby.get("resolved_flag"):
-        print(f"⚠️ Already resolved for {chat_id}")
         return
     
-    if lobby["status"] not in ["voting_phase"]:
-        print(f"❌ Resolve: wrong status {lobby['status']}")
+    if lobby["status"] != "voting_phase":
         return
     
-    # Set flag immediately to prevent double processing
     lobby["resolved_flag"] = True
     lobby["status"] = "resolved"
     
@@ -6010,7 +6061,7 @@ async def imposter_resolve_votes(context, chat_id, lobby, force_eliminate=None):
     votes = lobby["votes"]
     fixer_id = lobby["fixer_id"]
     
-    # 🔥 FORCE ELIMINATE (auto-eliminate case)
+    # Force eliminate (auto-eliminate)
     if force_eliminate:
         eliminated_id = force_eliminate
         eliminated = imposter_get_player(lobby, eliminated_id)
@@ -6095,7 +6146,6 @@ async def imposter_resolve_votes(context, chat_id, lobby, force_eliminate=None):
         return
     else:
         await imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id)
-
 
 async def imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id):
     """Innocent was voted out — check if fixer wins or game continues"""
@@ -11172,7 +11222,7 @@ async def main():
     app.add_handler(CommandHandler("penalty", penalty_preview))
     app.add_handler(CommandHandler("penaltystatus", penalty_status))
     app.add_handler(CommandHandler("profile", profile))
-
+    app.add_handler(CommandHandler("imposter", imposter))
     # ============ HILO GAME ==========
     app.add_handler(CommandHandler("hilo", hilo))
     app.add_handler(CallbackQueryHandler(hilo_callback, pattern="^hilo_"))
