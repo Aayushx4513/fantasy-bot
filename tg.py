@@ -1,4 +1,5 @@
 # ============ IMPOSTER GAME IMPORTS ============
+import re as _re
 import json as _json
 import random as _random
 import asyncio as _asyncio
@@ -5368,6 +5369,13 @@ def imposter_get_player(lobby, user_id):
             return p
     return None
 
+def normalize_word(text):
+    """Normalize word — remove hyphens, dots, spaces, special chars"""
+    text = str(text).lower().strip()
+    # Remove all non-alphanumeric characters
+    text = _re.sub(r'[^a-z0-9]', '', text)
+    return text
+
 
 def imposter_tag(user_id, name):
     return f'<a href="tg://user?id={user_id}">{name}</a>'
@@ -6271,65 +6279,63 @@ async def imposter_new_round_timer(context, chat_id, lobby):
     await imposter_reveal_clues(context, chat_id, lobby)
 
 async def imposter_fixer_guess_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Fixer guess handler with reply support"""
+    """Fixer guess handler with reply support + normalization"""
     msg = update.message
     if not msg:
         return
-    
+
     chat_id = msg.chat.id
     user = msg.from_user
     text = msg.text or ""
-    
-    # 🔥 REPLY SUPPORT: Agar bot ke message pe reply kiya
     reply_msg = msg.reply_to_message
-    if reply_msg and reply_msg.from_user and reply_msg.from_user.id == context.bot.id:
-        # Reply to bot — text bhi valid hai
-        pass
-    
-    # (baaki code same rahega)
-    
-    print(f"\n{'='*50}")
-    print(f"🔍 FIXER HANDLER CALLED")
-    print(f"   chat_id: {chat_id}")
-    print(f"   user_id: {user.id}")
-    print(f"   text: {text[:50]}")
-    print(f"   is_reply_to_bot: {reply_msg is not None and reply_msg.from_user.id == context.bot.id}")
-    print(f"   active lobbies: {list(imposter_lobbies.keys())}")
-    
-    if chat_id not in imposter_lobbies:
+
+    lobby = imposter_lobbies.get(chat_id)
+    if not lobby:
         return
-    
-    lobby = imposter_lobbies[chat_id]
-    
-    if lobby["status"] != "fixer_guessing":
+    if lobby.get("status") != "fixer_guessing":
         return
-    
     if not lobby.get("awaiting_fixer_guess"):
         return
-    
-    if user.id != lobby["fixer_id"]:
+    if user.id != lobby.get("fixer_id"):
         return
-    
-    # Fixer guessed
+
+    # Reply-to-bot enforce
+    if not reply_msg or not reply_msg.from_user or reply_msg.from_user.id != context.bot.id:
+        return
+
+    # Non-text pe guess mat count karo
+    if not msg.text:
+        await msg.reply_text(
+            "⚠️ Guess <b>text</b> mein likh ke bhej. Sticker/GIF se guess nahi hota!",
+            parse_mode="HTML"
+        )
+        return
+
+    guess = normalize_word(text)
+    if not guess:
+        await msg.reply_text(
+            "⚠️ Valid word likh bhai (khali/sirf emoji nahi chalega).",
+            parse_mode="HTML"
+        )
+        return
+
     lobby["awaiting_fixer_guess"] = False
     lobby["status"] = "resolved"
-    
-    guess = text.strip().lower()
-    real_word = lobby["real_word"].lower()
+
+    real_word = normalize_word(lobby["real_word"])
     fake_word = lobby["fake_word"]
-    
+
     fixer_id = lobby["fixer_id"]
     players = lobby["players"]
     pool = len(players) * 1000
-    
-    fixer = imposter_get_player(players, fixer_id)
-    
+
+    fixer = imposter_get_player(lobby, fixer_id) or {"id": fixer_id, "name": "Unknown"}
+
     if guess == real_word:
-        # FIXER WINS
         db = await get_db()
         await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", pool, fixer_id)
         await close_db(db)
-        
+
         await context.bot.send_message(
             chat_id,
             f"😱 <b>THE FIXER STEALS THE WIN!</b> 😱\n\n"
@@ -6340,9 +6346,8 @@ async def imposter_fixer_guess_handler(update: Update, context: ContextTypes.DEF
             parse_mode="HTML"
         )
     else:
-        # FIXER LOSES
         fans = [p for p in players if p["id"] != fixer_id]
-        
+
         if not fans:
             db = await get_db()
             await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", pool, fixer_id)
@@ -6353,58 +6358,53 @@ async def imposter_fixer_guess_handler(update: Update, context: ContextTypes.DEF
             for fan in fans:
                 await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", share, fan["id"])
             await close_db(db)
-            
+
             fan_mentions = ", ".join([imposter_tag(f["id"], f["name"]) for f in fans])
-            
+
             await context.bot.send_message(
                 chat_id,
                 f"🎉 <b>THE MAJORITY WINS!</b> 🎉\n\n"
                 f"The Impostor was {imposter_tag(fixer_id, fixer['name'])}.\n"
-                f"They guessed <b>\"{msg.text}\"</b>, but the real group word was "
+                f"They guessed <b>\"{text}\"</b>, but the real group word was "
                 f"<b>{lobby['real_word']}</b>!\n\n"
                 f"<i>(Impostor's word was: {fake_word})</i>\n\n"
                 f"💰 <b>Fans split the pool: {share:,} credits each!</b>\n\n"
                 f"🏆 Winners: {fan_mentions}",
                 parse_mode="HTML"
             )
-    
-    # Cleanup
-    if chat_id in imposter_lobbies:
-        del imposter_lobbies[chat_id]
+
+    imposter_lobbies.pop(chat_id, None)
 
 async def imposter_fixer_guess_timer(context, chat_id, lobby):
     """30 sec for fixer to guess"""
     await _asyncio.sleep(30)
-    
+
     if chat_id not in imposter_lobbies:
         return
-    
     if lobby["status"] != "fixer_guessing":
         return
-    
     if not lobby.get("awaiting_fixer_guess"):
         return
-    
-    # Time up — fixer didn't guess
+
     lobby["awaiting_fixer_guess"] = False
     lobby["status"] = "resolved"
-    
+
     fixer_id = lobby["fixer_id"]
     players = lobby["players"]
     pool = len(players) * 1000
-    
-    fixer = imposter_get_player(players, fixer_id)
+
+    fixer = imposter_get_player(lobby, fixer_id) or {"id": fixer_id, "name": "Unknown"}
     fans = [p for p in players if p["id"] != fixer_id]
-    
+
     if fans:
         share = pool // len(fans)
         db = await get_db()
         for fan in fans:
             await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", share, fan["id"])
         await close_db(db)
-        
+
         fan_mentions = ", ".join([imposter_tag(f["id"], f["name"]) for f in fans])
-        
+
         await context.bot.send_message(
             chat_id,
             f"⏰ <b>TIME'S UP!</b>\n\n"
@@ -6415,12 +6415,9 @@ async def imposter_fixer_guess_timer(context, chat_id, lobby):
             f"🏆 Winners: {fan_mentions}",
             parse_mode="HTML"
         )
-    
-    del imposter_lobbies[chat_id]
 
+    imposter_lobbies.pop(chat_id, None)
 
-# ============================================================
-# ============ REFUND HELPER =================================
 # ============================================================
 
 async def imposter_refund_all(context, chat_id, lobby):
@@ -11315,17 +11312,24 @@ async def main():
     app.add_handler(CommandHandler("imposter", imposter))
     app.add_handler(CallbackQueryHandler(imposter_callback, pattern="^imp_(join|leave|start|cancel)$"))
     app.add_handler(CallbackQueryHandler(imposter_vote_callback, pattern="^imp_vote_\\d+$"))
-    app.add_handler(MessageHandler(
-        filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
-        imposter_clue_handler
-    ))
+    # Clue handler — private chat only, group=1
     app.add_handler(
         MessageHandler(
-        filters.TEXT & ~filters.COMMAND,
-        imposter_fixer_guess_handler
-        ),
+            filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
+            imposter_clue_handler
+    ),
         group=1
     )
+
+# Fixer guess handler — group only, group=2 (alag group taaki conflict na ho)
+    app.add_handler(
+        MessageHandler(
+            (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP) & filters.TEXT & ~filters.COMMAND,
+            imposter_fixer_guess_handler
+    ),
+        group=2
+    )
+
 
 
 
