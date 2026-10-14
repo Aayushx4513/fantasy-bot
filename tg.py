@@ -3178,7 +3178,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     msg += f"*{batsman_name} played: {bat_number}  | {bowler_name} bowled: {bowl_number}*\n\n"
 
     if is_out:
-        # 🔥 DUCK CHECK - SIRF TAB JAB BATTER NE 0 RUNS BANAYE
+        # 🔥 DUCK CHECK
         if game.score == 0:
             db = await get_db()
             if game.current_batsman == game.player1_id:
@@ -3186,7 +3186,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 await db.execute("UPDATE cricket_stats SET ducks = ducks + 1 WHERE user_id = $1", game.player2_id)
             await close_db(db)
-        
+
         if game.current_bowler == game.player1_id:
             game.player1_wickets_taken += 1
             await update_cricket_stats_realtime(game.player1_id, game.player1_name, 0, 1, 0)
@@ -3268,115 +3268,132 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
         return
 
-    # ============ SECOND INNINGS WIN ============
-    if game.innings == 2 and game.score >= game.target:
-        game.game_active = False
-        winner_id = game.current_batsman
-        winner_name = game.player1_name if winner_id == game.player1_id else game.player2_name
+# ============ SECOND INNINGS WIN ============
+if game.innings == 2 and game.score >= game.target:
+    game.game_active = False
+    winner_id = game.current_batsman
+    winner_name = game.player1_name if winner_id == game.player1_id else game.player2_name
 
-        await update_wins_losses_realtime(winner_id, winner_name, True)
+    await update_wins_losses_realtime(winner_id, winner_name, True)
+
+    if game.bet > 0:
+        db = await get_db()
+        await db.execute(
+            "UPDATE users SET balance = balance + $1 WHERE user_id = $2",
+            game.bet * 2,
+            winner_id
+        )
+        await close_db(db)
+
+    if winner_id == game.player1_id:
+        margin = game.player1_match_runs - game.player2_match_runs
+    else:
+        margin = game.player2_match_runs - game.player1_match_runs
+
+    player1_overs = game.get_overs(1)
+    player2_overs = game.get_overs(2)
+
+    if game.player1_id == winner_id:
+        p1_wickets = game.wickets
+        p2_wickets = game.player2_wickets_taken
+    else:
+        p2_wickets = game.wickets
+        p1_wickets = game.player1_wickets_taken
+
+    summary = f"*🏆 MATCH RESULT*\n"
+    summary += f"━━━━━━━━━━━━━━━━\n"
+    summary += f"*{game.player1_name} — {game.player1_match_runs}/{p1_wickets} ({player1_overs} ov)*\n"
+    summary += f"*{game.player2_name} — {game.player2_match_runs}/{p2_wickets} ({player2_overs} ov)*\n"
+    summary += f"━━━━━━━━━━━━━━━━\n"
+    summary += f"*🏆 {winner_name} won by {abs(margin)} runs!*\n"
+
+    if game.bet > 0:
+        summary += f"*🪙 Prize: {game.bet * 2:,}*"
+
+    await query.edit_message_text(summary, parse_mode="Markdown")
+    del cricket_games[game_id]
+    return
+
+# ============ SECOND INNINGS ALL OUT ============
+if game.innings == 2 and game.wickets >= 1:
+    game.game_active = False
+    winner_id = game.current_bowler
+    winner_name = game.player1_name if winner_id == game.player1_id else game.player2_name
+
+    await update_wins_losses_realtime(winner_id, winner_name, True)
+
+    if game.bet > 0:
+        db = await get_db()
+        await db.execute(
+            "UPDATE users SET balance = balance + $1 WHERE user_id = $2",
+            game.bet * 2,
+            winner_id
+        )
+        await close_db(db)
+
+    runs_left = abs(game.player1_match_runs - game.player2_match_runs)
+    player1_overs = game.get_overs(1)
+    player2_overs = game.get_overs(2)
+
+    if game.player1_id == winner_id:
+        p1_wickets = game.player1_wickets_taken
+        p2_wickets = game.wickets
+    else:
+        p2_wickets = game.player2_wickets_taken
+        p1_wickets = game.wickets
+
+    summary = f"*🏆 MATCH RESULT*\n"
+    summary += f"━━━━━━━━━━━━━━━━\n"
+    summary += f"*{game.player1_name} — {game.player1_match_runs}/{p1_wickets} ({player1_overs} ov)*\n"
+    summary += f"*{game.player2_name} — {game.player2_match_runs}/{p2_wickets} ({player2_overs} ov)*\n"
+    summary += f"━━━━━━━━━━━━━━━━\n"
+
+    # 🔥 DRAW CHECK - REFUND BOTH
+    if game.player1_match_runs == game.player2_match_runs:
+        summary += "*🤝 It's a Draw!*\n"
 
         if game.bet > 0:
             db = await get_db()
             await db.execute(
                 "UPDATE users SET balance = balance + $1 WHERE user_id = $2",
-                game.bet * 2,
-                winner_id
+                game.bet,
+                game.player1_id
             )
-            await close_db(db)
-
-        if winner_id == game.player1_id:
-            margin = game.player1_match_runs - game.player2_match_runs
-        else:
-            margin = game.player2_match_runs - game.player1_match_runs
-
-        player1_overs = game.get_overs(1)
-        player2_overs = game.get_overs(2)
-
-        if game.player1_id == winner_id:
-            p1_wickets = game.wickets
-            p2_wickets = game.player2_wickets_taken
-        else:
-            p2_wickets = game.wickets
-            p1_wickets = game.player1_wickets_taken
-
-        summary = f"*🏆 MATCH RESULT*\n"
-        summary += f"━━━━━━━━━━━━━━━━\n"
-        summary += f"*{game.player1_name} — {game.player1_match_runs}/{p1_wickets} ({player1_overs} ov)*\n"
-        summary += f"*{game.player2_name} — {game.player2_match_runs}/{p2_wickets} ({player2_overs} ov)*\n"
-        summary += f"━━━━━━━━━━━━━━━━\n"
-        summary += f"*🏆 {winner_name} won by {abs(margin)} runs!*\n"
-
-        if game.bet > 0:
-            summary += f"*🪙 Prize: {game.bet * 2:,}*"
-
-        await query.edit_message_text(summary, parse_mode="Markdown")
-        del cricket_games[game_id]
-        return
-
-    # ============ SECOND INNINGS ALL OUT ============
-    if game.innings == 2 and game.wickets >= 1:
-        game.game_active = False
-        winner_id = game.current_bowler
-        winner_name = game.player1_name if winner_id == game.player1_id else game.player2_name
-
-        await update_wins_losses_realtime(winner_id, winner_name, True)
-
-        if game.bet > 0:
-            db = await get_db()
             await db.execute(
                 "UPDATE users SET balance = balance + $1 WHERE user_id = $2",
-                game.bet * 2,
-                winner_id
+                game.bet,
+                game.player2_id
             )
             await close_db(db)
 
-        runs_left = abs(game.player1_match_runs - game.player2_match_runs)
-        player1_overs = game.get_overs(1)
-        player2_overs = game.get_overs(2)
-
-        if game.player1_id == winner_id:
-            p1_wickets = game.player1_wickets_taken
-            p2_wickets = game.wickets
-        else:
-            p2_wickets = game.player2_wickets_taken
-            p1_wickets = game.wickets
-
-        summary = f"*🏆 MATCH RESULT*\n"
-        summary += f"━━━━━━━━━━━━━━━━\n"
-        summary += f"*{game.player1_name} — {game.player1_match_runs}/{p1_wickets} ({player1_overs} ov)*\n"
-        summary += f"*{game.player2_name} — {game.player2_match_runs}/{p2_wickets} ({player2_overs} ov)*\n"
-        summary += f"━━━━━━━━━━━━━━━━\n"
-
-        if game.player1_match_runs == game.player2_match_runs:
-            summary += "*🤝 It's a Draw!*\n"
-        else:
-            summary += f"*🏆 {winner_name} won by {runs_left} runs!*\n"
+            summary += f"*🪙 Refunded: {game.bet:,} each*"
+    else:
+        summary += f"*🏆 {winner_name} won by {runs_left} runs!*\n"
 
         if game.bet > 0:
             summary += f"*🪙 Prize: {game.bet * 2:,}*"
 
-        await query.edit_message_text(summary, parse_mode="Markdown")
-        del cricket_games[game_id]
-        return
+    await query.edit_message_text(summary, parse_mode="Markdown")
+    del cricket_games[game_id]
+    return
 
-    # ============ CONTINUE GAME ============
-    game.waiting_for = "bat"
+# ============ CONTINUE GAME ============
+game.waiting_for = "bat"
 
-    bat_numbers = game.get_bat_numbers()
-    keyboard = []
-    row = []
-    for num in bat_numbers:
-        row.append(InlineKeyboardButton(str(num), callback_data=f"cricket_bat_{game_id}_{num}"))
-        if len(row) == 3:
-            keyboard.append(row)
-            row = []
-    if row:
+bat_numbers = game.get_bat_numbers()
+keyboard = []
+row = []
+for num in bat_numbers:
+    row.append(InlineKeyboardButton(str(num), callback_data=f"cricket_bat_{game_id}_{num}"))
+    if len(row) == 3:
         keyboard.append(row)
+        row = []
+if row:
+    keyboard.append(row)
 
-    msg += f"*🎮 {batsman_name} choose your shot :-*"
+msg += f"*🎮 {batsman_name} choose your shot :-*"
 
-    await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
 async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
