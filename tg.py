@@ -6067,7 +6067,7 @@ async def imposter_vote_reminder(context, chat_id, lobby, secs):
     await context.bot.send_message(chat_id, text, parse_mode="HTML")
 
 
-def imposter_resolve_votes(context, chat_id, lobby, force_eliminate=None):
+async def imposter_resolve_votes(context, chat_id, lobby, force_eliminate=None):
     """Count votes, eliminate highest, check winner"""
 
     if lobby.get("resolved_flag"):
@@ -6175,7 +6175,7 @@ async def imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id):
     fixer_id = lobby["fixer_id"]
     players = lobby["players"]
 
-    # ✅ FIX #2: Safe fetch — None check
+    # Safe fetch
     eliminated = imposter_get_player(lobby, eliminated_id)
     if not eliminated:
         await imposter_refund_all(context, chat_id, lobby)
@@ -6197,7 +6197,6 @@ async def imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id):
             await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", pool, fixer_id)
             await close_db(db)
 
-            # ✅ FIX #3: Safe fetch — fallback name
             fixer = imposter_get_player(lobby, fixer_id) or {"id": fixer_id, "name": "Unknown"}
 
             await context.bot.send_message(
@@ -6212,7 +6211,6 @@ async def imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id):
                 parse_mode="HTML"
             )
 
-            # Safe delete
             imposter_lobbies.pop(chat_id, None)
             return
 
@@ -6233,44 +6231,92 @@ async def imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id):
 
     await _asyncio.sleep(3)
 
-    # ✅ FIX #1: Reset ALL flags for next round
+    # 🔥 NEW WORD FOR NEW ROUND
+    if FIXER_WORDS:
+        new_pair = _random.choice(FIXER_WORDS)
+        lobby["real_word"] = new_pair[0]
+        lobby["fake_word"] = new_pair[1]
+
+    # 🔥 NEW FIXER — randomly pick from remaining players
+    remaining_players = lobby["players"]
+    if remaining_players:
+        new_fixer = _random.choice(remaining_players)
+        lobby["fixer_id"] = new_fixer["id"]
+    else:
+        # No players left — refund
+        await imposter_refund_all(context, chat_id, lobby)
+        return
+
+    # Reset votes, start new round with new clues
     lobby["clues"] = {}
     lobby["votes"] = {}
     lobby["status"] = "playing"
-    lobby["resolved_flag"] = False       # 🔥 MOST IMPORTANT
-    lobby["vote_task"] = None            # 🔥 Safety
-    lobby["awaiting_fixer_guess"] = False  # 🔥 Extra safety
+    lobby["resolved_flag"] = False
+    lobby["vote_task"] = None
+    lobby["awaiting_fixer_guess"] = False
 
-    # Send clue request again
+    # Send clue request again (which will send new words in DM)
     await imposter_request_new_clues(context, chat_id, lobby)
 
-
-
 async def imposter_request_new_clues(context, chat_id, lobby):
-    """Ask remaining players for new clues"""
-    
+    """Ask remaining players for new clues with NEW WORD"""
+
+    fixer_id = lobby["fixer_id"]
+    real_word = lobby["real_word"]
+    fake_word = lobby["fake_word"]
+
     await context.bot.send_message(
         chat_id,
         "📩 <b>New Round — Check your DMs!</b>\n\n"
-        "Send ONE WORD clue about your word.\n"
+        "Send ONE WORD clue about your NEW word.\n"
         "⏰ You have 60 seconds!",
         parse_mode="HTML"
     )
-    
-    # Send DM prompts
+
+    # Send DM with NEW word to each player
+    dm_failed = []
     for p in lobby["players"]:
+        is_fixer = (p["id"] == fixer_id)
+        word = fake_word if is_fixer else real_word
+
+        if is_fixer:
+            dm_text = (
+                f"🔄 <b>NEW ROUND — YOU ARE THE IMPOSTOR!</b>\n\n"
+                f"🎯 <b>Theme:</b> Cricket\n"
+                f"🔑 <b>Your Secret Word:</b> <code>{word}</code>\n\n"
+                f"Send ONE WORD clue describing it.\n"
+                f"Blend in — don't get caught! 🔥"
+            )
+        else:
+            dm_text = (
+                f"🔄 <b>New Round — Imposter Game</b>\n\n"
+                f"🎯 <b>Theme:</b> Cricket\n"
+                f"🔑 <b>Your Secret Word:</b> <code>{word}</code>\n\n"
+                f"Send ONE WORD clue describing it.\n"
+                f"<i>(You have 60 seconds)</i>"
+            )
+
         try:
             sent = await context.bot.send_message(
                 p["id"],
-                f"🔄 <b>New Round!</b>\n\n"
-                f"Send ONE WORD clue about your word.\n"
-                f"<i>(You have 60 seconds)</i>",
+                dm_text,
                 parse_mode="HTML"
             )
             p["dm_msg_id"] = sent.message_id
-        except:
-            pass
-    
+        except Exception as e:
+            dm_failed.append(p["name"])
+            print(f"❌ DM failed for {p['name']}: {e}")
+
+    if dm_failed:
+        await context.bot.send_message(
+            chat_id,
+            f"⚠️ <b>DM Failed for:</b> {', '.join(dm_failed)}\n\n"
+            f"❌ Game aborted. Refunding...",
+            parse_mode="HTML"
+        )
+        await imposter_refund_all(context, chat_id, lobby)
+        return
+
     lobby["status"] = "collecting_clues"
     _asyncio.create_task(imposter_new_round_timer(context, chat_id, lobby))
 
@@ -6278,12 +6324,12 @@ async def imposter_request_new_clues(context, chat_id, lobby):
 async def imposter_new_round_timer(context, chat_id, lobby):
     """60 sec for new clues"""
     await _asyncio.sleep(60)
-    
+
     if chat_id not in imposter_lobbies:
         return
     if lobby["status"] != "collecting_clues":
         return
-    
+
     # Reveal and vote again
     await imposter_reveal_clues(context, chat_id, lobby)
 
