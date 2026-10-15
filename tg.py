@@ -49,7 +49,7 @@ print(f"✅ Loaded {len(TRIVIA_QUESTIONS)} trivia questions")
 IST = timezone(timedelta(hours=5, minutes=30))
 
 # ============ TOKEN & ADMINS ============
-TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAH3fWjNUd43qIebtxmRheXUkQHdDMvEqXs")
+TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAHOv5MAEqjQbnvFmgO_GNeinc4GvjTgHtE")
 ADMIN_IDS = [7687078555, 1315564307, 7361215114]
 
 # ============ DATABASE URL ============
@@ -6067,31 +6067,31 @@ async def imposter_vote_reminder(context, chat_id, lobby, secs):
     await context.bot.send_message(chat_id, text, parse_mode="HTML")
 
 
-async def imposter_resolve_votes(context, chat_id, lobby, force_eliminate=None):
+def imposter_resolve_votes(context, chat_id, lobby, force_eliminate=None):
     """Count votes, eliminate highest, check winner"""
-    
+
     if lobby.get("resolved_flag"):
         return
-    
+
     if lobby["status"] != "voting_phase":
         return
-    
+
     lobby["resolved_flag"] = True
     lobby["status"] = "resolved"
-    
+
     players = lobby["players"]
     votes = lobby["votes"]
     fixer_id = lobby["fixer_id"]
-    
+
     # Force eliminate (auto-eliminate)
     if force_eliminate:
         eliminated_id = force_eliminate
         eliminated = imposter_get_player(lobby, eliminated_id)
-        
+
         if not eliminated:
             await imposter_refund_all(context, chat_id, lobby)
             return
-        
+
         if eliminated_id == fixer_id:
             await context.bot.send_message(
                 chat_id,
@@ -6113,12 +6113,12 @@ async def imposter_resolve_votes(context, chat_id, lobby, force_eliminate=None):
         else:
             await imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id)
             return
-    
+
     # Count votes
     vote_count = {}
     for target_id in votes.values():
         vote_count[target_id] = vote_count.get(target_id, 0) + 1
-    
+
     if not vote_count:
         await context.bot.send_message(
             chat_id,
@@ -6127,10 +6127,10 @@ async def imposter_resolve_votes(context, chat_id, lobby, force_eliminate=None):
         )
         await imposter_refund_all(context, chat_id, lobby)
         return
-    
+
     max_votes = max(vote_count.values())
     top_voted = [uid for uid, c in vote_count.items() if c == max_votes]
-    
+
     if len(top_voted) > 1:
         await context.bot.send_message(
             chat_id,
@@ -6139,14 +6139,14 @@ async def imposter_resolve_votes(context, chat_id, lobby, force_eliminate=None):
         )
         await imposter_refund_all(context, chat_id, lobby)
         return
-    
+
     eliminated_id = top_voted[0]
     eliminated = imposter_get_player(lobby, eliminated_id)
-    
+
     if not eliminated:
         await imposter_refund_all(context, chat_id, lobby)
         return
-    
+
     if eliminated_id == fixer_id:
         # FIXER CAUGHT
         await context.bot.send_message(
@@ -6171,31 +6171,35 @@ async def imposter_resolve_votes(context, chat_id, lobby, force_eliminate=None):
 
 async def imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id):
     """Innocent was voted out — check if fixer wins or game continues"""
-    
+
     fixer_id = lobby["fixer_id"]
     players = lobby["players"]
-    
-    # Remove eliminated
+
+    # ✅ FIX #2: Safe fetch — None check
     eliminated = imposter_get_player(lobby, eliminated_id)
+    if not eliminated:
+        await imposter_refund_all(context, chat_id, lobby)
+        return
+
+    # Remove eliminated
     lobby["players"] = [p for p in players if p["id"] != eliminated_id]
-    
     remaining = lobby["players"]
-    
-    # If fixer still in AND only 2 players remain (fixer + 1 innocent)
+
+    # If only 2 players remain (fixer + 1 innocent)
     if len(remaining) <= 2:
-        # Fixer wins (if fixer is still in)
         fixer_still_in = any(p["id"] == fixer_id for p in remaining)
-        
+
         if fixer_still_in:
             # FIXER WINS
             pool = len(players) * 1000
-            
+
             db = await get_db()
             await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", pool, fixer_id)
             await close_db(db)
-            
-            fixer = imposter_get_player(lobby, fixer_id)
-            
+
+            # ✅ FIX #3: Safe fetch — fallback name
+            fixer = imposter_get_player(lobby, fixer_id) or {"id": fixer_id, "name": "Unknown"}
+
             await context.bot.send_message(
                 chat_id,
                 f"💀 <b>THE IMPOSTOR WINS!</b> 💀\n\n"
@@ -6207,15 +6211,16 @@ async def imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id):
                 f"💰 <b>The Impostor steals the entire pool: {pool:,} credits!</b>",
                 parse_mode="HTML"
             )
-            
-            del imposter_lobbies[chat_id]
+
+            # Safe delete
+            imposter_lobbies.pop(chat_id, None)
             return
-        
+
         else:
-            # No fixer, no one left? shouldn't happen
+            # No fixer left — refund
             await imposter_refund_all(context, chat_id, lobby)
             return
-    
+
     # Game continues — start new discussion round
     await context.bot.send_message(
         chat_id,
@@ -6225,16 +6230,20 @@ async def imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id):
         f"🔄 <b>Next round starting...</b>",
         parse_mode="HTML"
     )
-    
+
     await _asyncio.sleep(3)
-    
-    # Reset votes, start new round with new clues
+
+    # ✅ FIX #1: Reset ALL flags for next round
     lobby["clues"] = {}
     lobby["votes"] = {}
     lobby["status"] = "playing"
-    
+    lobby["resolved_flag"] = False       # 🔥 MOST IMPORTANT
+    lobby["vote_task"] = None            # 🔥 Safety
+    lobby["awaiting_fixer_guess"] = False  # 🔥 Extra safety
+
     # Send clue request again
     await imposter_request_new_clues(context, chat_id, lobby)
+
 
 
 async def imposter_request_new_clues(context, chat_id, lobby):
