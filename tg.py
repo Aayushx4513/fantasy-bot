@@ -11499,7 +11499,8 @@ async def gtc_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎯 <b>Answer:</b> Hidden\n"
         f"💰 <b>Rewards:</b> 7,000 → 1,000 credits\n"
         f"💡 <b>Hints:</b> Host will reveal one by one via /hint\n"
-        f"💬 <b>Guess:</b> Anyone can type their guess in chat\n"
+        f"💬 <b>Guess:</b> Type <code>/g &lt;name&gt;</code> in chat\n"
+        f"   Example: <code>/g kohli</code> or <code>/g virat</code>\n"
         f"⏱️ <b>Guess Cooldown:</b> 5 seconds per user\n\n"
         f"📌 <b>Host:</b> Send /hint to reveal the first hint!",
         parse_mode="HTML"
@@ -11548,7 +11549,7 @@ async def gtc_hint(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🎯 <b>HINT #{lobby['hints_shown']}</b>\n"
         f"💰 <b>Reward:</b> {credits:,} credits\n\n"
         f"💡 <b>\"{hint_text}\"</b>\n\n"
-        f"💬 Type your guess in chat!",
+        f"💬 Guess with <code>/g &lt;name&gt;</code> — Example: <code>/g kohli</code>",
         parse_mode="HTML"
     )
 
@@ -11596,7 +11597,7 @@ async def gtc_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def gtc_guess_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle guess — any group member can guess"""
+    """Handle /g <guess> — any group member can guess"""
     msg = update.message
     if not msg:
         return
@@ -11604,12 +11605,15 @@ async def gtc_guess_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = msg.chat.id
     chat_type = msg.chat.type
     user = msg.from_user
-    text = msg.text
 
+    # Group only
     if chat_type not in ["group", "supergroup"]:
+        await msg.reply_text("❌ This game works only in groups!")
         return
 
+    # Game active check
     if chat_id not in gtc_games:
+        await msg.reply_text("❌ No active /7hint game! Host: /7hint to start.")
         return
 
     lobby = gtc_games[chat_id]
@@ -11619,21 +11623,26 @@ async def gtc_guess_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # No hints yet — don't allow guessing
     if lobby["hints_shown"] == 0:
+        await msg.reply_text("⚠️ Wait for the host to reveal the first hint!")
         return
 
-    # Skip commands
-    if text.startswith("/"):
+    # Get guess text (everything after /g)
+    args = context.args
+    if not args:
+        await msg.reply_text(
+            "❌ Usage: <code>/g kohli</code>\n"
+            "Example: <code>/g virat</code> or <code>/g kohli</code>",
+            parse_mode="HTML"
+        )
         return
 
-    # Skip very long messages (likely not a guess)
-    if len(text) > 50:
+    guess_text = " ".join(args).strip()
+
+    if not guess_text:
+        await msg.reply_text("❌ Please provide a name. Example: <code>/g kohli</code>", parse_mode="HTML")
         return
 
-    # Skip if more than 4 words
-    if len(text.split()) > 4:
-        return
-
-    # Cooldown check
+    # Cooldown check (5 sec per user)
     cooldown_key = (chat_id, user.id)
     now = datetime.now(IST)
     last_guess = gtc_guess_cooldown.get(cooldown_key)
@@ -11641,7 +11650,9 @@ async def gtc_guess_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if last_guess:
         diff = (now - last_guess).total_seconds()
         if diff < GTC_COOLDOWN_SECONDS:
-            return  # silent skip, no spam
+            remaining = int(GTC_COOLDOWN_SECONDS - diff) + 1
+            await msg.reply_text(f"⏱️ Wait {remaining}s before guessing again!")
+            return
 
     # Set cooldown
     gtc_guess_cooldown[cooldown_key] = now
@@ -11649,14 +11660,21 @@ async def gtc_guess_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Check match
     cricketer = lobby["cricketer"]
 
-    if not gtc_match_guess(text, cricketer):
-        return  # no match, silent
+    if not gtc_match_guess(guess_text, cricketer):
+        # Wrong guess
+        credits = gtc_get_current_credits(lobby)
+        await msg.reply_text(
+            f"❌ <b>Wrong guess!</b>\n\n"
+            f"💬 Try again — current reward: <b>{credits:,}</b> credits",
+            parse_mode="HTML"
+        )
+        return
 
     # ✅ CORRECT GUESS
     credits = gtc_get_current_credits(lobby)
     hints_used = lobby["hints_shown"]
 
-    # Deactivate game first to prevent race
+    # Deactivate game
     lobby["active"] = False
     gtc_games.pop(chat_id, None)
 
@@ -11676,7 +11694,7 @@ async def gtc_guess_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"❌ gtc credit error: {e}")
         new_bal = 0
 
-    # Cleanup cooldown entries for this chat
+    # Cleanup cooldown for this chat
     keys_to_remove = [k for k in gtc_guess_cooldown if k[0] == chat_id]
     for k in keys_to_remove:
         gtc_guess_cooldown.pop(k, None)
@@ -11825,14 +11843,8 @@ async def main():
     app.add_handler(CommandHandler("hint", gtc_hint))
     app.add_handler(CommandHandler("end_7hint", gtc_end))
 
-    # Guess handler — group text messages
-    app.add_handler(
-        MessageHandler(
-            (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP) & filters.TEXT & ~filters.COMMAND,
-            gtc_guess_handler
-    ),
-        group=3  # Different group to avoid conflict with imposter handler (group=2)
-    )
+    # Guess handler — /g command
+    app.add_handler(CommandHandler("g", gtc_guess_handler))
 
     # ============ BANK ==========
     app.add_handler(CommandHandler("bank", bank))
