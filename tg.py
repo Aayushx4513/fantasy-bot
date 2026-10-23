@@ -1,3 +1,4 @@
+from telegram.ext import TypeHandler
 from telegram.ext import ApplicationHandlerStop
 import re as _re
 import json as _json
@@ -12094,12 +12095,11 @@ async def main():
     app.add_handler(CallbackQueryHandler(rob_callback, pattern="^rob_"))
     app.add_handler(CommandHandler("protection", protection))
     app.add_handler(CallbackQueryHandler(protection_callback, pattern="^protect_"))
-   # 🔥 BAN MIDDLEWARE — MUST BE FIRST
+   # 🔥 BAN MIDDLEWARE — covers ALL update types (messages + buttons + more)
     app.add_handler(
-        MessageHandler(filters.ALL, ban_middleware),
+        TypeHandler(Update, ban_middleware),
         group=-1
     )
-    print("✅ Ban middleware registered")
 
     # Ban commands
     app.add_handler(CommandHandler("bl", bl_command))
