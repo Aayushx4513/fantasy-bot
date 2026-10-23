@@ -128,6 +128,15 @@ async def is_user_banned(user_id):
             pass
         return False
 
+async def ban_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Block banned users — runs first"""
+    user = update.effective_user
+    if not user:
+        return
+
+    if await is_user_banned(user.id):
+        raise ApplicationHandlerStop
+
 
 # ============ FLASK ============
 flask_app = Flask(__name__)
