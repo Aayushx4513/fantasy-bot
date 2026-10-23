@@ -1,4 +1,4 @@
-# ============ IMPOSTER GAME IMPORTS ============
+from telegram.ext import ApplicationHandlerStop
 import re as _re
 import json as _json
 import random as _random
@@ -54,6 +54,80 @@ ADMIN_IDS = [7687078555, 1315564307, 7361215114]
 
 # ============ DATABASE URL ============
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres.qvdodaowbwkdxvlsvyyo:aayush0806q@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres")
+
+# ============ BAN SYSTEM ============
+BAN_DURATIONS = {"m": 60, "h": 3600, "d": 86400}
+BAN_MAX_SECONDS = 365 * 86400
+
+
+def parse_duration(duration_str):
+    """Parse '2m', '10h', '1d', 'perm'. Returns seconds, 'perm', or None."""
+    duration_str = duration_str.lower().strip()
+
+    if duration_str in ["perm", "permanent", "forever"]:
+        return "perm"
+
+    if not duration_str:
+        return None
+
+    unit = duration_str[-1]
+    if unit not in BAN_DURATIONS:
+        return None
+
+    try:
+        value = int(duration_str[:-1])
+    except ValueError:
+        return None
+
+    if value <= 0:
+        return None
+
+    seconds = value * BAN_DURATIONS[unit]
+    if seconds > BAN_MAX_SECONDS:
+        return None
+
+    return seconds
+
+
+async def is_user_banned(user_id):
+    """Check if user is currently banned"""
+    db = await get_db()
+    try:
+        row = await db.fetchrow(
+            "SELECT expires_at, is_active FROM banned_users WHERE user_id = $1",
+            user_id
+        )
+
+        if not row or not row["is_active"]:
+            await close_db(db)
+            return False
+
+        if row["expires_at"]:
+            now_naive = datetime.now(IST).replace(tzinfo=None)
+            expires = row["expires_at"]
+            if isinstance(expires, str):
+                expires = datetime.fromisoformat(expires)
+            if expires.tzinfo is not None:
+                expires = expires.replace(tzinfo=None)
+
+            if now_naive >= expires:
+                await db.execute(
+                    "UPDATE banned_users SET is_active = FALSE WHERE user_id = $1",
+                    user_id
+                )
+                await close_db(db)
+                return False
+
+        await close_db(db)
+        return True
+    except Exception as e:
+        print(f"❌ is_user_banned error: {e}")
+        try:
+            await close_db(db)
+        except:
+            pass
+        return False
+
 
 # ============ FLASK ============
 flask_app = Flask(__name__)
@@ -158,6 +232,19 @@ async def init_db():
             created_at TIMESTAMP
         )
     ''')
+
+    # 🔥 BANNED USERS TABLE
+    await db.execute('''
+       CREATE TABLE IF NOT EXISTS banned_users (
+            user_id BIGINT PRIMARY KEY,
+            banned_by BIGINT,
+            reason TEXT,
+            banned_at TIMESTAMP,
+            expires_at TIMESTAMP,
+            is_active BOOLEAN DEFAULT TRUE
+        )
+    ''')
+    print("✅ Banned users table created!")
 
     await db.execute('''
         CREATE TABLE IF NOT EXISTS users (
@@ -11669,6 +11756,240 @@ async def gtc_guess_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
 
+async def bl_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ban a user — /bl <id> <duration> <reason> or /bl <duration> <reason> (reply)"""
+    msg = update.message
+    if not msg:
+        return
+
+    chat_id = msg.chat.id
+    chat_type = msg.chat.type
+    user = update.effective_user
+
+    if chat_type not in ["group", "supergroup"]:
+        await msg.reply_text("❌ This command works only in groups!")
+        return
+
+    is_bot_admin = user.id in ADMIN_IDS
+    is_group_admin = False
+    try:
+        member = await context.bot.get_chat_member(chat_id, user.id)
+        if member.status in ["administrator", "creator"]:
+            is_group_admin = True
+    except:
+        pass
+
+    if not (is_bot_admin or is_group_admin):
+        await msg.reply_text("❌ Only admins can use this command!")
+        return
+
+    target_user = None
+    args = context.args or []
+
+    if msg.reply_to_message and msg.reply_to_message.from_user:
+        target_user = msg.reply_to_message.from_user
+    elif args:
+        try:
+            target_id = int(args[0])
+        except (ValueError, IndexError):
+            await msg.reply_text(
+                "❌ Usage:\n"
+                "<code>/bl &lt;user_id&gt; &lt;duration&gt; &lt;reason&gt;</code>\n"
+                "<code>/bl &lt;duration&gt; &lt;reason&gt;</code> (reply to user)\n\n"
+                "Duration examples: <code>2m</code>, <code>10h</code>, <code>1d</code>, <code>perm</code>",
+                parse_mode="HTML"
+            )
+            return
+
+        try:
+            target_user = await context.bot.get_chat(target_id)
+        except:
+            await msg.reply_text(f"❌ User {target_id} not found!")
+            return
+
+        args = args[1:]
+
+    if not target_user:
+        await msg.reply_text("❌ Reply to a user or provide user ID!")
+        return
+
+    if target_user.id in ADMIN_IDS:
+        await msg.reply_text("❌ Cannot ban a bot admin!")
+        return
+
+    try:
+        target_member = await context.bot.get_chat_member(chat_id, target_user.id)
+        if target_member.status in ["administrator", "creator"]:
+            await msg.reply_text("❌ Cannot ban a group admin!")
+            return
+    except:
+        pass
+
+    if target_user.id == user.id:
+        await msg.reply_text("❌ Cannot ban yourself!")
+        return
+
+    if not args:
+        await msg.reply_text(
+            "❌ Duration required!\n"
+            "Examples: <code>2m</code>, <code>10h</code>, <code>1d</code>, <code>perm</code>",
+            parse_mode="HTML"
+        )
+        return
+
+    duration_str = args[0]
+    duration_seconds = parse_duration(duration_str)
+
+    if duration_seconds is None:
+        await msg.reply_text(
+            "❌ Invalid duration!\n"
+            "Examples: <code>2m</code>, <code>10h</code>, <code>1d</code>, <code>perm</code>\n"
+            "Max: 365d",
+            parse_mode="HTML"
+        )
+        return
+
+    reason = " ".join(args[1:]).strip() if len(args) > 1 else "No reason provided"
+
+    now_naive = datetime.now(IST).replace(tzinfo=None)
+
+    if duration_seconds == "perm":
+        expires_at = None
+        duration_display = "Permanent"
+    else:
+        expires_at = now_naive + timedelta(seconds=duration_seconds)
+        if duration_seconds >= 86400:
+            duration_display = f"{duration_seconds // 86400} day(s)"
+        elif duration_seconds >= 3600:
+            duration_display = f"{duration_seconds // 3600} hour(s)"
+        else:
+            duration_display = f"{duration_seconds // 60} minute(s)"
+
+    try:
+        db = await get_db()
+        await db.execute(
+            """
+            INSERT INTO banned_users (user_id, banned_by, reason, banned_at, expires_at, is_active)
+            VALUES ($1, $2, $3, $4, $5, TRUE)
+            ON CONFLICT (user_id) DO UPDATE SET
+                banned_by = $2,
+                reason = $3,
+                banned_at = $4,
+                expires_at = $5,
+                is_active = TRUE
+            """,
+            target_user.id, user.id, reason, now_naive, expires_at
+        )
+        await close_db(db)
+    except Exception as e:
+        print(f"❌ bl_command DB error: {e}")
+        await msg.reply_text("❌ Database error while banning!")
+        return
+
+    expiry_text = (
+        expires_at.strftime('%d %b %Y, %I:%M %p') + " IST"
+        if expires_at else "Permanent"
+    )
+
+    await msg.reply_text(
+        f"🚫 <b>USER BANNED!</b>\n\n"
+        f"👤 <b>User:</b> {imposter_tag(target_user.id, target_user.first_name)}\n"
+        f"🆔 <b>ID:</b> <code>{target_user.id}</code>\n"
+        f"⏱️ <b>Duration:</b> {duration_display}\n"
+        f"📅 <b>Expires:</b> {expiry_text}\n"
+        f"📝 <b>Reason:</b> {reason}\n"
+        f"👑 <b>Banned by:</b> {imposter_tag(user.id, user.first_name)}",
+        parse_mode="HTML"
+    )
+
+async def unbl_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Unban a user — /unbl <id> or /unbl (reply)"""
+    msg = update.message
+    if not msg:
+        return
+
+    chat_id = msg.chat.id
+    chat_type = msg.chat.type
+    user = update.effective_user
+
+    if chat_type not in ["group", "supergroup"]:
+        await msg.reply_text("❌ This command works only in groups!")
+        return
+
+    is_bot_admin = user.id in ADMIN_IDS
+    is_group_admin = False
+    try:
+        member = await context.bot.get_chat_member(chat_id, user.id)
+        if member.status in ["administrator", "creator"]:
+            is_group_admin = True
+    except:
+        pass
+
+    if not (is_bot_admin or is_group_admin):
+        await msg.reply_text("❌ Only admins can use this command!")
+        return
+
+    target_id = None
+    args = context.args or []
+
+    if msg.reply_to_message and msg.reply_to_message.from_user:
+        target_id = msg.reply_to_message.from_user.id
+    elif args:
+        try:
+            target_id = int(args[0])
+        except ValueError:
+            await msg.reply_text(
+                "❌ Usage:\n"
+                "<code>/unbl &lt;user_id&gt;</code>\n"
+                "<code>/unbl</code> (reply to user)",
+                parse_mode="HTML"
+            )
+            return
+    else:
+        await msg.reply_text("❌ Reply to a user or provide user ID!")
+        return
+
+    try:
+        db = await get_db()
+        row = await db.fetchrow(
+            "SELECT is_active FROM banned_users WHERE user_id = $1",
+            target_id
+        )
+
+        if not row or not row["is_active"]:
+            await close_db(db)
+            await msg.reply_text(
+                f"❌ User <code>{target_id}</code> is not banned!",
+                parse_mode="HTML"
+            )
+            return
+
+        await db.execute(
+            "UPDATE banned_users SET is_active = FALSE WHERE user_id = $1",
+            target_id
+        )
+        await close_db(db)
+    except Exception as e:
+        print(f"❌ unbl_command DB error: {e}")
+        await msg.reply_text("❌ Database error!")
+        return
+
+    target_name = "User"
+    try:
+        target = await context.bot.get_chat(target_id)
+        target_name = target.first_name
+    except:
+        pass
+
+    await msg.reply_text(
+        f"✅ <b>USER UNBANNED!</b>\n\n"
+        f"👤 <b>User:</b> {imposter_tag(target_id, target_name)}\n"
+        f"🆔 <b>ID:</b> <code>{target_id}</code>\n"
+        f"👑 <b>Unbanned by:</b> {imposter_tag(user.id, user.first_name)}",
+        parse_mode="HTML"
+    )
+
+
 
 
 
@@ -11764,6 +12085,18 @@ async def main():
     app.add_handler(CallbackQueryHandler(rob_callback, pattern="^rob_"))
     app.add_handler(CommandHandler("protection", protection))
     app.add_handler(CallbackQueryHandler(protection_callback, pattern="^protect_"))
+   # 🔥 BAN MIDDLEWARE — MUST BE FIRST
+    app.add_handler(
+        MessageHandler(filters.ALL, ban_middleware),
+        group=-1
+    )
+    print("✅ Ban middleware registered")
+
+    # Ban commands
+    app.add_handler(CommandHandler("bl", bl_command))
+    app.add_handler(CommandHandler("unbl", unbl_command))
+    print("✅ Ban commands registered")
+
     # ============ LOGIN / PENALTY ==========
     app.add_handler(CommandHandler("login", login))
     app.add_handler(CommandHandler("login_log", login_log))
