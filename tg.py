@@ -6264,13 +6264,30 @@ async def imposter_resolve_votes(context, chat_id, lobby, force_eliminate=None):
     max_votes = max(vote_count.values())
     top_voted = [uid for uid, c in vote_count.items() if c == max_votes]
 
+    # 🔥 TIE = IMPOSTER WINS
     if len(top_voted) > 1:
+        fixer = imposter_get_player(lobby, fixer_id) or {"id": fixer_id, "name": "Unknown"}
+        pool = len(players) * 1000
+
+        db = await get_db()
+        await db.execute(
+            "UPDATE users SET balance = balance + $1 WHERE user_id = $2",
+            pool, fixer_id
+        )
+        await close_db(db)
+
         await context.bot.send_message(
             chat_id,
-            "⚠️ <b>TIE!</b>\n\nNo clear majority. Nobody eliminated.",
+            f"⚖️ <b>TIE!</b>\n\n"
+            f"No clear majority. The confusion favors the Impostor!\n\n"
+            f"🕵️ <b>The Impostor was:</b> "
+            f"{imposter_tag(fixer_id, fixer['name'])}\n"
+            f"<i>(Their unique word was {lobby['fake_word']}, "
+            f"the group word was {lobby['real_word']})</i>\n\n"
+            f"💰 <b>The Impostor wins the entire pool: {pool:,} credits!</b>",
             parse_mode="HTML"
         )
-        await imposter_refund_all(context, chat_id, lobby)
+        imposter_lobbies.pop(chat_id, None)
         return
 
     eliminated_id = top_voted[0]
@@ -6358,31 +6375,14 @@ async def imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id):
         f"❌ <b>WRONG VOTE!</b>\n\n"
         f"{imposter_tag(eliminated_id, eliminated['name'])} was an innocent fan!\n\n"
         f"👥 <b>Remaining players:</b> {len(remaining)}\n"
-        f"🔄 <b>Next round starting...</b>",
+        f"🔄 <b>Next round starting... Same Impostor!</b>",
         parse_mode="HTML"
     )
 
     await _asyncio.sleep(3)
 
-    # 🔥 NEW WORD FOR NEW ROUND
-    if FIXER_WORDS:
-        new_pair = _random.choice(FIXER_WORDS)
-        lobby["real_word"] = new_pair[0]
-        lobby["fake_word"] = new_pair[1]
-
-    # 🔥 NEW FIXER — randomly pick from remaining players
-    remaining_players = lobby["players"]
-
-    if not remaining_players:
-        await imposter_refund_all(context, chat_id, lobby)
-        return
-
-    # Pick new fixer
-    new_fixer = _random.choice(remaining_players)
-    lobby["fixer_id"] = int(new_fixer["id"])  # 🔥 int() wrap
-
-    # 🔥 Debug log
-    print(f"🔍 NEW FIXER assigned → {new_fixer['name']} (id={new_fixer['id']})")
+    # 🔥 SAME imposter, SAME word — real imposter game rule
+    # Imposter and words stay the same across all rounds
 
     # Reset votes, start new round
     lobby["clues"] = {}
@@ -6392,11 +6392,11 @@ async def imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id):
     lobby["vote_task"] = None
     lobby["awaiting_fixer_guess"] = False
 
-    # Send clue request again (sends new words in DM)
+    # Send clue request again (SAME word sent in DM)
     await imposter_request_new_clues(context, chat_id, lobby)
 
 async def imposter_request_new_clues(context, chat_id, lobby):
-    """Ask remaining players for new clues with NEW WORD"""
+    """Ask remaining players for new clues with SAME word"""
 
     # 🔥 Fixer ID — direct lobby se lo, type-safe
     fixer_id = int(lobby["fixer_id"])
@@ -6406,12 +6406,12 @@ async def imposter_request_new_clues(context, chat_id, lobby):
     await context.bot.send_message(
         chat_id,
         "📩 <b>New Round — Check your DMs!</b>\n\n"
-        "Send ONE WORD clue about your NEW word.\n"
+        "Send ONE WORD clue about your word.\n"
         "⏰ You have 60 seconds!",
         parse_mode="HTML"
     )
 
-    # Send DM with NEW word to each player
+    # Send DM with SAME word to each player
     dm_failed = []
     for p in lobby["players"]:
         # 🔥 Type-safe comparison
@@ -6422,25 +6422,25 @@ async def imposter_request_new_clues(context, chat_id, lobby):
         print(f"🔍 ROUND DM → {p['name']} | p_id={p['id']} | fixer_id={fixer_id} | is_fixer={is_fixer}")
 
         if is_fixer:
-            # 🔥 IMPOSTOR MESSAGE (same as first round)
+            # 🔥 IMPOSTOR — STILL THE SAME
             dm_text = (
-                f"🕵️ <b>YOU ARE THE IMPOSTOR!</b> 🕵️\n"
+                f"🕵️ <b>YOU ARE STILL THE IMPOSTOR!</b> 🕵️\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"🎯 <b>Theme:</b> Cricket\n"
                 f"🔑 <b>Your Secret Word:</b> <code>{word}</code>\n\n"
-                f"<b>INSTRUCTIONS:</b>\n"
-                f"1. This word is your identity.\n"
-                f"2. Reply to this message with ONE WORD describing it.\n"
-                f"3. Blend in — don't let them catch you!\n\n"
+                f"<b>NEW ROUND — INSTRUCTIONS:</b>\n"
+                f"1. You are STILL the impostor.\n"
+                f"2. Reply with ONE WORD describing it.\n"
+                f"3. Blend in — don't get caught!\n\n"
                 f"🏆 If you survive, you win the entire pool!"
             )
         else:
-            # 🔥 NORMAL PLAYER MESSAGE
+            # 🔥 NORMAL PLAYER — SAME WORD
             dm_text = (
-                f"🔄 <b>New Round — Imposter Game</b>\n\n"
+                f"🔄 <b>NEW ROUND — Imposter Game</b>\n\n"
                 f"🎯 <b>Theme:</b> Cricket\n"
                 f"🔑 <b>Your Secret Word:</b> <code>{word}</code>\n\n"
-                f"Send ONE WORD clue describing it.\n"
+                f"Same word as before. Send ONE WORD clue.\n"
                 f"<i>(You have 60 seconds)</i>"
             )
 
