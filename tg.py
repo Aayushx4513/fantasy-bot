@@ -6422,22 +6422,18 @@ async def imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id):
     fixer_id = lobby["fixer_id"]
     players = lobby["players"]
 
-    # Safe fetch
     eliminated = imposter_get_player(lobby, eliminated_id)
     if not eliminated:
         await imposter_refund_all(context, chat_id, lobby)
         return
 
-    # Remove eliminated
     lobby["players"] = [p for p in players if p["id"] != eliminated_id]
     remaining = lobby["players"]
 
-    # If only 2 players remain (fixer + 1 innocent)
     if len(remaining) <= 2:
         fixer_still_in = any(p["id"] == fixer_id for p in remaining)
 
         if fixer_still_in:
-            # FIXER WINS
             pool = len(players) * 1000
 
             db = await get_db()
@@ -6460,28 +6456,30 @@ async def imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id):
 
             imposter_lobbies.pop(chat_id, None)
             return
-
         else:
-            # No fixer left — refund
             await imposter_refund_all(context, chat_id, lobby)
             return
 
-    # Game continues — start new discussion round
     await context.bot.send_message(
         chat_id,
         f"❌ <b>WRONG VOTE!</b>\n\n"
         f"{imposter_tag(eliminated_id, eliminated['name'])} was an innocent fan!\n\n"
         f"👥 <b>Remaining players:</b> {len(remaining)}\n"
-        f"🔄 <b>Next round starting... Same Impostor!</b>",
+        f"🔄 <b>Next round starting... Same Impostor, new word!</b>",
         parse_mode="HTML"
     )
 
     await _asyncio.sleep(3)
 
-    # 🔥 SAME imposter, SAME word — real imposter game rule
-    # Imposter and words stay the same across all rounds
+    # 🔥 SAME imposter, NEW word
+    if FIXER_WORDS:
+        new_pair = _random.choice(FIXER_WORDS)
+        lobby["real_word"] = new_pair[0]
+        lobby["fake_word"] = new_pair[1]
+        print(f"🔍 NEW ROUND WORD → Real: {new_pair[0]} | Fake: {new_pair[1]}")
+    else:
+        print("❌ FIXER_WORDS empty — cannot assign new word!")
 
-    # Reset votes, start new round
     lobby["clues"] = {}
     lobby["votes"] = {}
     lobby["status"] = "playing"
@@ -6489,7 +6487,6 @@ async def imposter_eliminate_innocent(context, chat_id, lobby, eliminated_id):
     lobby["vote_task"] = None
     lobby["awaiting_fixer_guess"] = False
 
-    # Send clue request again (SAME word sent in DM)
     await imposter_request_new_clues(context, chat_id, lobby)
 
 async def imposter_request_new_clues(context, chat_id, lobby):
@@ -6502,7 +6499,7 @@ async def imposter_request_new_clues(context, chat_id, lobby):
     await context.bot.send_message(
         chat_id,
         "📩 <b>New Round — Check your DMs!</b>\n\n"
-        "Send ONE WORD clue about your word.\n"
+        "Send ONE WORD clue about your NEW word.\n"
         "⏰ You have 60 seconds!",
         parse_mode="HTML"
     )
@@ -6512,16 +6509,19 @@ async def imposter_request_new_clues(context, chat_id, lobby):
         is_fixer = (int(p["id"]) == fixer_id)
         word = fake_word if is_fixer else real_word
 
+        print(f"🔍 ROUND DM → {p['name']} | p_id={p['id']} | fixer_id={fixer_id} | is_fixer={is_fixer} | word={word}")
+
         if is_fixer:
             dm_text = (
-                f"🕵️ <b>YOU ARE THE IMPOSTOR!</b> 🕵️\n"
+                f"🕵️ <b>YOU ARE STILL THE IMPOSTOR!</b> 🕵️\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"🎯 <b>Theme:</b> Cricket\n"
                 f"🔑 <b>Your NEW Secret Word:</b> <code>{word}</code>\n\n"
-                f"<b>NEW ROUND:</b>\n"
-                f"1. Same impostor — new word.\n"
-                f"2. Reply with ONE WORD describing it.\n"
-                f"3. Blend in!\n\n"
+                f"<b>NEW ROUND — INSTRUCTIONS:</b>\n"
+                f"1. You are STILL the impostor (same role).\n"
+                f"2. Your word has CHANGED for this round.\n"
+                f"3. Reply with ONE WORD describing the new word.\n"
+                f"4. Blend in — don't get caught!\n\n"
                 f"🏆 If you survive, you win the entire pool!"
             )
         else:
@@ -6529,7 +6529,7 @@ async def imposter_request_new_clues(context, chat_id, lobby):
                 f"🔄 <b>NEW ROUND — Imposter Game</b>\n\n"
                 f"🎯 <b>Theme:</b> Cricket\n"
                 f"🔑 <b>Your NEW Secret Word:</b> <code>{word}</code>\n\n"
-                f"Word changed! Send ONE WORD clue.\n"
+                f"Your word has CHANGED. Send ONE WORD clue.\n"
                 f"<i>(You have 60 seconds)</i>"
             )
 
@@ -6556,6 +6556,7 @@ async def imposter_request_new_clues(context, chat_id, lobby):
 
     lobby["status"] = "collecting_clues"
     _asyncio.create_task(imposter_new_round_timer(context, chat_id, lobby))
+
 
 async def imposter_new_round_timer(context, chat_id, lobby):
     """60 sec for new clues"""
