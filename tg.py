@@ -11766,7 +11766,6 @@ async def gtc_guess_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"💳 <b>Balance:</b> {new_bal:,}",
         parse_mode="HTML"
     )
-
 async def bl_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Ban a user — /bl <id> <duration> <reason> or /bl <duration> <reason> (reply)"""
     msg = update.message
@@ -11806,7 +11805,7 @@ async def bl_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.reply_text(
                 "❌ Usage:\n"
                 "<code>/bl &lt;user_id&gt; &lt;duration&gt; &lt;reason&gt;</code>\n"
-                "<code>/bl &lt;duration&gt; &lt;reason&gt;</code> (reply to user)\n\n"
+                "<code>/bl &lt;duration&gt; &lt;reason&gt;</code> (reply)\n\n"
                 "Duration examples: <code>2m</code>, <code>10h</code>, <code>1d</code>, <code>perm</code>",
                 parse_mode="HTML"
             )
@@ -11824,17 +11823,10 @@ async def bl_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text("❌ Reply to a user or provide user ID!")
         return
 
+    # 🔥 Only bot admins are protected — no group admin check
     if target_user.id in ADMIN_IDS:
         await msg.reply_text("❌ Cannot ban a bot admin!")
         return
-
-    try:
-        target_member = await context.bot.get_chat_member(chat_id, target_user.id)
-        if target_member.status in ["administrator", "creator"]:
-            await msg.reply_text("❌ Cannot ban a group admin!")
-            return
-    except:
-        pass
 
     if target_user.id == user.id:
         await msg.reply_text("❌ Cannot ban yourself!")
