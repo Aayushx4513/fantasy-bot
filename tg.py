@@ -3903,68 +3903,100 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
     data = query.data
-    
+
+    # 🔥 JOIN HANDLER
     if data.startswith("ttt_join_"):
         game_id = int(data.split("_")[2])
-        if game_id not in ttt_lobby:
-            await query.edit_message_text("❌ Lobby expired!")
+
+        # 🔥 Check if game already started (race condition)
+        if game_id in ttt_games:
+            await query.answer("⏳ Game already started!", show_alert=True)
             return
-        
+
+        if game_id not in ttt_lobby:
+            await query.answer("❌ Lobby expired!", show_alert=True)
+            return
+
         lobby = ttt_lobby[game_id]
         creator_id = lobby["creator_id"]
         creator_name = lobby["creator_name"]
         bet = lobby["bet"]
         chat_id = lobby["chat_id"]
-        
+
         if creator_id == user_id:
             await query.answer("Can't join own game!", show_alert=True)
             return
-        
+
         if bet > 0:
             db = await get_db()
             balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
+            if balance is None:
+                await query.answer("❌ Send /start first!", show_alert=True)
+                await close_db(db)
+                return
             if balance < bet:
-                await query.edit_message_text(f"❌ Need {bet:,} credits!")
+                await query.answer(f"❌ Need {bet:,} credits!", show_alert=True)
                 await close_db(db)
                 return
             await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, creator_id)
             await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, user_id)
             await close_db(db)
-        
+
+        # 🔥 Double-check race condition
+        if game_id in ttt_games:
+            if bet > 0:
+                db = await get_db()
+                await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", bet, user_id)
+                await close_db(db)
+            await query.answer("⏳ Game already started!", show_alert=True)
+            return
+
         game = TicTacToe(game_id, creator_id, creator_name, user_name, bet, chat_id)
         game.player2_id = user_id
         game.game_active = True
         ttt_games[game_id] = game
-        del ttt_lobby[game_id]
-        
+
+        if game_id in ttt_lobby:
+            del ttt_lobby[game_id]
+
         bet_text = f"🪙 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Normal Game"
-        await query.edit_message_text(f"🎯 TIC TAC TOE\n❌ {creator_name} vs ⭕ {user_name}\n{bet_text}\n🎯 {creator_name}'s Turn", reply_markup=game.get_keyboard())
+        await query.edit_message_text(
+            f"🎯 TIC TAC TOE\n❌ {creator_name} vs ⭕ {user_name}\n{bet_text}\n🎯 {creator_name}'s Turn",
+            reply_markup=game.get_keyboard()
+        )
         return
-    
+
+    # 🔥 GAME MOVE HANDLER
     if data.startswith("ttt_"):
         parts = data.split("_")
         game_id = int(parts[1])
         pos = int(parts[2])
-        
+
         if game_id not in ttt_games:
             await query.answer("Game not found!", show_alert=True)
             return
-        
+
         game = ttt_games[game_id]
-        
+
+        # 🔥 Check if user is player
         if user_id != game.player1_id and user_id != game.player2_id:
-            await query.answer("Not your game!", show_alert=True)
+            await query.answer("❌ Not your game!", show_alert=True)
             return
-        
+
+        # 🔥 Check if it's user's turn
+        if user_id != game.current_turn:
+            await query.answer("❌ Not your turn!", show_alert=True)
+            return
+
         result, msg = game.make_move(pos, user_id)
         if not result:
             await query.answer(msg, show_alert=True)
             return
-        
+
         if msg == "win":
             winner_id = game.winner
             winner_name = game.player1_name if winner_id == game.player1_id else game.player2_name
-            
+
             if game.bet > 0:
                 db = await get_db()
                 current_bal = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", winner_id)
@@ -3974,27 +4006,36 @@ async def ttt_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 result_text = f"🏆 WINNER: {winner_name.upper()} 🏆\n🪙 +{game.bet*2:,} credits"
             else:
                 result_text = f"🏆 WINNER: {winner_name.upper()} 🏆"
-            
-            await query.edit_message_text(f"🎯 TIC TAC TOE\n\n❌ {game.player1_name} vs ⭕ {game.player2_name}\n\n{result_text}", reply_markup=game.get_keyboard())
+
+            await query.edit_message_text(
+                f"🎯 TIC TAC TOE\n\n❌ {game.player1_name} vs ⭕ {game.player2_name}\n\n{result_text}",
+                reply_markup=game.get_keyboard()
+            )
             del ttt_games[game_id]
             return
-        
+
         elif msg == "draw":
             if game.bet > 0:
                 db = await get_db()
                 await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", game.bet, game.player1_id)
                 await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", game.bet, game.player2_id)
                 await close_db(db)
-            
-            await query.edit_message_text(f"🎯 TIC TAC TOE\n\n❌ {game.player1_name} vs ⭕ {game.player2_name}\n\n🤝 DRAW 🤝", reply_markup=game.get_keyboard())
+
+            await query.edit_message_text(
+                f"🎯 TIC TAC TOE\n\n❌ {game.player1_name} vs ⭕ {game.player2_name}\n\n🤝 DRAW 🤝",
+                reply_markup=game.get_keyboard()
+            )
             del ttt_games[game_id]
             return
-        
+
         else:
             turn_name = game.player1_name if game.current_turn == game.player1_id else game.player2_name
             turn_symbol = "❌" if game.current_turn == game.player1_id else "⭕"
             bet_text = f"🪙 Bet: {game.bet:,} | Prize: {game.bet*2:,}" if game.bet > 0 else "🎮 Normal Game"
-            await query.edit_message_text(f"🎯 TIC TAC TOE\n❌ {game.player1_name} vs ⭕ {game.player2_name}\n{bet_text}\n🎯 {turn_name}'s Turn ({turn_symbol})", reply_markup=game.get_keyboard())
+            await query.edit_message_text(
+                f"🎯 TIC TAC TOE\n❌ {game.player1_name} vs ⭕ {game.player2_name}\n{bet_text}\n🎯 {turn_name}'s Turn ({turn_symbol})",
+                reply_markup=game.get_keyboard()
+            )
 
 # ============ RPS GAME ==========
 rps_games = {}
@@ -4072,42 +4113,77 @@ async def rps_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
     data = query.data
+
     if data.startswith("rps_join_"):
         game_id = int(data.split("_")[2])
-        if game_id not in rps_lobby:
-            await query.edit_message_text("❌ Lobby expired!")
+
+        # 🔥 Check if game already started (race condition)
+        if game_id in rps_games:
+            await query.answer("⏳ Game already started!", show_alert=True)
             return
+
+        if game_id not in rps_lobby:
+            await query.answer("❌ Lobby expired!", show_alert=True)
+            return
+
         lobby = rps_lobby[game_id]
         creator_id = lobby["creator_id"]
         creator_name = lobby["creator_name"]
         bet = lobby["bet"]
         chat_id = lobby["chat_id"]
+
         if creator_id == user_id:
             await query.answer("Can't join own game!", show_alert=True)
             return
+
         if bet > 0:
             db = await get_db()
             balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
+
+            if balance is None:
+                await query.answer("❌ Send /start first!", show_alert=True)
+                await close_db(db)
+                return
+
             if balance < bet:
                 await query.answer(f"❌ Need {bet} credits!", show_alert=True)
                 await close_db(db)
                 return
+
             await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, creator_id)
             await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, user_id)
             await close_db(db)
+
+        # 🔥 Double-check race condition after DB operations
+        if game_id in rps_games:
+            if bet > 0:
+                db = await get_db()
+                await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", bet, user_id)
+                await close_db(db)
+            await query.answer("⏳ Game already started!", show_alert=True)
+            return
+
         game = RPSGame(game_id, creator_id, creator_name, bet, chat_id)
         game.player2_id = user_id
         game.player2_name = user_name
         game.game_active = True
         rps_games[game_id] = game
-        del rps_lobby[game_id]
+
+        if game_id in rps_lobby:
+            del rps_lobby[game_id]
+
         keyboard = [
             [InlineKeyboardButton("✊ ROCK", callback_data=f"rps_move_{game_id}_rock")],
             [InlineKeyboardButton("📄 PAPER", callback_data=f"rps_move_{game_id}_paper")],
             [InlineKeyboardButton("✂️ SCISSORS", callback_data=f"rps_move_{game_id}_scissors")]
         ]
+
         bet_text = f"🪙 Bet: {bet:,} | Prize: {bet*2:,}" if bet > 0 else "🎮 Free Play"
-        await query.edit_message_text(f"✊ RPS\n\n{creator_name} vs {user_name}\n{bet_text}\n🎯 {creator_name}'s turn!", reply_markup=InlineKeyboardMarkup(keyboard))
+
+        await query.edit_message_text(
+            f"✊ RPS\n\n{creator_name} vs {user_name}\n{bet_text}\n🎯 {creator_name}'s turn!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
 async def rps_move_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
