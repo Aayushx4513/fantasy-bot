@@ -10961,7 +10961,6 @@ async def earn_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 # ============ ROB COMMAND ============
-# ============ ROB COMMAND ============
 async def rob(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_id = update.message.chat.id
@@ -11151,9 +11150,10 @@ async def rob(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await close_db(db)
 
     # ============ CONFIRMATION ============
+    # 🔥 FIX: target_id + owner_id dono callback data mein
     keyboard = [
-        [InlineKeyboardButton("✅ ROB", callback_data=f"rob_confirm_{user.id}"),
-         InlineKeyboardButton("❌ CANCEL", callback_data=f"rob_cancel_{user.id}")]
+        [InlineKeyboardButton("✅ ROB", callback_data=f"rob_confirm_{target.id}_{user_id}"),
+         InlineKeyboardButton("❌ CANCEL", callback_data=f"rob_cancel_{target.id}_{user_id}")]
     ]
 
     await update.message.reply_text(
@@ -11167,7 +11167,6 @@ async def rob(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-
 
 # ============ ROB CALLBACK ============
 async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
