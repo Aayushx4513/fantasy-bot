@@ -11076,8 +11076,8 @@ async def rob(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ============ CONFIRMATION ============
     keyboard = [
-        [InlineKeyboardButton("✅ ROB", callback_data=f"rob_confirm_{target.id}"),
-         InlineKeyboardButton("❌ CANCEL", callback_data=f"rob_cancel_{target.id}")]
+        [InlineKeyboardButton("✅ ROB", callback_data=f"rob_confirm_{user.id}"),
+         InlineKeyboardButton("❌ CANCEL", callback_data=f"rob_cancel_{user.id}")]
     ]
 
     await update.message.reply_text(
@@ -11094,7 +11094,6 @@ async def rob(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============ ROB CALLBACK ============
-# ============ ROB CALLBACK ============
 async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     try:
@@ -11105,12 +11104,38 @@ async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     data = query.data
 
+    # 🔥 Parse callback data
+    parts = data.split("_")
+
     if data.startswith("rob_cancel_"):
+        # parts = ["rob", "cancel", target_id, owner_id]
+        try:
+            owner_id = int(parts[3])
+        except (IndexError, ValueError):
+            await query.answer("❌ Invalid button!", show_alert=True)
+            return
+
+        # 🔥 Owner check
+        if user_id != owner_id:
+            await query.answer("❌ This button is not for you!", show_alert=True)
+            return
+
         await query.edit_message_text("❌ *Rob cancelled.*", parse_mode="Markdown")
         return
 
     if data.startswith("rob_confirm_"):
-        target_id = int(data.split("_")[2])
+        # parts = ["rob", "confirm", target_id, owner_id]
+        try:
+            target_id = int(parts[2])
+            owner_id = int(parts[3])
+        except (IndexError, ValueError):
+            await query.answer("❌ Invalid button!", show_alert=True)
+            return
+
+        # 🔥 Owner check
+        if user_id != owner_id:
+            await query.answer("❌ This button is not for you!", show_alert=True)
+            return
 
         db = await get_db()
 
@@ -11161,13 +11186,11 @@ async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             remaining = amount
 
             if target_wallet >= remaining:
-                # Wallet has enough
                 await db.execute(
                     "UPDATE users SET balance = balance - $1 WHERE user_id = $2",
                     remaining, target_id
                 )
             else:
-                # Wallet empty, take from bank
                 wallet_taken = target_wallet
                 bank_taken = remaining - wallet_taken
 
@@ -11176,7 +11199,6 @@ async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     target_id
                 )
 
-                # Ensure bank row exists
                 await db.execute(
                     "INSERT INTO bank (user_id, balance) VALUES ($1, 0) ON CONFLICT (user_id) DO NOTHING",
                     target_id
@@ -11213,7 +11235,7 @@ async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Update robber stats
             await db.execute(
                 """
-                UPDATE users 
+                UPDATE users
                 SET last_rob_attempt = $1,
                     rob_count_today = rob_count_today + 1,
                     last_rob_reset = $2
@@ -11276,7 +11298,7 @@ async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await db.execute(
                 """
-                UPDATE users 
+                UPDATE users
                 SET last_rob_attempt = $1,
                     rob_count_today = rob_count_today + 1,
                     last_rob_reset = $2
@@ -11304,7 +11326,7 @@ async def rob_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return
 
-
+# ============ PROTECTION COMMAND ============
 # ============ PROTECTION COMMAND ============
 async def protection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -11370,9 +11392,10 @@ async def protection(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # 🔥 Owner ID add kiya callback data mein
     keyboard = [
-        [InlineKeyboardButton("✅ PAY 5,000", callback_data="protect_confirm"),
-         InlineKeyboardButton("❌ CANCEL", callback_data="protect_cancel")]
+        [InlineKeyboardButton("✅ PAY 5,000", callback_data=f"protect_confirm_{user_id}"),
+         InlineKeyboardButton("❌ CANCEL", callback_data=f"protect_cancel_{user_id}")]
     ]
 
     await update.message.reply_text(
@@ -11396,11 +11419,36 @@ async def protection_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = update.effective_user.id
     data = query.data
 
-    if data == "protect_cancel":
+    # 🔥 Parse callback data: protect_cancel_<owner_id> / protect_confirm_<owner_id>
+    parts = data.split("_")
+
+    if data.startswith("protect_cancel_"):
+        try:
+            owner_id = int(parts[2])
+        except (IndexError, ValueError):
+            await query.answer("❌ Invalid button!", show_alert=True)
+            return
+
+        # 🔥 Owner check
+        if user_id != owner_id:
+            await query.answer("❌ This button is not for you!", show_alert=True)
+            return
+
         await query.edit_message_text("❌ *Cancelled.*", parse_mode="Markdown")
         return
 
-    if data == "protect_confirm":
+    if data.startswith("protect_confirm_"):
+        try:
+            owner_id = int(parts[2])
+        except (IndexError, ValueError):
+            await query.answer("❌ Invalid button!", show_alert=True)
+            return
+
+        # 🔥 Owner check
+        if user_id != owner_id:
+            await query.answer("❌ This button is not for you!", show_alert=True)
+            return
+
         db = await get_db()
 
         balance = await db.fetchval(
