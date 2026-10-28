@@ -3066,11 +3066,14 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
     data = query.data
     game_id = int(data.split("_")[2])
 
+    # 🔥 Check if game already started
+    if game_id in cricket_games:
+        await query.answer("⏳ Game already started!", show_alert=True)
+        return
+
+    # Check if lobby exists
     if game_id not in cricket_lobby:
-        try:
-            await query.edit_message_text("*❌ Game expired!*", parse_mode="Markdown")
-        except:
-            pass
+        await query.answer("❌ Game expired!", show_alert=True)
         return
 
     lobby = cricket_lobby[game_id]
@@ -3088,10 +3091,7 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
         db = await get_db()
         balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
         if balance is None:
-            try:
-                await query.edit_message_text("*❌ Send /start first!*", parse_mode="Markdown")
-            except:
-                pass
+            await query.answer("❌ Send /start first!", show_alert=True)
             await close_db(db)
             return
         if balance < bet:
@@ -3102,12 +3102,25 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, user_id)
         await close_db(db)
 
+    # 🔥 Double-check: game already created by someone else? (race condition)
+    if game_id in cricket_games:
+        # Refund if bet was deducted
+        if bet > 0:
+            db = await get_db()
+            await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", bet, user_id)
+            await close_db(db)
+        await query.answer("⏳ Game already started!", show_alert=True)
+        return
+
     game = CricketGame(game_id, creator_id, creator_name, bet, chat_id, mode)
     game.player2_id = user_id
     game.player2_name = user_name
     game.game_active = True
     cricket_games[game_id] = game
-    del cricket_lobby[game_id]
+
+    # 🔥 Remove lobby only after game created
+    if game_id in cricket_lobby:
+        del cricket_lobby[game_id]
 
     await query.edit_message_text(
         f"*🏏 CRICKET GAME*\n\n"
