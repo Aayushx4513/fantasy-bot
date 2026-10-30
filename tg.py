@@ -12143,7 +12143,7 @@ async def sendhere_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ <b>Usage:</b>\n"
             "<code>/sendhere &lt;group_id&gt;</code> (reply to a message)\n"
             "<code>/sendhere &lt;group_id&gt; &lt;text&gt;</code>\n\n"
-            "<b>Note:</b> Photo/Video bhejne ke liye usko reply karke command chalao.",
+            "<b>Note:</b> To broadcast media (Photo, Video, or Document), reply to the target message with this command.",
             parse_mode="HTML"
         )
         return
@@ -12187,7 +12187,7 @@ async def sendhere_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"❌ <b>Failed to send!</b>\n\n"
             f"Reason: <code>{e}</code>\n\n"
-            f"💡 <i>Make sure the bot is an admin in that group.</i>",
+            f"💡 <i>Make sure that the group id is correct.</i>",
             parse_mode="HTML"
         )
 
