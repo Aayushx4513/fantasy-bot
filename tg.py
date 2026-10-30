@@ -12128,6 +12128,57 @@ async def unbl_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML"
     )
 
+async def sendhere_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Manual broadcast to a specific group — /sendhere <chat_id> <message>"""
+    user_id = update.effective_user.id
+
+    # 🔥 Sirf Bot Admins kar sakte hain
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text(
+            "❌ <b>Usage:</b>\n"
+            "<code>/sendhere &lt;group_id&gt; &lt;message or link&gt;</code>\n\n"
+            "<b>Example:</b>\n"
+            "<code>/sendhere -1001234567890 🏏 India won the match!</code>",
+            parse_mode="HTML"
+        )
+        return
+
+    # Target Group ID
+    try:
+        target_chat_id = int(args[0])
+    except ValueError:
+        await update.message.reply_text("❌ Invalid Group ID! ID negative number honi chahiye (jaise -1001234567890).")
+        return
+
+    # Message (baaki saara text)
+    message_text = " ".join(args[1:])
+
+    try:
+        # 🔥 Yahan parse_mode nahi lagaya, taaki jo tu type karega wahi same jaye
+        await context.bot.send_message(
+            chat_id=target_chat_id,
+            text=message_text,
+            disable_web_page_preview=False 
+        )
+        
+        await update.message.reply_text(
+            f"✅ <b>Message sent successfully!</b>\n\n"
+            f"🎯 <b>To:</b> <code>{target_chat_id}</code>",
+            parse_mode="HTML"
+        )
+        
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ <b>Failed to send!</b>\n\n"
+            f"Reason: <code>{e}</code>\n\n"
+            f"💡 <i>Make sure the bot is an admin in that group.</i>",
+            parse_mode="HTML"
+        )
 
 
 
@@ -12210,6 +12261,8 @@ async def main():
     app.add_handler(CommandHandler("result_auction", result_auction))
     app.add_handler(CommandHandler("rmplayer", rmplayer))
     app.add_handler(CommandHandler("balance", balance))
+    app.add_handler(CommandHandler("sendhere", sendhere_cmd))
+
     # ============ RPS GAME ==========
     app.add_handler(CommandHandler("rps", rps))
     app.add_handler(CallbackQueryHandler(rps_join_callback, pattern="^rps_join_"))
