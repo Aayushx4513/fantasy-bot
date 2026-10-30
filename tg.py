@@ -12187,7 +12187,7 @@ async def sendhere_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"❌ <b>Failed to send!</b>\n\n"
             f"Reason: <code>{e}</code>\n\n"
-            f"💡 <i>Make sure that the group id is correct.</i>",
+            f"💡 <i>Make sure that the group id is correct and the bot is a member of this group.</i>"
             parse_mode="HTML"
         )
 
