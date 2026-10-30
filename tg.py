@@ -12129,7 +12129,7 @@ async def unbl_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def sendhere_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Manual broadcast to a specific group — /sendhere <chat_id> <message>"""
+    """Manual broadcast to a specific group — /sendhere <chat_id> (reply to any message)"""
     user_id = update.effective_user.id
 
     # 🔥 Sirf Bot Admins kar sakte hain
@@ -12138,12 +12138,12 @@ async def sendhere_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     args = context.args
-    if len(args) < 2:
+    if len(args) < 1:
         await update.message.reply_text(
             "❌ <b>Usage:</b>\n"
-            "<code>/sendhere &lt;group_id&gt; &lt;message or link&gt;</code>\n\n"
-            "<b>Example:</b>\n"
-            "<code>/sendhere -1001234567890 🏏 India won the match!</code>",
+            "<code>/sendhere &lt;group_id&gt;</code> (reply to a message)\n"
+            "<code>/sendhere &lt;group_id&gt; &lt;text&gt;</code>\n\n"
+            "<b>Note:</b> Photo/Video bhejne ke liye usko reply karke command chalao.",
             parse_mode="HTML"
         )
         return
@@ -12155,17 +12155,28 @@ async def sendhere_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Invalid Group ID! ID negative number honi chahiye (jaise -1001234567890).")
         return
 
-    # Message (baaki saara text)
-    message_text = " ".join(args[1:])
-
     try:
-        # 🔥 Yahan parse_mode nahi lagaya, taaki jo tu type karega wahi same jaye
-        await context.bot.send_message(
-            chat_id=target_chat_id,
-            text=message_text,
-            disable_web_page_preview=False 
-        )
-        
+        # 🔥 Check if replying to a message
+        if update.message.reply_to_message:
+            # copy_message use karne se exact same photo/video/text jayega
+            await context.bot.copy_message(
+                chat_id=target_chat_id,
+                from_chat_id=update.message.chat.id,
+                message_id=update.message.reply_to_message.message_id
+            )
+        else:
+            # Agar reply nahi hai, toh simple text bhejega
+            if len(args) < 2:
+                await update.message.reply_text("❌ Please reply to a message or provide text to send.")
+                return
+            
+            message_text = " ".join(args[1:])
+            await context.bot.send_message(
+                chat_id=target_chat_id,
+                text=message_text,
+                disable_web_page_preview=False 
+            )
+            
         await update.message.reply_text(
             f"✅ <b>Message sent successfully!</b>\n\n"
             f"🎯 <b>To:</b> <code>{target_chat_id}</code>",
@@ -12179,7 +12190,6 @@ async def sendhere_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💡 <i>Make sure the bot is an admin in that group.</i>",
             parse_mode="HTML"
         )
-
 
 
 
