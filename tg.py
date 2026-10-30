@@ -12152,7 +12152,7 @@ async def sendhere_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         target_chat_id = int(args[0])
     except ValueError:
-        await update.message.reply_text("❌ Invalid Group ID! ID negative number honi chahiye (jaise -1001234567890).")
+        await update.message.reply_text("❌ Invalid Group ID! ID must be a negative number (ex -1001234567890).")
         return
 
     try:
