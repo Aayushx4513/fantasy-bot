@@ -2980,7 +2980,7 @@ class CricketGame:
         rem_balls = balls % 6
         return f"{overs}.{rem_balls}"
 
-async def tourmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def oneover(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
     chat_id = update.message.chat.id
@@ -3021,7 +3021,7 @@ async def tourmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bet_text = f"🪙 Bet: {bet} | Prize: {bet*2}" if bet > 0 else "🎮 Normal Game"
 
     await update.message.reply_text(
-        f"*🏏 TOUR MATCH! (1 OVER)*\n\n"
+        f"*🏏 ONE OVER MATCH!*\n\n"
         f"*👑 Host:* {user_name_escaped}\n"
         f"{bet_text}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -12430,7 +12430,7 @@ async def main():
     app.add_handler(CallbackQueryHandler(cricket_bat_callback, pattern="^cricket_bat_"))
     app.add_handler(CommandHandler("settime", settime))
     app.add_handler(CommandHandler("setplayer", setplayer))
-    app.add_handler(CommandHandler("tourmatch", tourmatch))
+    app.add_handler(CommandHandler("oneover", oneover))
     # ============ MINES ==========
     app.add_handler(CommandHandler("mines", mines))
     app.add_handler(CallbackQueryHandler(mine_callback, pattern="^mine_"))
