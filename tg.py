@@ -2916,6 +2916,7 @@ class CricketGame:
         self.player2_wickets_taken = 0
         self.innings1_balls = 0
         self.innings2_balls = 0
+        self.is_superover = False
 
     def get_deliveries(self):
         if self.mode == "1-3":
@@ -2979,6 +2980,58 @@ class CricketGame:
         rem_balls = balls % 6
         return f"{overs}.{rem_balls}"
 
+async def superover(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    chat_id = update.message.chat.id
+    
+    user_name_escaped = escape_md(user_name)
+    
+    if not await is_registered(user_id):
+        await update.message.reply_text('❌ Send /start first!')
+        return
+        
+    args = context.args
+    bet = 0
+    if args:
+        try:
+            bet = int(args[0])
+            if bet < 100:
+                await update.message.reply_text("*❌ Minimum bet is 100 credits!*", parse_mode="Markdown")
+                return
+        except:
+            await update.message.reply_text("*❌ Invalid bet amount!*", parse_mode="Markdown")
+            return
+            
+    if bet > 0:
+        db = await get_db()
+        balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
+        await close_db(db)
+        if balance < bet:
+            await update.message.reply_text(f"*❌ You need {bet:,} credits to play!*", parse_mode="Markdown")
+            return
+            
+    global cricket_next_id
+    game_id = cricket_next_id
+    cricket_next_id += 1
+    
+    # Lobby create karte waqt hi mode set kar do
+    cricket_lobby[game_id] = {"creator_id": user_id, "creator_name": user_name, "bet": bet, "chat_id": chat_id, "is_superover": True}
+    
+    bet_text = f"🪙 Bet: {bet} | Prize: {bet*2}" if bet > 0 else "🎮 Normal Game"
+
+    await update.message.reply_text(
+        f"*⚡ SUPER OVER! ⚡*\n\n"
+        f"*👑 Host:* {user_name_escaped}\n"
+        f"{bet_text}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"*⚡ Select Mode*",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("1-3 Mode", callback_data=f"cricket_mode_{game_id}_1-3"), InlineKeyboardButton("No 5 Mode", callback_data=f"cricket_mode_{game_id}_1-5")],
+            [InlineKeyboardButton("1-9 Mode", callback_data=f"cricket_mode_{game_id}_1-9"), InlineKeyboardButton("Default Mode", callback_data=f"cricket_mode_{game_id}_default")]
+        ]),
+        parse_mode="Markdown"
+    )
 
 async def clcricket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -3113,6 +3166,7 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     game = CricketGame(game_id, creator_id, creator_name, bet, chat_id, mode)
+    game.is_superover = lobby.get("is_superover", False)
     game.player2_id = user_id
     game.player2_name = user_name
     game.game_active = True
@@ -3333,7 +3387,12 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     if game.balls % 6 == 0:
         game.current_over_shots = []
 
+    if game.innings == 1 and (game.wickets >= 1 or game.balls >= 60):# ============ FIRST INNINGS END ============
     # ============ FIRST INNINGS END ============
+        innings_balls = 6 if getattr(game, 'is_superover', False) else 60
+
+    if game.innings == 1 and (game.wickets >= 1 or game.balls >= innings_balls):
+        first_batsman = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
     if game.innings == 1 and (game.wickets >= 1 or game.balls >= 60):
         first_batsman = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
         first_bowler = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
@@ -12372,7 +12431,7 @@ async def main():
     app.add_handler(CallbackQueryHandler(cricket_bat_callback, pattern="^cricket_bat_"))
     app.add_handler(CommandHandler("settime", settime))
     app.add_handler(CommandHandler("setplayer", setplayer))
-
+    app.add_handler(CommandHandler("superover", superover))
     # ============ MINES ==========
     app.add_handler(CommandHandler("mines", mines))
     app.add_handler(CallbackQueryHandler(mine_callback, pattern="^mine_"))
