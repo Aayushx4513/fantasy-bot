@@ -2980,7 +2980,7 @@ class CricketGame:
         rem_balls = balls % 6
         return f"{overs}.{rem_balls}"
 
-async def superover(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def tourmatch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
     chat_id = update.message.chat.id
@@ -3021,7 +3021,7 @@ async def superover(update: Update, context: ContextTypes.DEFAULT_TYPE):
     bet_text = f"🪙 Bet: {bet} | Prize: {bet*2}" if bet > 0 else "🎮 Normal Game"
 
     await update.message.reply_text(
-        f"*⚡ SUPER OVER! ⚡*\n\n"
+        f"*🏏 TOUR MATCH! (1 OVER)*\n\n"
         f"*👑 Host:* {user_name_escaped}\n"
         f"{bet_text}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
@@ -3166,6 +3166,7 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     game = CricketGame(game_id, creator_id, creator_name, bet, chat_id, mode)
+    game.is_superover = lobby.get("is_superover", False)
     game.is_superover = lobby.get("is_superover", False)
     game.player2_id = user_id
     game.player2_name = user_name
@@ -3387,13 +3388,10 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     if game.balls % 6 == 0:
         game.current_over_shots = []
 
-    if game.innings == 1 and (game.wickets >= 1 or game.balls >= 60):# ============ FIRST INNINGS END ============
     # ============ FIRST INNINGS END ============
-        innings_balls = 6 if getattr(game, 'is_superover', False) else 60
+    innings_balls = 6 if getattr(game, 'is_superover', False) else 60
 
     if game.innings == 1 and (game.wickets >= 1 or game.balls >= innings_balls):
-        first_batsman = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
-    if game.innings == 1 and (game.wickets >= 1 or game.balls >= 60):
         first_batsman = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
         first_bowler = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
 
@@ -3561,6 +3559,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     msg += f"*🎮 {batsman_name} choose your shot :-*"
 
     await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
 
 async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -12431,7 +12430,7 @@ async def main():
     app.add_handler(CallbackQueryHandler(cricket_bat_callback, pattern="^cricket_bat_"))
     app.add_handler(CommandHandler("settime", settime))
     app.add_handler(CommandHandler("setplayer", setplayer))
-    app.add_handler(CommandHandler("superover", superover))
+    app.add_handler(CommandHandler("tourmatch", tourmatch))
     # ============ MINES ==========
     app.add_handler(CommandHandler("mines", mines))
     app.add_handler(CallbackQueryHandler(mine_callback, pattern="^mine_"))
