@@ -3391,7 +3391,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                         parse_mode="Markdown"
                     )
                 except Exception as e:
-                    print(f"GIF 50 Error: {e}") # Render logs me error dikhega
+                    print(f"GIF 50 Error: {e}")
 
             if current_runs >= 100 and current_runs - bat_number < 100:
                 try:
