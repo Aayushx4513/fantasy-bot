@@ -3322,9 +3322,18 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer("Wait!", show_alert=True)
         return
 
-    current_batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
-    current_bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
+    manual_board = live_matches.get(chat_id)
     
+    # 🔥 FIX: Manual board active hai toh base game ke naam ignore karo
+    if manual_board and manual_board.get("active"):
+        current_batsman_name = manual_board.get("batter") or "Waiting..."
+        current_bowler_name = update.effective_user.first_name
+        # Bowler ka naam manual board mein save karo
+        manual_board["bowler"] = current_bowler_name
+    else:
+        current_batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
+        current_bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
+
     bat_number = game.pending_bat_number
     game.pending_bat_number = None
     game.balls += 1
@@ -3337,8 +3346,6 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     deliveries = game.get_deliveries()
     bowl_number = deliveries[delivery_key]["out_on"]
     is_out = (bat_number == bowl_number)
-
-    manual_board = live_matches.get(chat_id)
 
     # ==========================================
     # 🔥 MANUAL SCOREBOARD TRACKER (BACKGROUND MEIN CHALEGA)
@@ -3694,7 +3701,6 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-
 async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -3709,6 +3715,7 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     game = cricket_games[game_id]
     user_id = update.effective_user.id
+    chat_id = query.message.chat.id
 
     if user_id != game.current_batsman:
         await query.answer("Not your turn!", show_alert=True)
@@ -3720,6 +3727,11 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
     game.pending_bat_number = shot
     game.waiting_for = "bowl"
+
+    # 🔥 MANUAL SCOREBOARD: BATTER UPDATE
+    manual_board = live_matches.get(chat_id)
+    if manual_board and manual_board.get("active"):
+        manual_board["batter"] = update.effective_user.first_name
 
     batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
     bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
