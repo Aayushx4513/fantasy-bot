@@ -12752,7 +12752,6 @@ async def main():
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("mystats", mystats))
     app.add_handler(CallbackQueryHandler(stats_callback, pattern="^stats_"))
-    handler admin ke reply ko catch karega (team select karne ke liye)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, setup_batting_team), group=7)
     app.add_handler(MessageHandler(filters.ALL, track_all_activity), group=0)
     app.add_handler(MessageHandler(filters.ChatType.GROUP | filters.ChatType.SUPERGROUP, track_group))
