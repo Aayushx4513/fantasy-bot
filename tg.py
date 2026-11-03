@@ -3313,18 +3313,31 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     game = cricket_games[game_id]
     user_id = update.effective_user.id
     chat_id = query.message.chat.id
+    manual_board = live_matches.get(chat_id)
 
-    if user_id != game.current_bowler:
-        await query.answer("Not your turn!", show_alert=True)
-        return
+    # 🔥 FIX: Base Game ka Turn Check Bypass karo agar manual board chal raha hai
+    if manual_board and manual_board.get("active"):
+        game.current_bowler = user_id
+        
+        # 🔥 Sync Base Game Innings with Manual Board
+        if manual_board["innings"] == 2 and game.innings == 1:
+            game.innings = 2
+            game.target = manual_board["target"]
+            game.current_batsman = game.current_bowler
+            game.current_bowler = game.player1_id if game.current_batsman == game.player2_id else game.player2_id
+            game.score = 0
+            game.wickets = 0
+            game.balls = 0
+
+    else:
+        if user_id != game.current_bowler:
+            await query.answer("Not your turn!", show_alert=True)
+            return
 
     if game.waiting_for != "bowl":
         await query.answer("Wait!", show_alert=True)
         return
 
-    manual_board = live_matches.get(chat_id)
-    
-    # 🔥 FIX: Manual board active hai toh base game se naamo ko override karo
     if manual_board and manual_board.get("active"):
         current_batsman_name = manual_board.get("batter") or "Waiting..."
         current_bowler_name = update.effective_user.first_name
@@ -3346,7 +3359,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     is_out = (bat_number == bowl_number)
 
     # ==========================================
-    # 🔥 MANUAL SCOREBOARD TRACKER (BACKGROUND MEIN CHALEGA)
+    # 🔥 MANUAL SCOREBOARD TRACKER
     # ==========================================
     if manual_board and manual_board.get("active"):
         if "player_stats" not in manual_board:
@@ -3364,11 +3377,10 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             manual_board["player_stats"][current_bowler_name]["wkts"] += 1
 
-        # 🔥 50s AND 100s GIF LOGIC (Fixed for crossing)
+        # 50s AND 100s GIF LOGIC
         if not is_out:
             current_runs = manual_board["player_stats"][current_batsman_name]["runs"]
             
-            # Agar runs 50 cross kare (aur pehle 50 se kam the)
             if current_runs >= 50 and current_runs - bat_number < 50:
                 try:
                     GIF_50_ID = "AAMCBQADGQEDrW-jaumr6KiC9uACQqW2gnn-SenyoPQAArgiAAJQaFBXAAFoUnlG35yvAQAHbQADPQQ"
@@ -3379,9 +3391,8 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                         parse_mode="Markdown"
                     )
                 except Exception as e:
-                    print(f"GIF Error: {e}")
+                    print(f"GIF 50 Error: {e}") # Render logs me error dikhega
 
-            # Agar runs 100 cross kare
             if current_runs >= 100 and current_runs - bat_number < 100:
                 try:
                     GIF_100_ID = "AAMCBQADGQEDrW-laumr6rIGoIPsrVv-wWlCDuIKL64AArkiAAJQaFBXBeG8egVxAAG9AQAHbQADPQQ"
@@ -3392,7 +3403,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                         parse_mode="Markdown"
                     )
                 except Exception as e:
-                    print(f"GIF Error: {e}")
+                    print(f"GIF 100 Error: {e}")
 
         # Tracker Update
         manual_board["balls"] += 1
@@ -3452,6 +3463,15 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             manual_board["balls"] = 0
             manual_board["batter"] = None
             manual_board["bowler"] = None
+
+            # Sync with base game
+            game.innings = 2
+            game.target = manual_board["target"]
+            game.current_batsman = game.current_bowler
+            game.current_bowler = game.player1_id if game.current_batsman == game.player2_id else game.player2_id
+            game.score = 0
+            game.wickets = 0
+            game.balls = 0
 
         if manual_board["balls"] % 6 == 0:
             is_over_event = True
@@ -3718,10 +3738,15 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     game = cricket_games[game_id]
     user_id = update.effective_user.id
     chat_id = query.message.chat.id
+    manual_board = live_matches.get(chat_id)
 
-    if user_id != game.current_batsman:
-        await query.answer("Not your turn!", show_alert=True)
-        return
+    # 🔥 FIX: Agar manual match chal raha hai, toh base game ka turn check bypass karo
+    if manual_board and manual_board.get("active"):
+        game.current_batsman = user_id 
+    else:
+        if user_id != game.current_batsman:
+            await query.answer("Not your turn!", show_alert=True)
+            return
 
     if game.waiting_for != "bat":
         await query.answer("Wait for your turn!", show_alert=True)
@@ -3730,16 +3755,13 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     game.pending_bat_number = shot
     game.waiting_for = "bowl"
 
-    # 🔥 MANUAL SCOREBOARD: BATTER & BOWLER UPDATE (FIXED)
-    manual_board = live_matches.get(chat_id)
     if manual_board and manual_board.get("active"):
         manual_board["batter"] = update.effective_user.first_name
-        # Jisne bowl karna hai usko yahan set kar rahe hain (Base game ka current_bowler)
         bowler_id = game.current_bowler
         bowler_name = game.player1_name if bowler_id == game.player1_id else game.player2_name
         manual_board["bowler"] = bowler_name
 
-    batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
+    batsman_name = update.effective_user.first_name
     bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
 
     deliveries = game.get_deliveries()
