@@ -3324,12 +3324,10 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     manual_board = live_matches.get(chat_id)
     
-    # 🔥 FIX: Manual board active hai toh base game ke naam ignore karo
+    # 🔥 FIX: Manual board active hai toh base game se naamo ko override karo
     if manual_board and manual_board.get("active"):
         current_batsman_name = manual_board.get("batter") or "Waiting..."
         current_bowler_name = update.effective_user.first_name
-        # Bowler ka naam manual board mein save karo
-        manual_board["bowler"] = current_bowler_name
     else:
         current_batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
         current_bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
@@ -3366,10 +3364,11 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             manual_board["player_stats"][current_bowler_name]["wkts"] += 1
 
-        # 50s AND 100s GIF LOGIC
+        # 🔥 50s AND 100s GIF LOGIC (Fixed for crossing)
         if not is_out:
             current_runs = manual_board["player_stats"][current_batsman_name]["runs"]
             
+            # Agar runs 50 cross kare (aur pehle 50 se kam the)
             if current_runs >= 50 and current_runs - bat_number < 50:
                 try:
                     GIF_50_ID = "AAMCBQADGQEDrW-jaumr6KiC9uACQqW2gnn-SenyoPQAArgiAAJQaFBXAAFoUnlG35yvAQAHbQADPQQ"
@@ -3379,8 +3378,10 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                         caption=f"🏏 **FIFTY UP!** 🏏\n\n🔥 What a knock by **{current_batsman_name}**!\n🎯 He completes his half-century!\n\n📊 **Score:** {manual_board['runs']}/{manual_board['wkts']} ({manual_board['balls']//6}.{manual_board['balls']%6} Ov)",
                         parse_mode="Markdown"
                     )
-                except: pass
+                except Exception as e:
+                    print(f"GIF Error: {e}")
 
+            # Agar runs 100 cross kare
             if current_runs >= 100 and current_runs - bat_number < 100:
                 try:
                     GIF_100_ID = "AAMCBQADGQEDrW-laumr6rIGoIPsrVv-wWlCDuIKL64AArkiAAJQaFBXBeG8egVxAAG9AQAHbQADPQQ"
@@ -3390,7 +3391,8 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                         caption=f"🏆 **CENTURY!** 🏆\n\n👑 **ABSOLUTE MAGNIFICENT!**\n**{current_batsman_name}** smashes a brilliant 100!\n\n📊 **Score:** {manual_board['runs']}/{manual_board['wkts']} ({manual_board['balls']//6}.{manual_board['balls']%6} Ov)",
                         parse_mode="Markdown"
                     )
-                except: pass
+                except Exception as e:
+                    print(f"GIF Error: {e}")
 
         # Tracker Update
         manual_board["balls"] += 1
@@ -3436,7 +3438,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 await context.bot.pin_chat_message(chat_id, new_msg.message_id, disable_notification=True)
             except: pass
             
-            del live_matches[chat_id] # Manual board end
+            del live_matches[chat_id]
 
         # ALL OUT AUTO INNINGS CHANGE
         max_wkts = manual_board.get("wickets", 3)
@@ -3728,10 +3730,14 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     game.pending_bat_number = shot
     game.waiting_for = "bowl"
 
-    # 🔥 MANUAL SCOREBOARD: BATTER UPDATE
+    # 🔥 MANUAL SCOREBOARD: BATTER & BOWLER UPDATE (FIXED)
     manual_board = live_matches.get(chat_id)
     if manual_board and manual_board.get("active"):
         manual_board["batter"] = update.effective_user.first_name
+        # Jisne bowl karna hai usko yahan set kar rahe hain (Base game ka current_bowler)
+        bowler_id = game.current_bowler
+        bowler_name = game.player1_name if bowler_id == game.player1_id else game.player2_name
+        manual_board["bowler"] = bowler_name
 
     batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
     bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
