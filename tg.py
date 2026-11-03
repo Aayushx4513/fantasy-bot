@@ -3312,6 +3312,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     game = cricket_games[game_id]
     user_id = update.effective_user.id
+    chat_id = query.message.chat.id
 
     if user_id != game.current_bowler:
         await query.answer("Not your turn!", show_alert=True)
@@ -3321,6 +3322,9 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer("Wait!", show_alert=True)
         return
 
+    current_batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
+    current_bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
+    
     bat_number = game.pending_bat_number
     game.pending_bat_number = None
     game.balls += 1
@@ -3332,23 +3336,145 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     deliveries = game.get_deliveries()
     bowl_number = deliveries[delivery_key]["out_on"]
-
-    batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
-    bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
-    chat_id = query.message.chat.id
-
     is_out = (bat_number == bowl_number)
 
-    if game.innings == 1:
-        innings_tag = "FIRST INNINGS"
-        overs_display = game.get_overs(1)
-    else:
-        innings_tag = f"TARGET : {game.target}"
-        overs_display = game.get_overs(2)
+    manual_board = live_matches.get(chat_id)
 
-    msg = f"*🏏 Over {overs_display} ({innings_tag})*\n\n"
-    msg += f"*{batsman_name} played: {bat_number}  | {bowler_name} bowled: {bowl_number}*\n\n"
+    # ==========================================
+    # 🔥 MANUAL SCOREBOARD TRACKER (BACKGROUND MEIN CHALEGA)
+    # ==========================================
+    if manual_board and manual_board.get("active"):
+        if "player_stats" not in manual_board:
+            manual_board["player_stats"] = {}
 
+        if current_batsman_name not in manual_board["player_stats"]:
+            manual_board["player_stats"][current_batsman_name] = {"runs": 0, "balls": 0}
+        if current_bowler_name not in manual_board["player_stats"]:
+            manual_board["player_stats"][current_bowler_name] = {"wkts": 0, "runs_given": 0}
+
+        manual_board["player_stats"][current_batsman_name]["balls"] += 1
+        if not is_out:
+            manual_board["player_stats"][current_batsman_name]["runs"] += bat_number
+            manual_board["player_stats"][current_bowler_name]["runs_given"] += bat_number
+        else:
+            manual_board["player_stats"][current_bowler_name]["wkts"] += 1
+
+        # 50s AND 100s GIF LOGIC
+        if not is_out:
+            current_runs = manual_board["player_stats"][current_batsman_name]["runs"]
+            
+            if current_runs >= 50 and current_runs - bat_number < 50:
+                try:
+                    GIF_50_ID = "AAMCBQADGQEDrW-jaumr6KiC9uACQqW2gnn-SenyoPQAArgiAAJQaFBXAAFoUnlG35yvAQAHbQADPQQ"
+                    await context.bot.send_animation(
+                        chat_id=chat_id,
+                        animation=GIF_50_ID,
+                        caption=f"🏏 **FIFTY UP!** 🏏\n\n🔥 What a knock by **{current_batsman_name}**!\n🎯 He completes his half-century!\n\n📊 **Score:** {manual_board['runs']}/{manual_board['wkts']} ({manual_board['balls']//6}.{manual_board['balls']%6} Ov)",
+                        parse_mode="Markdown"
+                    )
+                except: pass
+
+            if current_runs >= 100 and current_runs - bat_number < 100:
+                try:
+                    GIF_100_ID = "AAMCBQADGQEDrW-laumr6rIGoIPsrVv-wWlCDuIKL64AArkiAAJQaFBXBeG8egVxAAG9AQAHbQADPQQ"
+                    await context.bot.send_animation(
+                        chat_id=chat_id,
+                        animation=GIF_100_ID,
+                        caption=f"🏆 **CENTURY!** 🏆\n\n👑 **ABSOLUTE MAGNIFICENT!**\n**{current_batsman_name}** smashes a brilliant 100!\n\n📊 **Score:** {manual_board['runs']}/{manual_board['wkts']} ({manual_board['balls']//6}.{manual_board['balls']%6} Ov)",
+                        parse_mode="Markdown"
+                    )
+                except: pass
+
+        # Tracker Update
+        manual_board["balls"] += 1
+        is_wicket_event = False
+        is_over_event = False
+
+        if is_out:
+            manual_board["wkts"] += 1
+            is_wicket_event = True
+            manual_board["out_batters"].append(current_batsman_name)
+            manual_board["batter"] = None
+        else:
+            manual_board["runs"] += bat_number
+            manual_board["batter"] = current_batsman_name
+
+        # TARGET CHASE (Summary Generation)
+        if manual_board["innings"] == 2 and manual_board["target"] and manual_board["runs"] >= manual_board["target"]:
+            summary = f"🏆 **MATCH ENDED!** 🏆\n\n"
+            summary += f"🏏 **{manual_board['batting_team']}** won the match!\n\n"
+            
+            batsmen = [(name, stats) for name, stats in manual_board["player_stats"].items() if stats.get("balls", 0) > 0]
+            batsmen.sort(key=lambda x: x[1]["runs"], reverse=True)
+            
+            bowlers = [(name, stats) for name, stats in manual_board["player_stats"].items() if stats.get("wkts", 0) > 0]
+            bowlers.sort(key=lambda x: x[1]["wkts"], reverse=True)
+
+            summary += "━━━━━━━━━━━━━━━━━━━━\n"
+            summary += "🏏 **Top Scorers:**\n"
+            for i, (name, stats) in enumerate(batsmen[:3]):
+                summary += f"> {i+1}. {name} - {stats['runs']} ({stats['balls']})\n"
+            
+            summary += "\n🎯 **Top Wicket Takers:**\n"
+            if bowlers:
+                for i, (name, stats) in enumerate(bowlers[:3]):
+                    summary += f"> {i+1}. {name} - {stats['wkts']} Wkts\n"
+            else:
+                summary += "> None\n"
+
+            try:
+                new_msg = await context.bot.send_message(chat_id, summary, parse_mode="Markdown")
+                if manual_board.get("pinned_msg_id"):
+                    await context.bot.unpin_chat_message(chat_id, manual_board["pinned_msg_id"])
+                await context.bot.pin_chat_message(chat_id, new_msg.message_id, disable_notification=True)
+            except: pass
+            
+            del live_matches[chat_id] # Manual board end
+
+        # ALL OUT AUTO INNINGS CHANGE
+        max_wkts = manual_board.get("wickets", 3)
+        if manual_board["wkts"] >= max_wkts and manual_board["innings"] == 1:
+            is_over_event = True 
+            manual_board["target"] = manual_board["runs"] + 1
+            manual_board["innings"] = 2
+            manual_board["batting_team"], manual_board["bowling_team"] = manual_board["bowling_team"], manual_board["batting_team"]
+            manual_board["runs"] = 0
+            manual_board["wkts"] = 0
+            manual_board["balls"] = 0
+            manual_board["batter"] = None
+            manual_board["bowler"] = None
+
+        if manual_board["balls"] % 6 == 0:
+            is_over_event = True
+            manual_board["bowler"] = None 
+
+        if is_wicket_event or is_over_event:
+            title = "☝️ **WICKET!**" if is_wicket_event else "⏱️ **END OF OVER**"
+            if manual_board["innings"] == 2 and manual_board["runs"] == 0 and manual_board["wkts"] == 0 and manual_board["balls"] == 0:
+                title = "🔄 **INNINGS CHANGED!**"
+                
+            score_txt = (
+                f"{title}\n\n"
+                f"🏏 **Batting:** {manual_board['batting_team']}\n"
+                f"📊 **Score:** {manual_board['runs']}/{manual_board['wkts']} ({manual_board['balls']//6}.{manual_board['balls']%6} Ov)\n"
+                f"🏃 **Batter:** {manual_board['batter'] or 'Waiting...'}\n"
+                f"🧤 **Bowler:** {manual_board['bowler'] or 'Waiting...'}\n"
+            )
+            if manual_board['target']:
+                score_txt += f"🎯 **Target:** {manual_board['target']}"
+
+            try:
+                new_msg = await context.bot.send_message(chat_id, score_txt, parse_mode="Markdown")
+                if manual_board.get("pinned_msg_id"):
+                    await context.bot.unpin_chat_message(chat_id, manual_board["pinned_msg_id"])
+                await context.bot.pin_chat_message(chat_id, new_msg.message_id, disable_notification=True)
+                manual_board["pinned_msg_id"] = new_msg.message_id
+            except Exception as e:
+                pass
+
+    # ==========================================
+    # 🔥 BASE GAME (CLCRICKET) LOGIC CONTINUES AS IT IS 🔥
+    # ==========================================
     if is_out:
         if game.score == 0:
             db = await get_db()
@@ -3366,10 +3492,14 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             await update_cricket_stats_realtime(game.player2_id, game.player2_name, 0, 1, 0)
 
         game.wickets += 1
+        msg = f"*🏏 Over {game.get_overs(game.innings)}*\n\n"
+        msg += f"*{current_batsman_name} played: {bat_number}  | {current_bowler_name} bowled: {bowl_number}*\n\n"
         msg += "*❌ OUT!*\n\n"
     else:
         runs = bat_number
         game.score += runs
+        msg = f"*🏏 Over {game.get_overs(game.innings)}*\n\n"
+        msg += f"*{current_batsman_name} played: {bat_number}  | {current_bowler_name} bowled: {bowl_number}*\n\n"
         msg += f"*✅ {runs} runs!*\n\n"
 
         if game.current_batsman == game.player1_id:
@@ -3381,99 +3511,9 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     if not hasattr(game, "current_over_shots"):
         game.current_over_shots = []
-
-    # ==========================================
-    # 🔥 MANUAL SCOREBOARD AUTO-TRACKER 🔥
-    # ==========================================
-    manual_board = live_matches.get(chat_id)
-    if manual_board and manual_board.get("active"):
-        manual_board["bowler"] = bowler_name
-        manual_board["balls"] += 1
-        
-        is_wicket_event = False
-        is_over_event = False
-
-        if is_out:
-            manual_board["wkts"] += 1
-            is_wicket_event = True
-            manual_board["out_batters"].append(batsman_name)
-            manual_board["batter"] = None 
-        else:
-            manual_board["runs"] += bat_number
-            manual_board["batter"] = batsman_name 
-
-        # 🔥 2ND INNINGS TARGET CHASE AUTO-END
-        if manual_board["innings"] == 2 and manual_board["target"] and manual_board["runs"] >= manual_board["target"]:
-            score_txt = (
-                f"🏆 **MATCH ENDED!**\n\n"
-                f"🎯 **Target Achieved!**\n"
-                f"📊 **Final Score:** {manual_board['runs']}/{manual_board['wkts']} ({manual_board['balls']//6}.{manual_board['balls']%6} Ov)\n"
-                f"🏏 **Winner:** {manual_board['batting_team']}"
-            )
-            try:
-                new_msg = await context.bot.send_message(chat_id, score_txt, parse_mode="Markdown")
-                if manual_board.get("pinned_msg_id"):
-                    await context.bot.unpin_chat_message(chat_id, manual_board["pinned_msg_id"])
-                await context.bot.pin_chat_message(chat_id, new_msg.message_id, disable_notification=True)
-            except: pass
-            
-            del live_matches[chat_id] # Board clear
-            if game_id in cricket_games: del cricket_games[game_id] # Game End
-            await query.edit_message_text("🏆 Match Ended!", parse_mode="Markdown")
-            return
-
-        # Auto change innings agar wickets target ke barabar ho jaye
-        max_wkts = manual_board.get("wickets", 3)
-        if manual_board["wkts"] >= max_wkts and manual_board["innings"] == 1:
-            is_over_event = True 
-            manual_board["target"] = manual_board["runs"] + 1
-            manual_board["innings"] = 2
-            manual_board["batting_team"], manual_board["bowling_team"] = manual_board["bowling_team"], manual_board["batting_team"]
-            manual_board["runs"] = 0
-            manual_board["wkts"] = 0
-            manual_board["balls"] = 0
-            manual_board["batter"] = None
-            
-            game.innings = 2
-            game.target = manual_board["target"]
-            game.current_batsman = game.current_bowler
-            game.current_bowler = game.player1_id if game.current_batsman == game.player2_id else game.player2_id
-            game.score = 0
-            game.wickets = 0
-            game.balls = 0
-
-        if manual_board["balls"] % 6 == 0:
-            is_over_event = True
-
-        if is_wicket_event or is_over_event:
-            title = "☝️ **WICKET!**" if is_wicket_event else "⏱️ **END OF OVER**"
-            if manual_board["innings"] == 2 and manual_board["runs"] == 0 and manual_board["wkts"] == 0 and manual_board["balls"] == 0:
-                title = "🔄 **INNINGS CHANGED!**"
-                
-            score_txt = (
-                f"{title}\n\n"
-                f"🏏 **Batting:** {manual_board['batting_team']}\n"
-                f"📊 **Score:** {manual_board['runs']}/{manual_board['wkts']} ({manual_board['balls']//6}.{manual_board['balls']%6} Ov)\n"
-                f"🏃 **Batter:** {manual_board['batter'] or 'Waiting...'}\n"
-                f"🧤 **Bowler:** {manual_board['bowler']}\n"
-            )
-            if manual_board['target']:
-                score_txt += f"🎯 **Target:** {manual_board['target']}"
-
-            try:
-                new_msg = await context.bot.send_message(chat_id, score_txt, parse_mode="Markdown")
-                if manual_board.get("pinned_msg_id"):
-                    await context.bot.unpin_chat_message(chat_id, manual_board["pinned_msg_id"])
-                await context.bot.pin_chat_message(chat_id, new_msg.message_id, disable_notification=True)
-                manual_board["pinned_msg_id"] = new_msg.message_id
-            except Exception as e:
-                pass
-    # ==========================================
-
     game.current_over_shots.append(str(bat_number))
 
     msg += f"*📊 Score: {game.score}/{game.wickets}*\n"
-
     if game.current_over_shots:
         shots_display = ', '.join(game.current_over_shots)
         msg += f"*🎯 This Over: {shots_display}*\n\n"
@@ -3483,7 +3523,6 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     if game.balls % 6 == 0:
         game.current_over_shots = []
 
-    # ============ FIRST INNINGS END ============
     innings_balls = 6 if getattr(game, 'is_superover', False) else 60
 
     if game.innings == 1 and (game.wickets >= 1 or game.balls >= innings_balls):
@@ -3508,7 +3547,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
         bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
 
-        msg = f"*🏏 Over {overs_display} (FIRST INNINGS ENDED)*\n\n"
+        msg = f"*🏏 Over {game.get_overs(1)} (FIRST INNINGS ENDED)*\n\n"
         msg += f"*{first_batsman} played: {bat_number}  | {first_bowler} bowled: {bowl_number}*\n\n"
         msg += f"*📊 Score: {innings_score}/{first_innings_wickets}*\n"
         msg += f"*🎯 Target: {game.target} runs*\n\n"
@@ -3651,7 +3690,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     if row:
         keyboard.append(row)
 
-    msg += f"*🎮 {batsman_name} choose your shot :-*"
+    msg += f"*🎮 {current_batsman_name} choose your shot :-*"
 
     await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
