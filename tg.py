@@ -3335,6 +3335,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
     bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
+    chat_id = query.message.chat.id  # 🔥 Manual board ke liye chat_id nikal liya
 
     is_out = (bat_number == bowl_number)
 
@@ -3380,6 +3381,55 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     if not hasattr(game, "current_over_shots"):
         game.current_over_shots = []
+
+    # ==========================================
+    # 🔥 MANUAL SCOREBOARD AUTO-TRACKER 🔥
+    # ==========================================
+    manual_board = live_matches.get(chat_id)
+    if manual_board and manual_board.get("active"):
+        manual_board["batter"] = batsman_name
+        manual_board["bowler"] = bowler_name
+        manual_board["balls"] += 1
+        
+        is_wicket_event = False
+        is_over_event = False
+
+        if is_out:
+            manual_board["wkts"] += 1
+            is_wicket_event = True
+            manual_board["out_batters"].append(batsman_name)
+            manual_board["batter"] = None
+        else:
+            manual_board["runs"] += bat_number
+
+        if manual_board["balls"] % 6 == 0:
+            is_over_event = True
+
+        # Agar Wicket gira ya Over khatam hua, toh naya message pin karo
+        if is_wicket_event or is_over_event:
+            title = "☝️ **WICKET!**" if is_wicket_event else "⏱️ **END OF OVER**"
+            score_txt = (
+                f"{title}\n\n"
+                f"🏏 **Batting:** {manual_board['batting_team']}\n"
+                f"📊 **Score:** {manual_board['runs']}/{manual_board['wkts']} ({manual_board['balls']//6}.{manual_board['balls']%6} Ov)\n"
+                f"🏃 **Batter:** {manual_board['batter'] or 'Next batsman waiting...'}\n"
+                f"🧤 **Bowler:** {manual_board['bowler']}\n"
+            )
+            if manual_board['target']:
+                score_txt += f"🎯 **Target:** {manual_board['target']}"
+
+            try:
+                new_msg = await context.bot.send_message(chat_id, score_txt, parse_mode="Markdown")
+                
+                # Purana unpin karo, naya pin karo
+                if manual_board.get("pinned_msg_id"):
+                    await context.bot.unpin_chat_message(chat_id, manual_board["pinned_msg_id"])
+                await context.bot.pin_chat_message(chat_id, new_msg.message_id, disable_notification=True)
+                manual_board["pinned_msg_id"] = new_msg.message_id
+            except Exception as e:
+                print(f"⚠️ Manual Board Pin Error: {e}")
+
+    # ==========================================
 
     game.current_over_shots.append(str(bat_number))
 
@@ -12256,6 +12306,217 @@ async def sendhere_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+# Manual Live Match State
+live_matches = {}
+
+# ============ NAYE LIVE MATCH COMMANDS ============
+
+async def st_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.message.chat.id
+    user_id = update.effective_user.id
+
+    # Check Admin
+    is_admin = False
+    try:
+        member = await context.bot.get_chat_member(chat_id, user_id)
+        if member.status in ["administrator", "creator"] or user_id in ADMIN_IDS:
+            is_admin = True
+    except: pass
+
+    if not is_admin:
+        await update.message.reply_text("❌ Only group admins can start the match!")
+        return
+
+    args = context.args
+    if len(args) < 4 or "vs" not in args:
+        await update.message.reply_text("❌ Usage: `/stmatch <team1> vs <team2> <overs> <wickets>`\nExample: `/stmatch India vs England 5 10`", parse_mode="Markdown")
+        return
+
+    try:
+        vs_idx = [i for i, x in enumerate(args) if x.lower() == "vs"][0]
+        team1 = " ".join(args[:vs_idx])
+        team2 = args[vs_idx+1]
+        overs = int(args[vs_idx+2])
+        wickets = int(args[vs_idx+3])
+    except:
+        await update.message.reply_text("❌ Invalid format. Make sure overs and wickets are numbers.")
+        return
+
+    # Lobby create
+    live_matches[chat_id] = {
+        "team1": team1, "team2": team2,
+        "overs": overs, "wickets": wickets,
+        "batting_team": None, "bowling_team": None,
+        "runs": 0, "wkts": 0, "balls": 0, "innings": 1,
+        "batter": None, "bowler": None,
+        "out_batters": [], "target": None,
+        "last_batter": None,
+        "pinned_msg_id": None
+    }
+
+    msg = await update.message.reply_text(
+        f"🏏 **MATCH SETUP**\n\n"
+        f"📍 **{team1} vs {team2}**\n"
+        f"⏱️ **Overs:** {overs}\n"
+        f"🎯 **Wickets:** {wickets}\n\n"
+        f"❓ **Reply to this message with the batting team (e.g., {team1})**",
+        parse_mode="Markdown"
+    )
+    # Save prompt ID to catch the reply
+    live_matches[chat_id]["setup_msg_id"] = msg.message_id
+
+async def setup_batting_team(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles the reply to /stmatch to set batting team"""
+    chat_id = update.message.chat.id
+    if chat_id not in live_matches: return
+    
+    board = live_matches[chat_id]
+    if not update.message.reply_to_message or update.message.reply_to_message.message_id != board.get("setup_msg_id"):
+        return
+
+    team_name = update.message.text.strip()
+    if team_name.lower() == board["team1"].lower():
+        board["batting_team"] = board["team1"]
+        board["bowling_team"] = board["team2"]
+    elif team_name.lower() == board["team2"].lower():
+        board["batting_team"] = board["team2"]
+        board["bowling_team"] = board["team1"]
+    else:
+        await update.message.reply_text(f"❌ Team must be {board['team1']} or {board['team2']}!")
+        return
+
+    board["active"] = True
+    del board["setup_msg_id"]
+
+    msg = await update.message.reply_text(
+        f"✅ **MATCH STARTED!**\n\n"
+        f"🏏 **Batting:** {board['batting_team']}\n"
+        f"🧤 **Bowling:** {board['bowling_team']}\n"
+        f"📊 **Score:** 0/0 (0.0 Ov)\n\n"
+        f"*(Start playing CLcricket, bot will track automatically)*",
+        parse_mode="Markdown"
+    )
+    try:
+        await context.bot.pin_chat_message(chat_id, msg.message_id, disable_notification=True)
+        board["pinned_msg_id"] = msg.message_id
+    except: pass
+
+async def change_innings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.message.chat.id
+    user_id = update.effective_user.id
+    
+    is_admin = False
+    try:
+        member = await context.bot.get_chat_member(chat_id, user_id)
+        if member.status in ["administrator", "creator"] or user_id in ADMIN_IDS:
+            is_admin = True
+    except: pass
+
+    if not is_admin:
+        await update.message.reply_text("❌ Only group admins can use this!")
+        return
+        
+    if chat_id not in live_matches:
+        await update.message.reply_text("❌ No active match!")
+        return
+        
+    board = live_matches[chat_id]
+    if board["innings"] == 2:
+        await update.message.reply_text("❌ Already in 2nd innings!")
+        return
+
+    keyboard = [[InlineKeyboardButton("✅ Confirm Innings Change", callback_data=f"confirm_inn_{user_id}")]]
+    await update.message.reply_text(
+        f"⚠️ **Are you sure you want to end 1st innings?**\n"
+        f"Score: {board['runs']}/{board['wkts']} ({board['balls']//6}.{board['balls']%6} Ov)",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+
+async def confirm_innings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = update.effective_user.id
+    data = query.data
+    
+    admin_id = int(data.split("_")[2])
+    if user_id != admin_id:
+        await query.answer("❌ This button is not for you!", show_alert=True)
+        return
+        
+    await query.answer("Innings Changed!")
+    chat_id = query.message.chat.id
+    board = live_matches[chat_id]
+    
+    # Set Target & Swap Teams
+    board["target"] = board["runs"] + 1
+    board["batting_team"], board["bowling_team"] = board["bowling_team"], board["batting_team"]
+    board["runs"] = 0
+    board["wkts"] = 0
+    board["balls"] = 0
+    board["innings"] = 2
+    board["batter"] = None
+    board["bowler"] = None
+
+    msg = await context.bot.send_message(
+        chat_id,
+        f"🔄 **INNINGS CHANGED!**\n\n"
+        f"🎯 **Target:** {board['target']} runs\n"
+        f"🏏 **Batting:** {board['batting_team']}\n"
+        f"📊 **Score:** 0/0 (0.0 Ov)",
+        parse_mode="Markdown"
+    )
+    try:
+        await context.bot.pin_chat_message(chat_id, msg.message_id, disable_notification=True)
+        board["pinned_msg_id"] = msg.message_id
+    except: pass
+
+async def show_score(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.message.chat.id
+    if chat_id not in live_matches or not live_matches[chat_id].get("active"):
+        await update.message.reply_text("❌ No active match in this group!")
+        return
+        
+    board = live_matches[chat_id]
+    msg = (
+        f"🏏 **LIVE SCORE**\n\n"
+        f"📍 **Batting:** {board['batting_team']}\n"
+        f"📊 **Score:** {board['runs']}/{board['wkts']} ({board['balls']//6}.{board['balls']%6} Ov)\n"
+        f"🏃 **Batter:** {board['batter'] or 'Waiting...'}\n"
+        f"🧤 **Bowler:** {board['bowler'] or 'Waiting...'}\n"
+    )
+    if board['target']: msg += f"\n🎯 **Target:** {board['target']}"
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+async def show_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.message.chat.id
+    if chat_id not in live_matches or not live_matches[chat_id].get("active"):
+        await update.message.reply_text("❌ No active match!")
+        return
+    board = live_matches[chat_id]
+    if not board['target']:
+        await update.message.reply_text("🎯 Target not set yet (1st innings going on).")
+    else:
+        await update.message.reply_text(
+            f"🎯 **TARGET:** {board['target']} runs\n"
+            f"📉 **Need:** {max(0, board['target'] - board['runs'])} runs from { (board['overs']*6) - board['balls'] } balls.",
+            parse_mode="Markdown"
+        )
+
+async def end_score(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.message.chat.id
+    user_id = update.effective_user.id
+    is_admin = False
+    try:
+        member = await context.bot.get_chat_member(chat_id, user_id)
+        if member.status in ["administrator", "creator"] or user_id in ADMIN_IDS: is_admin = True
+    except: pass
+    
+    if not is_admin: return
+    if chat_id in live_matches:
+        del live_matches[chat_id]
+        await update.message.reply_text("🛑 **MATCH ENDED & CLEARED!**", parse_mode="Markdown")
+
+
 
 # ============ GLOBAL ERROR HANDLER ============
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -12336,6 +12597,13 @@ async def main():
     app.add_handler(CommandHandler("rmplayer", rmplayer))
     app.add_handler(CommandHandler("balance", balance))
     app.add_handler(CommandHandler("sendhere", sendhere_cmd))
+    app.add_handler(CommandHandler("stmatch", st_match))
+    app.add_handler(CommandHandler("score", show_score))
+    app.add_handler(CommandHandler("target", show_target))
+    app.add_handler(CommandHandler("changeinnings", change_innings))
+    app.add_handler(CommandHandler("endscore", end_score))
+    app.add_handler(CallbackQueryHandler(confirm_innings_callback, pattern="^confirm_inn_"))
+
 
     # ============ RPS GAME ==========
     app.add_handler(CommandHandler("rps", rps))
@@ -12484,6 +12752,8 @@ async def main():
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("mystats", mystats))
     app.add_handler(CallbackQueryHandler(stats_callback, pattern="^stats_"))
+    handler admin ke reply ko catch karega (team select karne ke liye)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, setup_batting_team), group=7)
     app.add_handler(MessageHandler(filters.ALL, track_all_activity), group=0)
     app.add_handler(MessageHandler(filters.ChatType.GROUP | filters.ChatType.SUPERGROUP, track_group))
 
