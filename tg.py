@@ -2042,33 +2042,35 @@ async def claim_interest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-# ============ LOTTERY SYSTEM ==========
 async def lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not await is_registered(user_id):
         await update.message.reply_text('❌ Send /start first!')
         return
-    
+
     db = await get_db()
     balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
+    tickets_count = await db.fetchval("SELECT COUNT(*) FROM lottery_tickets WHERE user_id = $1", user_id) or 0
+    active_status = await db.fetchval("SELECT value FROM lottery_data WHERE key = 'active'")
     await close_db(db)
-    
-    user_tickets = lottery_tickets.get(user_id, [])
-    status_text = "ACTIVE" if lottery_active else "NOT ACTIVE"
-    
-    msg = f"🎰 LOTTERY SYSTEM\n\n"
-    msg += f"🪙 Balance: {balance:,}\n"
-    msg += f"🎫 Your tickets: {len(user_tickets)}\n"
-    msg += f"📊 Status: {status_text}\n\n"
-    msg += f"🎟️ Ticket price: 20,000 credits\n"
-    msg += f"🏆 Winner gets: ALL ticket money\n\n"
-    msg += f"━━━━━━━━━━━━━━━━━━━━━━\n"
-    msg += f"📌 COMMANDS:\n"
-    msg += f"/buy_ticket <qty> - Buy tickets\n"
-    msg += f"/mytickets - Your tickets\n"
-    msg += f"/lottery_info - Lottery stats"
-    
-    await update.message.reply_text(msg)
+
+    is_active = (active_status == 'true')
+    status_text = "🟢 ACTIVE" if is_active else "🔴 NOT ACTIVE"
+
+    msg = (
+        f"🎰 <b>LOTTERY SYSTEM</b>\n\n"
+        f"🪙 <b>Balance:</b> {balance:,}\n"
+        f"🎫 <b>Your tickets:</b> {tickets_count}\n"
+        f"📊 <b>Status:</b> {status_text}\n\n"
+        f"🎟️ <b>Ticket price:</b> 20,000 credits\n"
+        f"🏆 <b>Winner gets:</b> ALL ticket money\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📌 <b>COMMANDS:</b>\n"
+        f"/buy_ticket &lt;qty&gt; - Buy tickets\n"
+        f"/mytickets - Your tickets\n"
+        f"/lottery_info - Lottery stats"
+    )
+    await update.message.reply_text(msg, parse_mode="HTML")
 
 async def buy_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -2093,13 +2095,16 @@ async def buy_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Quantity must be 1-5 (max 5 tickets per user!)")
         return
     
-    if not lottery_active:
-        await update.message.reply_text("❌ Lottery not active! Wait for admin to start.")
-        return
-    
     db = await get_db()
     
-    # Check tickets already bought by user
+    # Database se active check karo
+    active_status = await db.fetchval("SELECT value FROM lottery_data WHERE key = 'active'")
+    if active_status != 'true':
+        await update.message.reply_text("❌ Lottery not active! Wait for admin to start.")
+        await close_db(db)
+        return
+    
+    # Check tickets already bought
     user_tickets_count = await db.fetchval("SELECT COUNT(*) FROM lottery_tickets WHERE user_id = $1", user_id)
     
     if user_tickets_count + quantity > 5:
@@ -2117,8 +2122,6 @@ async def buy_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", cost, user_id)
-    
-    # Add participant if new
     await db.execute("INSERT INTO lottery_participants (user_id, name) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING", user_id, name)
     
     new_tickets = []
@@ -2135,12 +2138,13 @@ async def buy_ticket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ticket_list = "\n".join([f"🎫 {t}" for t in new_tickets])
     
     await update.message.reply_text(
-        f"✅ BOUGHT {quantity} TICKETS!\n\n"
+        f"✅ <b>BOUGHT {quantity} TICKETS!</b>\n\n"
         f"🪙 Cost: {cost:,} credits\n"
         f"🎫 Your tickets:\n{ticket_list}\n\n"
         f"📊 Total tickets you have: {user_tickets_count + quantity}/5\n"
         f"📊 Total tickets sold: {total_tickets}\n\n"
-        f"💡 /mytickets - Check all tickets"
+        f"💡 /mytickets - Check all tickets",
+        parse_mode="HTML"
     )
 
 async def mytickets_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2164,10 +2168,11 @@ async def mytickets_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ticket_list += f"\n... and {len(tickets)-10} more"
     
     await update.message.reply_text(
-        f"🎫 MY TICKETS\n\n"
+        f"🎫 <b>MY TICKETS</b>\n\n"
         f"Total: {total}\n"
         f"Spent: {total * 20000:,}\n\n"
-        f"{ticket_list}"
+        f"{ticket_list}",
+        parse_mode="HTML"
     )
 
 async def lottery_info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2179,52 +2184,49 @@ async def lottery_info_command(update: Update, context: ContextTypes.DEFAULT_TYP
     
     db = await get_db()
     
-    # Get lottery data from database
-    active = await db.fetchval("SELECT value FROM lottery_data WHERE key = 'active'")
-    lottery_active = active == 'true' if active else False
+    active_status = await db.fetchval("SELECT value FROM lottery_data WHERE key = 'active'")
+    is_active = (active_status == 'true')
     
-    total_tickets = await db.fetchval("SELECT value FROM lottery_data WHERE key = 'total_tickets'")
-    total_tickets = int(total_tickets) if total_tickets else 0
-    
-    participants = await db.fetch("SELECT DISTINCT user_id FROM lottery_tickets")
-    participant_count = len(participants)
-    
-    user_tickets = await db.fetchval("SELECT COUNT(*) FROM lottery_tickets WHERE user_id = $1", user_id)
-    user_tickets = user_tickets if user_tickets else 0
-    
-    prize_pool = total_tickets * 20000
-    win_chance = (user_tickets / total_tickets * 100) if total_tickets > 0 else 0
-    status_text = "🟢 ACTIVE" if lottery_active else "🔴 NOT ACTIVE"
+    # Database se direct count nikalo
+    total_tickets = await db.fetchval("SELECT COUNT(*) FROM lottery_tickets") or 0
+    participant_count = await db.fetchval("SELECT COUNT(DISTINCT user_id) FROM lottery_tickets") or 0
+    user_tickets = await db.fetchval("SELECT COUNT(*) FROM lottery_tickets WHERE user_id = $1", user_id) or 0
     
     await close_db(db)
     
-    msg = f"🎰 LOTTERY INFO\n\n"
-    msg += f"Status: {status_text}\n"
-    msg += f"Total tickets: {total_tickets}\n"
-    msg += f"Participants: {participant_count}\n"
-    msg += f"Prize pool: {prize_pool:,}\n\n"
-    msg += f"━━━━━━━━━━━━━━━━━━━━\n"
-    msg += f"📊 YOUR STATS:\n"
-    msg += f"Your tickets: {user_tickets}\n"
-    msg += f"Contribution: {user_tickets * 20000:,}\n"
-    msg += f"Win chance: {win_chance:.1f}%"
+    prize_pool = total_tickets * 20000
+    win_chance = (user_tickets / total_tickets * 100) if total_tickets > 0 else 0
+    status_text = "🟢 ACTIVE" if is_active else "🔴 NOT ACTIVE"
     
-    await update.message.reply_text(msg)
+    msg = (
+        f"🎰 <b>LOTTERY INFO</b>\n\n"
+        f"Status: {status_text}\n"
+        f"Total tickets: {total_tickets}\n"
+        f"Participants: {participant_count}\n"
+        f"Prize pool: {prize_pool:,}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"📊 <b>YOUR STATS:</b>\n"
+        f"Your tickets: {user_tickets}\n"
+        f"Contribution: {user_tickets * 20000:,}\n"
+        f"Win chance: {win_chance:.1f}%"
+    )
+    await update.message.reply_text(msg, parse_mode="HTML")
 
 async def start_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Admin only!")
         return
     
-    global lottery_active
+    db = await get_db()
     
-    if lottery_active:
+    # Check karo pehle se active toh nahi hai
+    active_status = await db.fetchval("SELECT value FROM lottery_data WHERE key = 'active'")
+    if active_status == 'true':
         await update.message.reply_text("❌ Lottery already active!")
+        await close_db(db)
         return
     
-    lottery_active = True
-    
-    db = await get_db()
+    # Database clear karo
     await db.execute("DELETE FROM lottery_tickets")
     await db.execute("DELETE FROM lottery_participants")
     await db.execute("INSERT INTO lottery_data (key, value) VALUES ('active', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'")
@@ -2233,13 +2235,15 @@ async def start_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await close_db(db)
     
     await update.message.reply_text(
-        "✅ LOTTERY STARTED!\n\n"
+        "✅ <b>LOTTERY STARTED!</b>\n\n"
         "🎟️ Ticket price: 20,000 credits\n"
         "🏆 Winner gets: ALL prize pool\n"
         "📢 Users can buy tickets:\n"
-        "/buy_ticket <quantity>\n\n"
-        "💡 /draw_winner - Draw winner"
+        "/buy_ticket &lt;quantity&gt;\n\n"
+        "💡 /draw_winner - Draw winner",
+        parse_mode="HTML"
     )
+
 
 async def draw_winner(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
@@ -2301,15 +2305,17 @@ async def reset_lottery(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Admin only!")
         return
     
-    global lottery_active, lottery_tickets, lottery_total_tickets, lottery_participants, lottery_winner
+    db = await get_db()
     
-    lottery_active = False
-    lottery_tickets = {}
-    lottery_total_tickets = 0
-    lottery_participants = []
-    lottery_winner = None
+    # Database se sab clear karo
+    await db.execute("DELETE FROM lottery_tickets")
+    await db.execute("DELETE FROM lottery_participants")
+    await db.execute("UPDATE lottery_data SET value = 'false' WHERE key = 'active'")
+    await db.execute("UPDATE lottery_data SET value = '0' WHERE key = 'total_tickets'")
     
-    await update.message.reply_text("✅ Lottery reset! Use /start_lottery to begin.")
+    await close_db(db)
+    
+    await update.message.reply_text("✅ <b>Lottery Reset!</b>\n\nAll tickets and participants cleared. Use /start_lottery to begin.", parse_mode="HTML")
 
 async def lottery_coupon(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
