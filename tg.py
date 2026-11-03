@@ -3335,7 +3335,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
     bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
-    chat_id = query.message.chat.id  # 🔥 Manual board ke liye chat_id nikal liya
+    chat_id = query.message.chat.id
 
     is_out = (bat_number == bowl_number)
 
@@ -3387,7 +3387,6 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     # ==========================================
     manual_board = live_matches.get(chat_id)
     if manual_board and manual_board.get("active"):
-        manual_board["batter"] = batsman_name
         manual_board["bowler"] = bowler_name
         manual_board["balls"] += 1
         
@@ -3398,21 +3397,64 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             manual_board["wkts"] += 1
             is_wicket_event = True
             manual_board["out_batters"].append(batsman_name)
-            manual_board["batter"] = None
+            manual_board["batter"] = None 
         else:
             manual_board["runs"] += bat_number
+            manual_board["batter"] = batsman_name 
+
+        # 🔥 2ND INNINGS TARGET CHASE AUTO-END
+        if manual_board["innings"] == 2 and manual_board["target"] and manual_board["runs"] >= manual_board["target"]:
+            score_txt = (
+                f"🏆 **MATCH ENDED!**\n\n"
+                f"🎯 **Target Achieved!**\n"
+                f"📊 **Final Score:** {manual_board['runs']}/{manual_board['wkts']} ({manual_board['balls']//6}.{manual_board['balls']%6} Ov)\n"
+                f"🏏 **Winner:** {manual_board['batting_team']}"
+            )
+            try:
+                new_msg = await context.bot.send_message(chat_id, score_txt, parse_mode="Markdown")
+                if manual_board.get("pinned_msg_id"):
+                    await context.bot.unpin_chat_message(chat_id, manual_board["pinned_msg_id"])
+                await context.bot.pin_chat_message(chat_id, new_msg.message_id, disable_notification=True)
+            except: pass
+            
+            del live_matches[chat_id] # Board clear
+            if game_id in cricket_games: del cricket_games[game_id] # Game End
+            await query.edit_message_text("🏆 Match Ended!", parse_mode="Markdown")
+            return
+
+        # Auto change innings agar wickets target ke barabar ho jaye
+        max_wkts = manual_board.get("wickets", 3)
+        if manual_board["wkts"] >= max_wkts and manual_board["innings"] == 1:
+            is_over_event = True 
+            manual_board["target"] = manual_board["runs"] + 1
+            manual_board["innings"] = 2
+            manual_board["batting_team"], manual_board["bowling_team"] = manual_board["bowling_team"], manual_board["batting_team"]
+            manual_board["runs"] = 0
+            manual_board["wkts"] = 0
+            manual_board["balls"] = 0
+            manual_board["batter"] = None
+            
+            game.innings = 2
+            game.target = manual_board["target"]
+            game.current_batsman = game.current_bowler
+            game.current_bowler = game.player1_id if game.current_batsman == game.player2_id else game.player2_id
+            game.score = 0
+            game.wickets = 0
+            game.balls = 0
 
         if manual_board["balls"] % 6 == 0:
             is_over_event = True
 
-        # Agar Wicket gira ya Over khatam hua, toh naya message pin karo
         if is_wicket_event or is_over_event:
             title = "☝️ **WICKET!**" if is_wicket_event else "⏱️ **END OF OVER**"
+            if manual_board["innings"] == 2 and manual_board["runs"] == 0 and manual_board["wkts"] == 0 and manual_board["balls"] == 0:
+                title = "🔄 **INNINGS CHANGED!**"
+                
             score_txt = (
                 f"{title}\n\n"
                 f"🏏 **Batting:** {manual_board['batting_team']}\n"
                 f"📊 **Score:** {manual_board['runs']}/{manual_board['wkts']} ({manual_board['balls']//6}.{manual_board['balls']%6} Ov)\n"
-                f"🏃 **Batter:** {manual_board['batter'] or 'Next batsman waiting...'}\n"
+                f"🏃 **Batter:** {manual_board['batter'] or 'Waiting...'}\n"
                 f"🧤 **Bowler:** {manual_board['bowler']}\n"
             )
             if manual_board['target']:
@@ -3420,15 +3462,12 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
             try:
                 new_msg = await context.bot.send_message(chat_id, score_txt, parse_mode="Markdown")
-                
-                # Purana unpin karo, naya pin karo
                 if manual_board.get("pinned_msg_id"):
                     await context.bot.unpin_chat_message(chat_id, manual_board["pinned_msg_id"])
                 await context.bot.pin_chat_message(chat_id, new_msg.message_id, disable_notification=True)
                 manual_board["pinned_msg_id"] = new_msg.message_id
             except Exception as e:
-                print(f"⚠️ Manual Board Pin Error: {e}")
-
+                pass
     # ==========================================
 
     game.current_over_shots.append(str(bat_number))
@@ -12457,6 +12496,17 @@ async def confirm_innings_callback(update: Update, context: ContextTypes.DEFAULT
     board["batter"] = None
     board["bowler"] = None
 
+    # 🔥 BASE GAME KO BHI INNINGS CHANGE KARNE PAR MAJBOOR KARO
+    for gid, g in list(cricket_games.items()):
+        if g.chat_id == chat_id:
+            g.innings = 2
+            g.target = board["target"]
+            g.current_batsman = g.current_bowler
+            g.current_bowler = g.player1_id if g.current_batsman == g.player2_id else g.player2_id
+            g.score = 0
+            g.wickets = 0
+            g.balls = 0
+
     msg = await context.bot.send_message(
         chat_id,
         f"🔄 **INNINGS CHANGED!**\n\n"
@@ -12466,6 +12516,8 @@ async def confirm_innings_callback(update: Update, context: ContextTypes.DEFAULT
         parse_mode="Markdown"
     )
     try:
+        if board.get("pinned_msg_id"):
+            await context.bot.unpin_chat_message(chat_id, board["pinned_msg_id"])
         await context.bot.pin_chat_message(chat_id, msg.message_id, disable_notification=True)
         board["pinned_msg_id"] = msg.message_id
     except: pass
