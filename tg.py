@@ -3315,7 +3315,6 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     chat_id = query.message.chat.id
     manual_board = live_matches.get(chat_id)
 
-    # 🔥 FIX: Base Game ka Turn Check Bypass karo agar manual board chal raha hai
     if manual_board and manual_board.get("active"):
         game.current_bowler = user_id
     else:
@@ -3360,13 +3359,25 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             manual_board["player_stats"][current_bowler_name] = {"wkts": 0, "runs_given": 0}
 
         manual_board["player_stats"][current_batsman_name]["balls"] += 1
-        if not is_out:
+        
+        # 🔥 1. PEHLE SCORE UPDATE KARO
+        manual_board["balls"] += 1
+        is_wicket_event = False
+        is_over_event = False
+
+        if is_out:
+            manual_board["player_stats"][current_bowler_name]["wkts"] += 1
+            manual_board["wkts"] += 1
+            is_wicket_event = True
+            manual_board["out_batters"].append(current_batsman_name)
+            manual_board["batter"] = None
+        else:
             manual_board["player_stats"][current_batsman_name]["runs"] += bat_number
             manual_board["player_stats"][current_bowler_name]["runs_given"] += bat_number
-        else:
-            manual_board["player_stats"][current_bowler_name]["wkts"] += 1
+            manual_board["runs"] += bat_number
+            manual_board["batter"] = current_batsman_name
 
-        # 🔥 50s AND 100s GIF LOGIC (NEW IDs FROM FRIEND)
+        # 🔥 2. AB CHECK KARO 50 AUR 100
         if not is_out:
             current_runs = manual_board["player_stats"][current_batsman_name]["runs"]
             
@@ -3392,21 +3403,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                     fallback_text = f"👑 **SHATAK! CENTURY!** 👑\n\n🏏 **{current_batsman_name}** ne apna **100 runs** poora kar liya hai! Kya innings! 🎇🏏\n\n📊 **Score:** {manual_board['runs']}/{manual_board['wkts']} ({manual_board['balls']//6}.{manual_board['balls']%6} Ov)"
                     await context.bot.send_message(chat_id=chat_id, text=fallback_text, parse_mode="Markdown")
 
-        # Tracker Update
-        manual_board["balls"] += 1
-        is_wicket_event = False
-        is_over_event = False
-
-        if is_out:
-            manual_board["wkts"] += 1
-            is_wicket_event = True
-            manual_board["out_batters"].append(current_batsman_name)
-            manual_board["batter"] = None
-        else:
-            manual_board["runs"] += bat_number
-            manual_board["batter"] = current_batsman_name
-
-        # 🔥 TARGET CHASE AUTO END + SUMMARY
+        # 🔥 3. TARGET CHASE AUTO END + SUMMARY
         if manual_board["innings"] == 2 and manual_board["target"] and manual_board["runs"] >= manual_board["target"]:
             summary = f"🏆 **MATCH ENDED!** 🏆\n\n"
             summary += f"🏏 **{manual_board['batting_team']}** won the match!\n\n"
@@ -3445,7 +3442,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             await query.edit_message_text("🏆 Match Ended!", parse_mode="Markdown")
             return
 
-        # 🔥 ALL OUT AUTO INNINGS CHANGE
+        # 🔥 4. ALL OUT AUTO INNINGS CHANGE
         max_wkts = manual_board.get("wickets", 3)
         if manual_board["wkts"] >= max_wkts and manual_board["innings"] == 1:
             is_over_event = True 
@@ -3466,12 +3463,12 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             game.wickets = 0
             game.balls = 0
 
-        # 🔥 OVER CHANGE
+        # 🔥 5. OVER CHANGE
         if manual_board["balls"] % 6 == 0:
             is_over_event = True
             manual_board["bowler"] = None 
 
-        # 🔥 WICKET YA OVER KE BAAD MSG BHEJNA AUR AUTO-PIN KARNA
+        # 🔥 6. WICKET YA OVER KE BAAD MSG BHEJNA AUR AUTO-PIN KARNA
         if is_wicket_event or is_over_event:
             title = "☝️ **WICKET!**" if is_wicket_event else "⏱️ **END OF OVER**"
             if manual_board["innings"] == 2 and manual_board["runs"] == 0 and manual_board["wkts"] == 0 and manual_board["balls"] == 0:
@@ -3738,7 +3735,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     msg += f"*🎮 {current_batsman_name} choose your shot :-*"
 
-    await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    await query.edit_message_text(msg, reply_markup=Inl
 
 async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
