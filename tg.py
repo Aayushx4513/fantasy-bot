@@ -51,7 +51,7 @@ IST = timezone(timedelta(hours=5, minutes=30))
 
 # ============ TOKEN & ADMINS ============
 TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAHOv5MAEqjQbnvFmgO_GNeinc4GvjTgHtE")
-ADMIN_IDS = [7687078555, 1315564307, 7361215114]
+ADMIN_IDS = [7687078555, 1315564307, 7361215114, 8637977698]
 
 # ============ DATABASE URL ============
 DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres.qvdodaowbwkdxvlsvyyo:aayush0806q@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres")
