@@ -3293,11 +3293,18 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     manual_active = bool(manual_board and manual_board.get("active"))
 
     if manual_active:
-        if user_id != manual_board.get("bowler_id"):
+        actual_bowler = manual_board.get("bowler_id")
+        if not actual_bowler:
+            actual_bowler = game.current_bowler
+            
+        if user_id != actual_bowler:
             await query.answer("❌ Not your turn! You are the batter.", show_alert=True)
             return
-        game.current_bowler = manual_board["bowler_id"]
-        game.current_batsman = manual_board["batter_id"]
+            
+        game.current_bowler = actual_bowler
+        game.current_batsman = manual_board.get("batter_id") or game.current_batsman
+        manual_board["batter_id"] = game.current_batsman
+        manual_board["bowler_id"] = actual_bowler
     else:
         if user_id != game.current_bowler:
             await query.answer("Not your turn!", show_alert=True)
@@ -3344,7 +3351,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 try: await context.bot.send_animation(chat_id=chat_id, animation=chosen_duck, caption=caption_duck, parse_mode="Markdown")
                 except: pass
             manual_board["batter"] = None
-            manual_board["batter_id"] = None # Batter out, next turn handled later
+            manual_board["batter_id"] = None
         else:
             manual_board["player_stats"][current_batsman_name]["runs"] += bat_number
             manual_board["player_stats"][current_bowler_name]["runs_given"] += bat_number
@@ -3615,7 +3622,6 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     msg += f"*🎮 {current_batsman_name} choose your shot :-*"
     await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-
 async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -3633,11 +3639,19 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     manual_active = bool(manual_board and manual_board.get("active"))
 
     if manual_active:
-        if user_id != manual_board.get("batter_id"):
+        actual_batter = manual_board.get("batter_id")
+        if not actual_batter:
+            actual_batter = game.current_batsman
+            
+        if user_id != actual_batter:
             await query.answer("❌ Not your turn! You are the bowler.", show_alert=True)
             return
-        game.current_batsman = manual_board["batter_id"]
-        game.current_bowler = manual_board["bowler_id"]
+            
+        game.current_batsman = actual_batter
+        game.current_bowler = manual_board.get("bowler_id") or game.current_bowler
+        manual_board["batter_id"] = actual_batter
+        manual_board["bowler_id"] = game.current_bowler
+        manual_board["batter"] = update.effective_user.first_name
     else:
         if user_id != game.current_batsman:
             await query.answer("Not your turn!", show_alert=True)
@@ -3668,9 +3682,13 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     else:
         innings_tag = f"TARGET : {game.target}"
         overs_display = game.get_overs(2)
-        
+
     await query.edit_message_text(
-        f"*🏏 Over {overs_display} ({innings_tag})*\n\n*🏏 Batter:* {batsman_name}\n*🧤 Bowler:* {bowler_name}\n\n*✅ {batsman_name} has selected a number.*\n\n*🧤 {bowler_name}, it's your turn to bowl.*",
+        f"*🏏 Over {overs_display} ({innings_tag})*\n\n"
+        f"*🏏 Batter:* {batsman_name}\n"
+        f"*🧤 Bowler:* {bowler_name}\n\n"
+        f"*✅ {batsman_name} has selected a number.*\n\n"
+        f"*🧤 {bowler_name}, it's your turn to bowl.*",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
