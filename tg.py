@@ -3366,25 +3366,31 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             manual_board["player_stats"][current_bowler_name]["wkts"] += 1
 
-        # 50s AND 100s GIF LOGIC
+        # 🔥 50s AND 100s GIF LOGIC (NEW IDs FROM FRIEND)
         if not is_out:
             current_runs = manual_board["player_stats"][current_batsman_name]["runs"]
             
+            # 50 Wala GIF
             if current_runs >= 50 and current_runs - bat_number < 50:
-                GIF_50_ID = "AAMCBQADGQEDrW-jaumr6KiC9uACQqW2gnn-SenyoPQAArgiAAJQaFBXAAFoUnlG35yvAQAHbQADPQQ"
+                GIF_50_ID = "CgACAgUAAx0CYwTJMQABB7voaurl_yILR8RBzrqgPs1Jr1_ft9EAArgiAAJQaFBX3FwHsSBtKB49BA"
                 caption_50 = f"🏏 **FIFTY UP!** 🏏\n\n🔥 What a knock by **{current_batsman_name}**!\n🎯 He completes his half-century!\n\n📊 **Score:** {manual_board['runs']}/{manual_board['wkts']} ({manual_board['balls']//6}.{manual_board['balls']%6} Ov)"
                 try:
                     await context.bot.send_animation(chat_id=chat_id, animation=GIF_50_ID, caption=caption_50, parse_mode="Markdown")
                 except Exception as e:
                     print(f"❌ GIF 50 Error: {e}")
+                    fallback_text = f"🎊 **FIFTY! FIFTY! FIFTY!** 🎊\n\n🏏 **{current_batsman_name}** ne zabardast khel dikhate hue **50 runs** poore kar liye hain! 🔥🔥\n\n📊 **Score:** {manual_board['runs']}/{manual_board['wkts']} ({manual_board['balls']//6}.{manual_board['balls']%6} Ov)"
+                    await context.bot.send_message(chat_id=chat_id, text=fallback_text, parse_mode="Markdown")
 
+            # 100 Wala GIF
             if current_runs >= 100 and current_runs - bat_number < 100:
-                GIF_100_ID = "AAMCBQADGQEDrW-laumr6rIGoIPsrVv-wWlCDuIKL64AArkiAAJQaFBXBeG8egVxAAG9AQAHbQADPQQ"
+                GIF_100_ID = "CgACAgUAAx0CYwTJMQABB7vsaurmFZQDhQmzATEy4m_5HwQECkYAArkiAAJQaFBXE1cxYDzPPS49BA"
                 caption_100 = f"🏆 **CENTURY!** 🏆\n\n👑 **ABSOLUTE MAGNIFICENT!**\n**{current_batsman_name}** smashes a brilliant 100!\n\n📊 **Score:** {manual_board['runs']}/{manual_board['wkts']} ({manual_board['balls']//6}.{manual_board['balls']%6} Ov)"
                 try:
                     await context.bot.send_animation(chat_id=chat_id, animation=GIF_100_ID, caption=caption_100, parse_mode="Markdown")
                 except Exception as e:
                     print(f"❌ GIF 100 Error: {e}")
+                    fallback_text = f"👑 **SHATAK! CENTURY!** 👑\n\n🏏 **{current_batsman_name}** ne apna **100 runs** poora kar liya hai! Kya innings! 🎇🏏\n\n📊 **Score:** {manual_board['runs']}/{manual_board['wkts']} ({manual_board['balls']//6}.{manual_board['balls']%6} Ov)"
+                    await context.bot.send_message(chat_id=chat_id, text=fallback_text, parse_mode="Markdown")
 
         # Tracker Update
         manual_board["balls"] += 1
@@ -3400,7 +3406,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             manual_board["runs"] += bat_number
             manual_board["batter"] = current_batsman_name
 
-        # 🔥 TARGET CHASE AUTO END (Manual Board)
+        # 🔥 TARGET CHASE AUTO END + SUMMARY
         if manual_board["innings"] == 2 and manual_board["target"] and manual_board["runs"] >= manual_board["target"]:
             summary = f"🏆 **MATCH ENDED!** 🏆\n\n"
             summary += f"🏏 **{manual_board['batting_team']}** won the match!\n\n"
@@ -3426,16 +3432,20 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             try:
                 new_msg = await context.bot.send_message(chat_id, summary, parse_mode="Markdown")
                 if manual_board.get("pinned_msg_id"):
-                    await context.bot.unpin_chat_message(chat_id, manual_board["pinned_msg_id"])
-                await context.bot.pin_chat_message(chat_id, new_msg.message_id, disable_notification=True)
-            except: pass
+                    try: await context.bot.unpin_chat_message(chat_id, manual_board["pinned_msg_id"])
+                    except: pass
+                try:
+                    await context.bot.pin_chat_message(chat_id, new_msg.message_id, disable_notification=True)
+                except: pass
+            except Exception as e:
+                print(f"Summary send error: {e}")
             
             del live_matches[chat_id]
             del cricket_games[game_id]
             await query.edit_message_text("🏆 Match Ended!", parse_mode="Markdown")
             return
 
-        # 🔥 ALL OUT AUTO INNINGS CHANGE (Manual Board)
+        # 🔥 ALL OUT AUTO INNINGS CHANGE
         max_wkts = manual_board.get("wickets", 3)
         if manual_board["wkts"] >= max_wkts and manual_board["innings"] == 1:
             is_over_event = True 
@@ -3448,7 +3458,6 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             manual_board["batter"] = None
             manual_board["bowler"] = None
 
-            # Sync Base Game with Manual Innings Change
             game.innings = 2
             game.target = manual_board["target"]
             game.current_batsman = game.current_bowler
@@ -3457,11 +3466,12 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             game.wickets = 0
             game.balls = 0
 
-        # 🔥 OVER CHANGE (Manual Board)
+        # 🔥 OVER CHANGE
         if manual_board["balls"] % 6 == 0:
             is_over_event = True
             manual_board["bowler"] = None 
 
+        # 🔥 WICKET YA OVER KE BAAD MSG BHEJNA AUR AUTO-PIN KARNA
         if is_wicket_event or is_over_event:
             title = "☝️ **WICKET!**" if is_wicket_event else "⏱️ **END OF OVER**"
             if manual_board["innings"] == 2 and manual_board["runs"] == 0 and manual_board["wkts"] == 0 and manual_board["balls"] == 0:
@@ -3480,14 +3490,17 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             try:
                 new_msg = await context.bot.send_message(chat_id, score_txt, parse_mode="Markdown")
                 if manual_board.get("pinned_msg_id"):
-                    await context.bot.unpin_chat_message(chat_id, manual_board["pinned_msg_id"])
-                await context.bot.pin_chat_message(chat_id, new_msg.message_id, disable_notification=True)
-                manual_board["pinned_msg_id"] = new_msg.message_id
+                    try: await context.bot.unpin_chat_message(chat_id, manual_board["pinned_msg_id"])
+                    except: pass
+                try:
+                    await context.bot.pin_chat_message(chat_id, new_msg.message_id, disable_notification=True)
+                    manual_board["pinned_msg_id"] = new_msg.message_id
+                except: pass
             except Exception as e:
-                pass
+                print(f"Scorecard send error: {e}")
 
     # ==========================================
-    # 🔥 BASE GAME (CLCRICKET) LOGIC CONTINUES AS IT IS 🔥
+    # 🔥 BASE GAME (CLCRICKET) LOGIC
     # ==========================================
     if is_out:
         if game.score == 0:
@@ -3500,7 +3513,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             except Exception as e:
                 print(f"DB Error: {e}")
             finally:
-                if db: await close_db(db)
+                if 'db' in locals() and db: await close_db(db)
 
         if game.current_bowler == game.player1_id:
             game.player1_wickets_taken += 1
@@ -3541,9 +3554,8 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     if game.balls % 6 == 0:
         game.current_over_shots = []
 
-    # 🔥 CRITICAL FIX: Agar Manual Match chal raha hai, toh base game ko end/innings change mat karne do
+    # 🔥 CRITICAL FIX: Base Game ka win/draw block agar manual match chal raha hai
     if manual_board and manual_board.get("active"):
-        # Base game ko sirf next ball ke liye ready rakho
         game.waiting_for = "bat"
         bat_numbers = game.get_bat_numbers()
         keyboard = []
@@ -3558,7 +3570,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
         msg += f"*🎮 {current_batsman_name} choose your shot :-*"
         await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-        return # 🔥 Yahan se return karke base game ka end logic block kar diya
+        return
 
     # ============ FIRST INNINGS END (Base Game Only) ============
     innings_balls = 6 if getattr(game, 'is_superover', False) else 60
@@ -3621,7 +3633,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             except Exception as e:
                 print(f"DB Error: {e}")
             finally:
-                if db: await close_db(db)
+                if 'db' in locals() and db: await close_db(db)
 
         if winner_id == game.player1_id:
             margin = game.player1_match_runs - game.player2_match_runs
@@ -3667,7 +3679,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             except Exception as e:
                 print(f"DB Error: {e}")
             finally:
-                if db: await close_db(db)
+                if 'db' in locals() and db: await close_db(db)
 
         runs_left = abs(game.player1_match_runs - game.player2_match_runs)
         player1_overs = game.get_overs(1)
@@ -3697,7 +3709,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 except Exception as e:
                     print(f"DB Error: {e}")
                 finally:
-                    if db: await close_db(db)
+                    if 'db' in locals() and db: await close_db(db)
 
                 summary += f"*🪙 Refunded: {game.bet:,} each*"
         else:
@@ -3710,7 +3722,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         del cricket_games[game_id]
         return
 
-    # ============ CONTINUE GAME ============
+    # ============ CONTINUE GAME (Base Game Only) ============
     game.waiting_for = "bat"
 
     bat_numbers = game.get_bat_numbers()
@@ -3724,9 +3736,8 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     if row:
         keyboard.append(row)
 
-    msg += f"*🎮 {current_batsman_name} choose your shot :-*"
+    msg += f"*🎮
 
-    await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
 async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
