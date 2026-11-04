@@ -3315,9 +3315,8 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     chat_id = query.message.chat.id
     manual_board = live_matches.get(chat_id)
 
-    # 🔥 SYNC BASE GAME WITH MANUAL BOARD (STUCK FIX)
+    # 🔥 FORCE SYNC: Base Game ko Manual Board ke hisaab se update karo
     if manual_board and manual_board.get("active"):
-        game.current_bowler = user_id
         if manual_board["innings"] == 2 and game.innings == 1:
             game.innings = 2
             game.target = manual_board["target"]
@@ -3326,11 +3325,11 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             game.score = 0
             game.wickets = 0
             game.balls = 0
-            game.waiting_for = "bowl"
-    else:
-        if user_id != game.current_bowler:
-            await query.answer("Not your turn!", show_alert=True)
-            return
+            game.waiting_for = "bowl" # Yahan bowl set karo taaki bowler ball daal sake
+
+    if user_id != game.current_bowler:
+        await query.answer("Not your turn!", show_alert=True)
+        return
 
     if game.waiting_for != "bowl":
         await query.answer("Wait!", show_alert=True)
@@ -3410,7 +3409,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                     fallback_text = f"👑 **SHATAK! CENTURY!** 👑\n\n🏏 **{current_batsman_name}** ne apna **100 runs** poora kar liya hai! Kya innings! 🎇🏏\n\n📊 **Score:** {manual_board['runs']}/{manual_board['wkts']} ({manual_board['balls']//6}.{manual_board['balls']%6} Ov)"
                     await context.bot.send_message(chat_id=chat_id, text=fallback_text, parse_mode="Markdown")
 
-        # 🔥 TARGET CHASE AUTO END
+        # TARGET CHASE AUTO END
         if manual_board["innings"] == 2 and manual_board["target"] and manual_board["runs"] >= manual_board["target"]:
             summary = f"🏆 **MATCH ENDED!** 🏆\n\n"
             summary += f"🏏 **{manual_board['batting_team']}** won the match!\n\n"
@@ -3449,7 +3448,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             await query.edit_message_text("🏆 Match Ended!", parse_mode="Markdown")
             return
 
-        # 🔥 ALL OUT YA OVERS POORE HONE PE INNINGS CHANGE
+        # ALL OUT YA OVERS POORE HONE PE INNINGS CHANGE
         max_wkts = manual_board.get("wickets", 3)
         max_overs = manual_board.get("overs", 5)
         is_all_out = manual_board["wkts"] >= max_wkts
@@ -3466,6 +3465,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             manual_board["batter"] = None
             manual_board["bowler"] = None
 
+            # Sync Base Game (Force)
             game.innings = 2
             game.target = manual_board["target"]
             game.current_batsman = game.current_bowler
@@ -3474,13 +3474,17 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             game.wickets = 0
             game.balls = 0
             game.waiting_for = "bat"
+            
+            # Update names for new message
+            current_batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
+            current_bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
 
-        # 🔥 OVER CHANGE
-        if manual_board["balls"] % 6 == 0 and not is_over_event: # Agar upar innings change nahi hua hai
+        # OVER CHANGE
+        if manual_board["balls"] % 6 == 0 and not is_over_event:
             is_over_event = True
             manual_board["bowler"] = None 
 
-        # 🔥 WICKET YA OVER KE BAAD MSG BHEJNA AUR AUTO-PIN KARNA
+        # WICKET YA OVER KE BAAD MSG BHEJNA
         if is_wicket_event or is_over_event:
             title = "☝️ **WICKET!**" if is_wicket_event else "⏱️ **END OF OVER**"
             if manual_board["innings"] == 2 and manual_board["runs"] == 0 and manual_board["wkts"] == 0 and manual_board["balls"] == 0:
@@ -3509,7 +3513,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 print(f"Scorecard send error: {e}")
 
     # ==========================================
-    # 🔥 BASE GAME (CLCRICKET) LOGIC
+    # 🔥 BASE GAME LOGIC (DRAW/END BLOCKED)
     # ==========================================
     if is_out:
         if game.score == 0:
@@ -3563,7 +3567,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     if game.balls % 6 == 0:
         game.current_over_shots = []
 
-    # 🔥 CRITICAL FIX: Base Game ka win/draw block
+    # 🔥 CRITICAL FIX: Base Game ka win/draw block agar manual match chal raha hai
     if manual_board and manual_board.get("active"):
         game.waiting_for = "bat"
         bat_numbers = game.get_bat_numbers()
@@ -3578,20 +3582,67 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             keyboard.append(row)
 
         msg += f"*🎮 {current_batsman_name} choose your shot :-*"
-        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        
+        # Error handling for edit_message
+        try:
+            await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        except Exception as e:
+            print(f"Edit error: {e}")
         return
 
     # (Base Game normal logic yahan chalta rahega agar manual board active nahi hai)
     innings_balls = 6 if getattr(game, 'is_superover', False) else 60
 
     if game.innings == 1 and (game.wickets >= 1 or game.balls >= innings_balls):
-        # ... (Base game normal innings change)
-        pass
+        first_batsman = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
+        first_bowler = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
+
+        game.innings = 2
+        game.current_over_shots = []
+        game.target = game.score + 1
+        innings_score = game.score
+        first_innings_wickets = game.wickets
+        game.score = 0
+        game.wickets = 0
+        game.balls = 0
+        game.waiting_for = "bat"
+
+        old_batsman = game.current_batsman
+        old_bowler = game.current_bowler
+        game.current_batsman = old_bowler
+        game.current_bowler = old_batsman
+
+        batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
+        bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
+
+        msg = f"*🏏 Over {game.get_overs(1)} (FIRST INNINGS ENDED)*\n\n"
+        msg += f"*{first_batsman} played: {bat_number}  | {first_bowler} bowled: {bowl_number}*\n\n"
+        msg += f"*📊 Score: {innings_score}/{first_innings_wickets}*\n"
+        msg += f"*🎯 Target: {game.target} runs*\n\n"
+        msg += f"*🔄 Innings Changed*\n\n"
+        msg += f"*🏏 {batsman_name}, choose your shot.*"
+
+        bat_numbers = game.get_bat_numbers()
+        keyboard = []
+        row = []
+        for num in bat_numbers:
+            row.append(InlineKeyboardButton(str(num), callback_data=f"cricket_bat_{game_id}_{num}"))
+            if len(row) == 3:
+                keyboard.append(row)
+                row = []
+        if row:
+            keyboard.append(row)
+
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        return
+
     if game.innings == 2 and game.score >= game.target:
-        # ... (Base game normal win)
+        game.game_active = False
+        # ... (Base game normal win logic)
         pass
     if game.innings == 2 and game.wickets >= 1:
-        # ... (Base game normal all out)
+        game.game_active = False
+        # ... (Base game normal all out logic)
         pass
 
     game.waiting_for = "bat"
@@ -3626,13 +3677,21 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     chat_id = query.message.chat.id
     manual_board = live_matches.get(chat_id)
 
-    # 🔥 FIX: Agar manual match chal raha hai, toh base game ka turn check bypass karo
+    # 🔥 FORCE SYNC: Base Game ko Manual Board ke hisaab se update karo
     if manual_board and manual_board.get("active"):
-        game.current_batsman = user_id 
-    else:
-        if user_id != game.current_batsman:
-            await query.answer("Not your turn!", show_alert=True)
-            return
+        if manual_board["innings"] == 2 and game.innings == 1:
+            game.innings = 2
+            game.target = manual_board["target"]
+            game.current_batsman = game.current_bowler
+            game.current_bowler = game.player1_id if game.current_batsman == game.player2_id else game.player2_id
+            game.score = 0
+            game.wickets = 0
+            game.balls = 0
+            game.waiting_for = "bat"
+
+    if user_id != game.current_batsman:
+        await query.answer("Not your turn!", show_alert=True)
+        return
 
     if game.waiting_for != "bat":
         await query.answer("Wait for your turn!", show_alert=True)
