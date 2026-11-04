@@ -3736,8 +3736,9 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     if row:
         keyboard.append(row)
 
-    msg += f"*🎮
+    msg += f"*🎮 {current_batsman_name} choose your shot :-*"
 
+    await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
 async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
