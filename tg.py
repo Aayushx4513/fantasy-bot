@@ -3636,26 +3636,26 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     manual_active = bool(manual_board and manual_board.get("active"))
     
     if manual_active:
-        actual_batter = manual_board.get("batter_id")
-        actual_bowler = manual_board.get("bowler_id")
-        if not actual_batter or not actual_bowler:
-            actual_batter = game.current_batsman
-            actual_bowler = game.current_bowler
-            manual_board["batter_id"] = actual_batter
-            manual_board["bowler_id"] = actual_bowler
+        # Agar manual board me IDs set nahi hain toh game se le lo
+        if not manual_board.get("batter_id"):
+            manual_board["batter_id"] = game.current_batsman
+        if not manual_board.get("bowler_id"):
+            manual_board["bowler_id"] = game.current_bowler
 
+        actual_batter = manual_board["batter_id"]
+
+        # Turn check
         if user_id != actual_batter:
             await query.answer("❌ Not your turn! You are the bowler.", show_alert=True)
             return
-        game.current_batsman = actual_batter
-        game.current_bowler = actual_bowler
+
+        game.current_batsman = manual_board["batter_id"]
+        game.current_bowler = manual_board["bowler_id"]
         manual_board["batter"] = update.effective_user.first_name
     else:
+        # Normal 1v1 match turn check
         if user_id != game.current_batsman:
             await query.answer("Not your turn!", show_alert=True)
-            return
-        if game.waiting_for != "bat":
-            await query.answer("Wait for your turn!", show_alert=True)
             return
             
     game.pending_bat_number = shot
