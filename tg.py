@@ -3082,22 +3082,30 @@ async def cricket_mode_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    print(f"👉 [DEBUG JOIN] Click received from user {update.effective_user.id} ({update.effective_user.first_name})", flush=True)
+    
     try:
         await query.answer()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"⚠️ query.answer error: {e}", flush=True)
 
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
     data = query.data
-    game_id = int(data.split("_")[2])
+    
+    try:
+        game_id = int(data.split("_")[2])
+    except Exception as e:
+        print(f"❌ [DEBUG JOIN] Data parse fail: {data} -> {e}", flush=True)
+        return
 
     if game_id in cricket_games:
         await query.answer("⏳ Game already started!", show_alert=True)
         return
 
     if game_id not in cricket_lobby:
-        await query.answer("❌ Game expired!", show_alert=True)
+        print(f"❌ [DEBUG JOIN] {game_id} not in cricket_lobby. Current lobbies: {list(cricket_lobby.keys())}", flush=True)
+        await query.answer("❌ Game expired or lobby lost!", show_alert=True)
         return
 
     lobby = cricket_lobby[game_id]
@@ -3159,7 +3167,8 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     try:
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-    except Exception:
+    except Exception as e:
+        print(f"⚠️ [DEBUG JOIN] Edit failed: {e}. Sending new message...", flush=True)
         try:
             await query.message.delete()
         except Exception:
@@ -12838,10 +12847,10 @@ async def main():
 
 
     print("🤖 Bot is running...")
-
+    
     await app.initialize()
     await app.start()
-    await app.updater.start_polling()
+    await app.updater.start_polling(drop_pending_updates=True)
 
     try:
         await asyncio.Event().wait()
