@@ -3193,14 +3193,18 @@ async def cricket_toss_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except Exception:
+        pass
+
     data = query.data
     parts = data.split("_")
     game_id = int(parts[2])
     choice = parts[3]
 
     if game_id not in cricket_games:
-        await query.edit_message_text("*❌ Game expired!*", parse_mode="Markdown")
+        await query.edit_message_text("❌ Game expired!", parse_mode="HTML")
         return
 
     game = cricket_games[game_id]
@@ -3209,21 +3213,14 @@ async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_
         await query.answer("Only toss winner can choose Bat or Bowl!", show_alert=True)
         return
 
-    # 🔥 SET BATSMAN AND BOWLER
+    # SET BATSMAN AND BOWLER
     if choice == "bat":
         game.current_batsman = game.toss_winner
-        if game.toss_winner == game.player1_id:
-            game.current_bowler = game.player2_id
-        else:
-            game.current_bowler = game.player1_id
-    else:  # bowl
+        game.current_bowler = game.player2_id if game.toss_winner == game.player1_id else game.player1_id
+    else:
         game.current_bowler = game.toss_winner
-        if game.toss_winner == game.player1_id:
-            game.current_batsman = game.player2_id
-        else:
-            game.current_batsman = game.player1_id
+        game.current_batsman = game.player2_id if game.toss_winner == game.player1_id else game.player1_id
 
-    # 🔥 SYNC WITH MANUAL BOARD (STMATCH) AGAR ACTIVE HAI
     chat_id = query.message.chat.id
     if 'live_matches' in globals() and chat_id in live_matches:
         manual_board = live_matches[chat_id]
@@ -3247,8 +3244,8 @@ async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_
     game.innings1_balls = 0
     game.innings2_balls = 0
 
-    batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
-    bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
+    batsman_name = html.escape(str(game.player1_name if game.current_batsman == game.player1_id else game.player2_name))
+    bowler_name = html.escape(str(game.player1_name if game.current_bowler == game.player1_id else game.player2_name))
 
     bat_numbers = game.get_bat_numbers()
     keyboard = []
@@ -3262,14 +3259,15 @@ async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_
         keyboard.append(row)
 
     await query.edit_message_text(
-        f"*🏏 Match Started!*\n"
-        f"*📋 {game.mode.upper()} MODE*\n\n"
-        f"*👤 Batter:* {batsman_name}\n"
-        f"*🧤 Bowler:* {bowler_name}\n\n"
-        f"*🏏 {batsman_name}, choose your shot.*",
+        f"🏏 <b>Match Started!</b>\n"
+        f"📋 <b>{game.mode.upper()} MODE</b>\n\n"
+        f"👤 <b>Batter:</b> {batsman_name}\n"
+        f"🧤 <b>Bowler:</b> {bowler_name}\n\n"
+        f"🏏 <b>{batsman_name}, choose your shot.</b>",
         reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="Markdown"
+        parse_mode="HTML"
     )
+    print(f"✅ [DEBUG CHOICE] Match {game_id} Started! Batter: {game.current_batsman} | Bowler: {game.current_bowler}")
 
 
 async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3632,63 +3630,72 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except Exception as e:
+        print(f"⚠️ query.answer error: {e}")
+
     data = query.data
-    parts = data.split("_")
-    game_id = int(parts[2])
-    shot = int(parts[3])
-    
-    if game_id not in cricket_games:
-        await query.edit_message_text("❌ Game expired!", parse_mode="HTML")
+    print(f"👉 [DEBUG BAT] Received Callback Data: {data}")
+
+    try:
+        parts = data.split("_")
+        game_id = int(parts[2])
+        shot = int(parts[3])
+    except Exception as e:
+        print(f"❌ [DEBUG BAT] Data parsing failed: {e}")
         return
-        
+
+    if game_id not in cricket_games:
+        print(f"❌ [DEBUG BAT] Game ID {game_id} not found in cricket_games")
+        await query.answer("❌ Game expired!", show_alert=True)
+        return
+
     game = cricket_games[game_id]
     user_id = update.effective_user.id
     chat_id = query.message.chat.id
     manual_board = live_matches.get(chat_id)
     manual_active = bool(manual_board and manual_board.get("active"))
-    
+
+    print(f"👉 [DEBUG BAT] user_id: {user_id} | game.current_batsman: {game.current_batsman} | manual_active: {manual_active}")
+
+    # Check Turn
     if manual_active:
+        actual_batter = manual_board.get("batter_id") or game.current_batsman
         if not manual_board.get("batter_id"):
-            manual_board["batter_id"] = game.current_batsman
-        if not manual_board.get("bowler_id"):
-            manual_board["bowler_id"] = game.current_bowler
-
-        actual_batter = manual_board["batter_id"]
-        actual_bowler = manual_board["bowler_id"]
-
+            manual_board["batter_id"] = actual_batter
         if user_id != actual_batter:
-            await query.answer("❌ Not your turn! You are the bowler.", show_alert=True)
+            print(f"❌ [DEBUG BAT] Turn Mismatch: user={user_id} vs actual_batter={actual_batter}")
+            await query.answer("❌ Not your turn!", show_alert=True)
             return
-
-        game.current_batsman = actual_batter
-        game.current_bowler = actual_bowler
         manual_board["batter"] = update.effective_user.first_name
     else:
         if user_id != game.current_batsman:
-            await query.answer("Not your turn!", show_alert=True)
+            print(f"❌ [DEBUG BAT] Turn Mismatch: user={user_id} vs current_batsman={game.current_batsman}")
+            await query.answer("❌ Not your turn!", show_alert=True)
             return
+
     game.pending_bat_number = shot
     game.waiting_for = "bowl"
-    
+
     b_name = html.escape(str(update.effective_user.first_name or "Batter"))
     bowler_id = game.current_bowler
     bw_name = html.escape(str(game.player1_name if bowler_id == game.player1_id else game.player2_name))
-    
+
     deliveries = game.get_deliveries()
     keyboard = []
     row = []
     for key, d in deliveries.items():
-        row.append(InlineKeyboardButton(d["name"], callback_data=f"cricket_bowl_{game_id}_{key}"))
+        row.append(InlineKeyboardButton(str(d["name"]), callback_data=f"cricket_bowl_{game_id}_{key}"))
         if len(row) == 3:
             keyboard.append(row)
             row = []
     if row:
         keyboard.append(row)
-        
+
     overs_display = game.get_overs(1) if game.innings == 1 else game.get_overs(2)
     innings_tag = "FIRST INNINGS" if game.innings == 1 else f"TARGET : {game.target}"
-    
+
     text = (
         f"🏏 <b>Over {overs_display} ({innings_tag})</b>\n\n"
         f"🏏 <b>Batter:</b> {b_name}\n"
@@ -3696,13 +3703,15 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         f"✅ <b>{b_name} has selected a number.</b>\n\n"
         f"🧤 <b>{bw_name}, it's your turn to bowl.</b>"
     )
-    
+
     try:
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        print("✅ [DEBUG BAT] Message successfully updated to Bowling Panel!")
     except Exception as e:
+        print(f"⚠️ [DEBUG BAT] Edit failed: {e}. Falling back to send_message...")
         try:
             await query.message.delete()
-        except:
+        except Exception:
             pass
         await context.bot.send_message(
             chat_id=chat_id,
