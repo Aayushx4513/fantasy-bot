@@ -3159,38 +3159,6 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
         parse_mode="Markdown"
     )
 
-
-async def cricket_toss_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-    parts = data.split("_")
-    game_id = int(parts[2])
-    choice = parts[3]
-
-    game = cricket_games[game_id]
-    if update.effective_user.id != game.player1_id:
-        await query.answer("Wait for host!", show_alert=True)
-        return
-
-    toss = random.choice(["heads", "tails"])
-    winner_id = game.player1_id if choice == toss else game.player2_id
-    winner_name = game.player1_name if winner_id == game.player1_id else game.player2_name
-    game.toss_winner = winner_id
-
-    await query.edit_message_text(
-        f"*🏏 Match Started!*\n\n"
-        f"*🪙 TOSS: {toss.upper()}!*\n"
-        f"*🏆 {winner_name} won the toss!*\n\n"
-        f"*📋 {game.mode.upper()} MODE*\n\n"
-        f"*Choose:*",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("🏏 BAT", callback_data=f"cricket_choice_{game_id}_bat")],
-            [InlineKeyboardButton("🎯 BOWL", callback_data=f"cricket_choice_{game_id}_bowl")]
-        ]),
-        parse_mode="Markdown"
-    )
-
 async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     try:
@@ -3210,10 +3178,10 @@ async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_
     game = cricket_games[game_id]
 
     if update.effective_user.id != game.toss_winner:
-        await query.answer("Only toss winner can choose Bat or Bowl!", show_alert=True)
+        await query.answer("❌ Only toss winner can choose!", show_alert=True)
         return
 
-    # SET BATSMAN AND BOWLER
+    # Assign roles
     if choice == "bat":
         game.current_batsman = game.toss_winner
         game.current_bowler = game.player2_id if game.toss_winner == game.player1_id else game.player1_id
@@ -3221,14 +3189,15 @@ async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_
         game.current_bowler = game.toss_winner
         game.current_batsman = game.player2_id if game.toss_winner == game.player1_id else game.player1_id
 
+    # Sync manual board if exists
     chat_id = query.message.chat.id
     if 'live_matches' in globals() and chat_id in live_matches:
-        manual_board = live_matches[chat_id]
-        if manual_board and manual_board.get("active"):
-            manual_board["batter_id"] = game.current_batsman
-            manual_board["bowler_id"] = game.current_bowler
-            manual_board["batter"] = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
-            manual_board["bowler"] = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
+        board = live_matches[chat_id]
+        if board and board.get("active"):
+            board["batter_id"] = game.current_batsman
+            board["bowler_id"] = game.current_bowler
+            board["batter"] = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
+            board["bowler"] = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
 
     game.score = 0
     game.wickets = 0
@@ -3258,16 +3227,59 @@ async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_
     if row:
         keyboard.append(row)
 
-    await query.edit_message_text(
+    text = (
         f"🏏 <b>Match Started!</b>\n"
         f"📋 <b>{game.mode.upper()} MODE</b>\n\n"
         f"👤 <b>Batter:</b> {batsman_name}\n"
         f"🧤 <b>Bowler:</b> {bowler_name}\n\n"
-        f"🏏 <b>{batsman_name}, choose your shot.</b>",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
+        f"🏏 <b>{batsman_name}, choose your shot:</b>"
     )
-    print(f"✅ [DEBUG CHOICE] Match {game_id} Started! Batter: {game.current_batsman} | Bowler: {game.current_bowler}")
+
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+
+async def cricket_toss_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    try:
+        await query.answer()
+    except Exception:
+        pass
+
+    data = query.data
+    parts = data.split("_")
+    game_id = int(parts[2])
+    choice = parts[3]
+
+    if game_id not in cricket_games:
+        await query.edit_message_text("❌ Game expired!", parse_mode="HTML")
+        return
+
+    game = cricket_games[game_id]
+    if update.effective_user.id != game.player1_id:
+        await query.answer("Wait for host!", show_alert=True)
+        return
+
+    toss = random.choice(["heads", "tails"])
+    winner_id = game.player1_id if choice == toss else game.player2_id
+    winner_name = game.player1_name if winner_id == game.player1_id else game.player2_name
+    game.toss_winner = winner_id
+
+    keyboard = [
+        [
+            InlineKeyboardButton("🏏 BAT", callback_data=f"cricket_choice_{game_id}_bat"),
+            InlineKeyboardButton("🎯 BOWL", callback_data=f"cricket_choice_{game_id}_bowl")
+        ]
+    ]
+
+    text = (
+        f"🏏 <b>Match Started!</b>\n\n"
+        f"🪙 <b>TOSS: {toss.upper()}!</b>\n"
+        f"🏆 <b>{html.escape(winner_name)} won the toss!</b>\n\n"
+        f"📋 <b>{game.mode.upper()} MODE</b>\n\n"
+        f"👉 <b>{html.escape(winner_name)}, choose:</b>"
+    )
+
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 
 async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
