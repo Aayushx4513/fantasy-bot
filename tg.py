@@ -3081,18 +3081,19 @@ async def cricket_mode_callback(update: Update, context: ContextTypes.DEFAULT_TY
     )
 
 async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import html
     query = update.callback_query
     print(f"👉 [DEBUG JOIN] Click received from user {update.effective_user.id} ({update.effective_user.first_name})", flush=True)
-    
+
     try:
         await query.answer()
     except Exception as e:
         print(f"⚠️ query.answer error: {e}", flush=True)
 
     user_id = update.effective_user.id
-    user_name = update.effective_user.first_name
+    user_name = update.effective_user.first_name or "Player"
     data = query.data
-    
+
     try:
         game_id = int(data.split("_")[2])
     except Exception as e:
@@ -3110,9 +3111,9 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     lobby = cricket_lobby[game_id]
     creator_id = lobby["creator_id"]
-    creator_name = lobby["creator_name"]
+    creator_name = lobby["creator_name"] or "Host"
     bet = lobby["bet"]
-    chat_id = lobby["chat_id"]
+    chat_id = lobby.get("chat_id") or (query.message.chat_id if query.message else update.effective_chat.id)
     mode = lobby.get("mode", "default")
 
     if creator_id == user_id:
@@ -3171,7 +3172,8 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
     except Exception as e:
         print(f"⚠️ [DEBUG JOIN] Edit failed: {e}. Sending new message...", flush=True)
         try:
-            await query.message.delete()
+            if query.message:
+                await query.message.delete()
         except Exception:
             pass
         await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
