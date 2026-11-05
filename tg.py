@@ -3324,6 +3324,8 @@ async def cricket_toss_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import html
+    import random
     query = update.callback_query
     try:
         await query.answer()
@@ -3333,85 +3335,210 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     data = query.data
     parts = data.split("_")
     game_id = int(parts[2])
-    bowl_num = int(parts[3])
+    delivery_key = parts[3]
 
     if game_id not in cricket_games:
         await query.edit_message_text("❌ Game expired!", parse_mode="HTML")
         return
 
     game = cricket_games[game_id]
+    user_id = update.effective_user.id
     chat_id = (query.message.chat_id if query.message else None) or (update.effective_chat.id if update.effective_chat else getattr(game, 'chat_id', None))
+    manual_board = live_matches.get(chat_id) if 'live_matches' in globals() else None
+    manual_active = bool(manual_board and manual_board.get("active"))
 
-    if update.effective_user.id != game.current_bowler:
-        await query.answer("❌ It's not your turn to bowl!", show_alert=True)
-        return
+    if manual_active:
+        actual_bowler = manual_board.get("bowler_id")
+        if user_id != actual_bowler:
+            await query.answer("❌ Not your turn! You are the batter.", show_alert=True)
+            return
+        if game.pending_bat_number is None:
+            await query.answer("❌ Wait for the batsman to play!", show_alert=True)
+            return
+        game.current_bowler = actual_bowler
+        game.current_batsman = manual_board.get("batter_id")
+    else:
+        if user_id != game.current_bowler:
+            await query.answer("Not your turn!", show_alert=True)
+            return
+        if game.waiting_for != "bowl":
+            await query.answer("Wait!", show_alert=True)
+            return
 
-    if game.waiting_for != "bowl" or game.pending_bat_number is None:
-        await query.answer("⏳ Waiting for batter to select shot!", show_alert=True)
-        return
+    if manual_active:
+        current_batsman_name = html.escape(manual_board.get("batter") or "Waiting...")
+        current_bowler_name = html.escape(update.effective_user.first_name)
+    else:
+        current_batsman_name = html.escape(str(game.player1_name if game.current_batsman == game.player1_id else game.player2_name))
+        current_bowler_name = html.escape(str(game.player1_name if game.current_bowler == game.player1_id else game.player2_name))
 
-    bat_num = game.pending_bat_number
+    bat_number = game.pending_bat_number
     game.pending_bat_number = None
-
-    is_out = (bat_num == bowl_num)
-    runs_scored = 0 if is_out else bat_num
-
     game.balls += 1
     if game.innings == 1:
         game.innings1_balls += 1
-        if game.current_batsman == game.player1_id:
-            game.player1_match_runs += runs_scored
-        else:
-            game.player2_match_runs += runs_scored
     else:
         game.innings2_balls += 1
-        if game.current_batsman == game.player1_id:
-            game.player1_match_runs += runs_scored
-        else:
-            game.player2_match_runs += runs_scored
 
-    if not is_out:
-        game.score += runs_scored
-    else:
-        game.wickets += 1
-        if game.current_bowler == game.player1_id:
-            game.player1_wickets_taken += 1
-        else:
-            game.player2_wickets_taken += 1
+    deliveries = game.get_deliveries()
+    bowl_number = deliveries[delivery_key]["out_on"]
+    is_out = (bat_number == bowl_number)
+    runs_scored = 0 if is_out else bat_number
+    if manual_active:
+        if "player_stats" not in manual_board:
+            manual_board["player_stats"] = {}
+        if current_batsman_name not in manual_board["player_stats"]:
+            manual_board["player_stats"][current_batsman_name] = {"runs": 0, "balls": 0}
+        if current_bowler_name not in manual_board["player_stats"]:
+            manual_board["player_stats"][current_bowler_name] = {"wkts": 0, "runs_given": 0}
 
-    game.current_over_shots.append((bat_num, bowl_num, is_out))
-    manual_board = None
-    if 'live_matches' in globals() and chat_id in live_matches:
-        mb = live_matches[chat_id]
-        if mb and mb.get("active"):
-            manual_board = mb
-
-    is_wicket_event = False
-    is_over_event = False
-
-    if manual_board:
+        manual_board["player_stats"][current_batsman_name]["balls"] += 1
         manual_board["balls"] = manual_board.get("balls", 0) + 1
+        is_wicket_event = False
+        is_over_event = False
+
         if is_out:
+            manual_board["player_stats"][current_bowler_name]["wkts"] += 1
             manual_board["wkts"] = manual_board.get("wkts", 0) + 1
             is_wicket_event = True
-        else:
-            manual_board["runs"] = manual_board.get("runs", 0) + runs_scored
+            if "out_batters" not in manual_board:
+                manual_board["out_batters"] = []
+            manual_board["out_batters"].append(current_batsman_name)
+            
+            batsman_total_runs = manual_board["player_stats"][current_batsman_name]["runs"]
+            if batsman_total_runs == 0 and chat_id:
+                duck_gifs = [
+                    "CgACAgUAAyEFAATqVpOyAAIIZmrq9lLL8LeiX0XAXPKY9GKZGNjmAAJNJAACtRhZV5xQZ3KafSUePQQ",
+                    "CgACAgUAAyEFAATqVpOyAAIIZWrq9lKuMyQ0b1X2uUlq0B2VKKqeAAJOJAACtRhZVwAB16lEjKjP7T0E",
+                    "CgACAgQAAyEFAATqVpOyAAIIcmrq91XXSmajpJgrf5mSswdqn5fpAAJgFwACLyjAUc-7vVRW5qAYPQQ"
+                ]
+                chosen_duck = random.choice(duck_gifs)
+                ov_str = f"{manual_board['balls']//6}.{manual_board['balls']%6}"
+                caption_duck = (
+                    f"🦆 ✅ <b>DUCK OUT!</b> ✅ 🦆\n\n"
+                    f"🏏 <b>{current_batsman_name}</b> walks back without scoring a single run! "
+                    f"<b>{current_bowler_name}</b> gets the wicket!\n\n"
+                    f"📊 <b>Score:</b> {manual_board['runs']}/{manual_board['wkts']} ({ov_str} Ov)"
+                )
+                try:
+                    await context.bot.send_animation(chat_id=chat_id, animation=chosen_duck, caption=caption_duck, parse_mode="HTML")
+                except Exception:
+                    pass
 
-        # Manual board innings switch check
-        if game.innings == 1 and (is_out or (game.mode == "overs" and game.balls >= 12)):
+            manual_board["batter"] = None
+            manual_board["batter_id"] = None
+        else:
+            manual_board["player_stats"][current_batsman_name]["runs"] += bat_number
+            manual_board["player_stats"][current_bowler_name]["runs_given"] += bat_number
+            manual_board["runs"] = manual_board.get("runs", 0) + bat_number
+            manual_board["batter"] = current_batsman_name
+
+            current_runs = manual_board["player_stats"][current_batsman_name]["runs"]
+            ov_str = f"{manual_board['balls']//6}.{manual_board['balls']%6}"
+            if current_runs >= 50 and (current_runs - bat_number) < 50 and chat_id:
+                fifty_gifs = [
+                    "CgACAgUAAx0CYwTJMQABB7voaurl_yILR8RBzrqgPs1Jr1_ft9EAArgiAAJQaFBX3FwHsSBtKB49BA",
+                    "CgACAgUAAyEFAATqVpOyAAIIcWrq91TdUxh28NFdwtwLC8zKNSS9AAJMJAACtRhZV2FRJaS1yFalPQQ"
+                ]
+                chosen_fifty = random.choice(fifty_gifs)
+                caption_50 = (
+                    f"🏏 ✅ <b>FIFTY UP!</b> ✅ 🏏\n\n"
+                    f"🔥 <b>WHAT A KNOCK by {current_batsman_name}!</b>\n"
+                    f"🎯 <b>He completes his half-century!</b>\n\n"
+                    f"📊 <b>Score:</b> {manual_board['runs']}/{manual_board['wkts']} ({ov_str} Ov)"
+                )
+                try:
+                    await context.bot.send_animation(chat_id=chat_id, animation=chosen_fifty, caption=caption_50, parse_mode="HTML")
+                except Exception:
+                    pass
+
+            if current_runs >= 100 and (current_runs - bat_number) < 100 and chat_id:
+                century_gifs = [
+                    "CgACAgUAAx0CYwTJMQABB7vsaurmFZQDhQmzATEy4m_5HwQECkYAArkiAAJQaFBXE1cxYDzPPS49BA",
+                    "CgACAgUAAyEFAATqVpOyAAIIcGrq91Ttj8-ZDAylMor5zg6SuM07AAJLJAACtRhZV6bLje3eJ735PQQ"
+                ]
+                chosen_century = random.choice(century_gifs)
+                caption_100 = (
+                    f"🏆 ✅ <b>CENTURY!</b> ✅ 🏆\n\n"
+                    f"👑 <b>ABSOLUTE MAGNIFICENT!</b>\n"
+                    f"<b>{current_batsman_name}</b> <b>smashes a brilliant 100!</b>\n\n"
+                    f"📊 <b>Score:</b> {manual_board['runs']}/{manual_board['wkts']} ({ov_str} Ov)"
+                )
+                try:
+                    await context.bot.send_animation(chat_id=chat_id, animation=chosen_century, caption=caption_100, parse_mode="HTML")
+                except Exception:
+                    pass
+
+        # Target Chased in manual match: Finish Match with Summary
+        if manual_board.get("innings") == 2 and manual_board.get("target") and manual_board.get("runs", 0) >= manual_board["target"]:
+            summary = (
+                f"🏆 ✅ <b>MATCH ENDED!</b> ✅ 🏆\n\n"
+                f"🏏 <b>{html.escape(str(manual_board['batting_team']))}</b> <b>won the match!</b>\n\n"
+            )
+            batsmen = [(n, s) for n, s in manual_board["player_stats"].items() if s.get("balls", 0) > 0]
+            batsmen.sort(key=lambda x: x[1]["runs"], reverse=True)
+            bowlers = [(n, s) for n, s in manual_board["player_stats"].items() if s.get("wkts", 0) > 0]
+            bowlers.sort(key=lambda x: x[1]["wkts"], reverse=True)
+
+            summary += "━━━━━━━━━━━━━━━━━━━━\n🏏 <b>Top Scorers:</b>\n"
+            for i, (name, s) in enumerate(batsmen[:3]):
+                summary += f"> {i+1}. {name} - <b>{s['runs']}</b> ({s['balls']})\n"
+            summary += "\n🎯 <b>Top Wicket Takers:</b>\n"
+            if bowlers:
+                for i, (name, s) in enumerate(bowlers[:3]):
+                    summary += f"> {i+1}. {name} - <b>{s['wkts']} Wkts</b>\n"
+            else:
+                summary += "> None\n"
+
+            if chat_id:
+                try:
+                    new_msg = await context.bot.send_message(chat_id, summary, parse_mode="HTML")
+                    if manual_board.get("pinned_msg_id"):
+                        try:
+                            await context.bot.unpin_chat_message(chat_id, manual_board["pinned_msg_id"])
+                        except Exception:
+                            pass
+                    try:
+                        await context.bot.pin_chat_message(chat_id, new_msg.message_id, disable_notification=True)
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+
+            del live_matches[chat_id]
+            if game_id in cricket_games:
+                del cricket_games[game_id]
+            try:
+                await query.edit_message_text("🏆 <b>Match Ended!</b>", parse_mode="HTML")
+            except Exception:
+                pass
+            return
+        max_wkts = manual_board.get("wickets", 3)
+        max_overs = manual_board.get("overs", 5)
+        is_all_out = manual_board.get("wkts", 0) >= max_wkts
+        is_overs_done = manual_board.get("balls", 0) >= (max_overs * 6)
+
+        if (is_all_out or is_overs_done) and manual_board.get("innings") == 1:
+            is_over_event = True
             manual_board["target"] = manual_board.get("runs", 0) + 1
+            old_b = manual_board.get("batter_id") or game.current_batsman
+            old_bw = manual_board.get("bowler_id") or game.current_bowler
+            new_b = old_bw
+            new_bw = old_b
+
             manual_board["innings"] = 2
+            manual_board["batting_team"], manual_board["bowling_team"] = manual_board.get("bowling_team", "Team B"), manual_board.get("batting_team", "Team A")
             manual_board["runs"] = 0
             manual_board["wkts"] = 0
             manual_board["balls"] = 0
-            new_b = game.player2_id if game.current_batsman == game.player1_id else game.player1_id
-            new_bw = game.player1_id if new_b == game.player1_id else game.player2_id
+            # Setting to None shows 'Waiting...' on innings card
+            manual_board["batter"] = None
+            manual_board["bowler"] = None
             manual_board["batter_id"] = new_b
             manual_board["bowler_id"] = new_bw
-            manual_board["batter"] = game.player1_name if new_b == game.player1_id else game.player2_name
-            manual_board["bowler"] = game.player1_name if new_bw == game.player1_id else game.player2_name
+
             game.innings = 2
-            game.target = manual_board.get("target")
+            game.target = manual_board["target"]
             game.current_batsman = new_b
             game.current_bowler = new_bw
             game.score = 0
@@ -3426,13 +3553,10 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         if m_balls > 0 and m_balls % 6 == 0 and not is_over_event:
             is_over_event = True
             manual_board["bowler"] = None
+
         if is_wicket_event or is_over_event:
             title = "☝️ ✅ <b>WICKET!</b> ✅ ☝️" if is_wicket_event else "⏱️ ✅ <b>END OF OVER</b> ✅ ⏱️"
-            m_runs = manual_board.get("runs", 0)
-            m_wkts = manual_board.get("wkts", 0)
-            m_innings = manual_board.get("innings", 1)
-
-            if m_innings == 2 and m_runs == 0 and m_wkts == 0 and m_balls == 0:
+            if manual_board.get("innings") == 2 and manual_board.get("runs") == 0 and manual_board.get("wkts") == 0 and m_balls == 0:
                 title = "🔄 ✅ <b>INNINGS CHANGED!</b> ✅ 🔄"
 
             batter_txt = html.escape(str(manual_board.get('batter') or 'Waiting...'))
@@ -3442,12 +3566,12 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             score_txt = (
                 f"{title}\n\n"
                 f"🏏 <b>Batting:</b> {team_txt}\n"
-                f"📊 <b>Score:</b> {m_runs}/{m_wkts} ({m_balls // 6}.{m_balls % 6} Ov)\n"
+                f"📊 <b>Score:</b> {manual_board.get('runs', 0)}/{manual_board.get('wkts', 0)} ({m_balls // 6}.{m_balls % 6} Ov)\n"
                 f"🏃 <b>Batter:</b> {batter_txt}\n"
                 f"🧤 <b>Bowler:</b> {bowler_txt}\n"
             )
             if manual_board.get('target'):
-                score_txt += f"🎯 <b>Target:</b> {manual_board['target']}\n"
+                score_txt += f"🎯 <b>Target:</b> {manual_board['target']}"
 
             if chat_id:
                 try:
@@ -3462,45 +3586,217 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                         manual_board["pinned_msg_id"] = new_msg.message_id
                     except Exception:
                         pass
-                except Exception as e:
-                    print(f"⚠️ [DEBUG BOARD] Message send/pin failed: {e}", flush=True)
-    # Check regular game 1st innings complete (Wicket or Overs limit)
-    innings_ended = False
-    if game.innings == 1:
-        if is_out or (game.mode == "overs" and game.balls >= 12):
-            innings_ended = True
-            game.target = game.score + 1
-            game.innings = 2
-            # Swap roles
-            new_batter = game.player2_id if game.current_batsman == game.player1_id else game.player1_id
-            new_bowler = game.player1_id if new_batter == game.player1_id else game.player2_id
-            game.current_batsman = new_batter
-            game.current_bowler = new_bowler
-            game.score = 0
-            game.wickets = 0
-            game.balls = 0
-            game.waiting_for = "bat"
-            game.pending_bat_number = None
+                except Exception:
+                    pass
+    if is_out:
+        if game.score == 0:
+            try:
+                db = await get_db()
+                target_user = game.player1_id if game.current_batsman == game.player1_id else game.player2_id
+                await db.execute("UPDATE cricket_stats SET ducks = ducks + 1 WHERE user_id = $1", target_user)
+            except Exception:
+                pass
+            finally:
+                if 'db' in locals() and db:
+                    await close_db(db)
 
-    # Check 2nd innings match end conditions
-    match_ended = False
-    winner_id = None
-    if game.innings == 2 and not innings_ended:
-        if game.score >= game.target:
-            match_ended = True
-            winner_id = game.current_batsman
-        elif is_out or (game.mode == "overs" and game.balls >= 12):
-            match_ended = True
-            if game.score == game.target - 1:
-                winner_id = None  # Tie
-            else:
-                winner_id = game.current_bowler
+        if game.current_bowler == game.player1_id:
+            game.player1_wickets_taken += 1
+            await update_cricket_stats_realtime(game.player1_id, game.player1_name, 0, 1, 0)
+        else:
+            game.player2_wickets_taken += 1
+            await update_cricket_stats_realtime(game.player2_id, game.player2_name, 0, 1, 0)
 
-    if match_ended:
-        await finish_cricket_game(game, winner_id, update, context)
+        game.wickets += 1
+        msg = f"<b>🏏 Over {game.get_overs(game.innings)}</b>\n\n<b>{current_batsman_name} played: {bat_number}  | {current_bowler_name} bowled: {bowl_number}</b>\n\n<b>❌ OUT!</b>\n\n"
+    else:
+        runs = bat_number
+        game.score += runs
+        msg = f"<b>🏏 Over {game.get_overs(game.innings)}</b>\n\n<b>{current_batsman_name} played: {bat_number}  | {current_bowler_name} bowled: {bowl_number}</b>\n\n<b>✅ {runs} runs!</b>\n\n"
+        if game.current_batsman == game.player1_id:
+            game.player1_match_runs += runs
+            await update_cricket_stats_realtime(game.player1_id, game.player1_name, runs, 0, game.player1_match_runs)
+        else:
+            game.player2_match_runs += runs
+            await update_cricket_stats_realtime(game.player2_id, game.player2_name, runs, 0, game.player2_match_runs)
+
+    if not hasattr(game, "current_over_shots"):
+        game.current_over_shots = []
+    game.current_over_shots.append(str(bat_number))
+
+    msg += f"<b>📊 Score: {game.score}/{game.wickets}</b>\n"
+    if game.current_over_shots:
+        shots_display = ', '.join(game.current_over_shots)
+        msg += f"<b>🎯 This Over: {shots_display}</b>\n\n"
+    else:
+        msg += "\n"
+
+    if game.balls % 6 == 0:
+        game.current_over_shots = []
+
+    # If Manual Match is active, render the batting choice keyboard
+    if manual_active:
+        game.waiting_for = "bat"
+        if not manual_board.get("batter_id"):
+            manual_board["batter_id"] = game.player1_id if manual_board.get("bowler_id") == game.player2_id else game.player2_id
+            game.current_batsman = manual_board["batter_id"]
+            manual_board["batter"] = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
+
+        bat_numbers = game.get_bat_numbers()
+        keyboard = []
+        row = []
+        for num in bat_numbers:
+            row.append(InlineKeyboardButton(str(num), callback_data=f"cricket_bat_{game_id}_{num}"))
+            if len(row) == 3:
+                keyboard.append(row)
+                row = []
+        if row:
+            keyboard.append(row)
+
+        msg += "<b>🎮 Choose your shot :-</b>"
+        try:
+            await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        except Exception as e:
+            if "Message is not modified" not in str(e):
+                if query.message:
+                    await query.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         return
 
-    # Render Next Ball / Next Innings Panel
+    # Regular 1st innings end (Single wicket or over limit)
+    innings_balls = 6 if getattr(game, 'is_superover', False) else 60
+    if game.innings == 1 and (game.wickets >= 1 or game.balls >= innings_balls):
+        first_batsman = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
+        first_bowler = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
+        game.innings = 2
+        game.current_over_shots = []
+        game.target = game.score + 1
+        innings_score = game.score
+        first_innings_wickets = game.wickets
+        game.score = 0
+        game.wickets = 0
+        game.balls = 0
+        game.waiting_for = "bat"
+
+        old_batsman = game.current_batsman
+        old_bowler = game.current_bowler
+        game.current_batsman = old_bowler
+        game.current_bowler = old_batsman
+
+        batsman_name = html.escape(str(game.player1_name if game.current_batsman == game.player1_id else game.player2_name))
+        bowler_name = html.escape(str(game.player1_name if game.current_bowler == game.player1_id else game.player2_name))
+
+        msg = (
+            f"<b>🏏 Over {game.get_overs(1)} (FIRST INNINGS ENDED)</b>\n\n"
+            f"<b>{first_batsman} played: {bat_number}  | {first_bowler} bowled: {bowl_number}</b>\n\n"
+            f"<b>📊 Score: {innings_score}/{first_innings_wickets}</b>\n"
+            f"<b>🎯 Target: {game.target} runs</b>\n\n"
+            f"<b>🔄 Innings Changed</b>\n\n"
+            f"<b>🏏 {batsman_name}, choose your shot.</b>"
+        )
+        bat_numbers = game.get_bat_numbers()
+        keyboard = []
+        row = []
+        for num in bat_numbers:
+            row.append(InlineKeyboardButton(str(num), callback_data=f"cricket_bat_{game_id}_{num}"))
+            if len(row) == 3:
+                keyboard.append(row)
+                row = []
+        if row:
+            keyboard.append(row)
+
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        return
+
+    # Regular 2nd innings target chased
+    if game.innings == 2 and game.score >= game.target:
+        game.game_active = False
+        winner_id = game.current_batsman
+        winner_name = html.escape(str(game.player1_name if winner_id == game.player1_id else game.player2_name))
+        await update_wins_losses_realtime(winner_id, winner_name, True)
+        if game.bet > 0:
+            try:
+                db = await get_db()
+                await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", game.bet * 2, winner_id)
+            except Exception:
+                pass
+            finally:
+                if 'db' in locals() and db:
+                    await close_db(db)
+
+        margin = abs(game.player1_match_runs - game.player2_match_runs)
+        player1_overs = game.get_overs(1)
+        player2_overs = game.get_overs(2)
+        p1_wickets = game.wickets if game.player1_id == winner_id else game.player2_wickets_taken
+        p2_wickets = game.player2_wickets_taken if game.player1_id == winner_id else game.wickets
+
+        summary = (
+            f"<b>🏆 MATCH RESULT</b>\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"<b>{game.player1_name} — {game.player1_match_runs}/{p1_wickets} ({player1_overs} ov)</b>\n"
+            f"<b>{game.player2_name} — {game.player2_match_runs}/{p2_wickets} ({player2_overs} ov)</b>\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"<b>🏆 {winner_name} won by {margin} runs!</b>\n"
+        )
+        if game.bet > 0:
+            summary += f"<b>🪙 Prize: {game.bet * 2:,}</b>"
+        await query.edit_message_text(summary, parse_mode="HTML")
+        if game_id in cricket_games:
+            del cricket_games[game_id]
+        return
+
+    # Regular 2nd innings out/loss
+    if game.innings == 2 and game.wickets >= 1:
+        game.game_active = False
+        winner_id = game.current_bowler
+        winner_name = html.escape(str(game.player1_name if winner_id == game.player1_id else game.player2_name))
+        await update_wins_losses_realtime(winner_id, winner_name, True)
+        if game.bet > 0:
+            try:
+                db = await get_db()
+                await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", game.bet * 2, winner_id)
+            except Exception:
+                pass
+            finally:
+                if 'db' in locals() and db:
+                    await close_db(db)
+
+        runs_left = abs(game.player1_match_runs - game.player2_match_runs)
+        player1_overs = game.get_overs(1)
+        player2_overs = game.get_overs(2)
+        p1_wickets = game.player1_wickets_taken if game.player1_id == winner_id else game.wickets
+        p2_wickets = game.wickets if game.player1_id == winner_id else game.player2_wickets_taken
+
+        summary = (
+            f"<b>🏆 MATCH RESULT</b>\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"<b>{game.player1_name} — {game.player1_match_runs}/{p1_wickets} ({player1_overs} ov)</b>\n"
+            f"<b>{game.player2_name} — {game.player2_match_runs}/{p2_wickets} ({player2_overs} ov)</b>\n"
+            f"━━━━━━━━━━━━━━━━\n"
+        )
+        if game.player1_match_runs == game.player2_match_runs:
+            summary += "<b>🤝 It's a Draw!</b>\n"
+            if game.bet > 0:
+                try:
+                    db = await get_db()
+                    await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", game.bet, game.player1_id)
+                    await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", game.bet, game.player2_id)
+                except Exception:
+                    pass
+                finally:
+                    if 'db' in locals() and db:
+                        await close_db(db)
+                summary += f"<b>🪙 Refunded: {game.bet:,} each</b>"
+        else:
+            summary += f"<b>🏆 {winner_name} won by {runs_left} runs!</b>\n"
+            if game.bet > 0:
+                summary += f"<b>🪙 Prize: {game.bet * 2:,}</b>"
+
+        await query.edit_message_text(summary, parse_mode="HTML")
+        if game_id in cricket_games:
+            del cricket_games[game_id]
+        return
+
+    # Regular Next Delivery Turn Prompt
     game.waiting_for = "bat"
     bat_numbers = game.get_bat_numbers()
     keyboard = []
@@ -3513,35 +3809,13 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     if row:
         keyboard.append(row)
 
-    b_name = html.escape(str(game.player1_name if game.current_batsman == game.player1_id else game.player2_name))
-    bw_name = html.escape(str(game.player1_name if game.current_bowler == game.player1_id else game.player2_name))
-
-    delivery_status = f"💥 <b>WICKET!</b> ({bat_num} == {bowl_num})" if is_out else f"🏏 <b>{runs_scored} Runs scored!</b> (Bat: {bat_num} | Bowl: {bowl_num})"
-    ov_str = f"{game.balls // 6}.{game.balls % 6}"
-
-    panel_text = (
-        f"{delivery_status}\n\n"
-        f"📊 <b>Score:</b> {game.score}/{game.wickets} ({ov_str} Ov)\n"
-    )
-    if game.target:
-        panel_text += f"🎯 <b>Target:</b> {game.target} (Need {max(0, game.target - game.score)} runs)\n"
-
-    panel_text += (
-        f"\n👤 <b>Batter:</b> {b_name}\n"
-        f"🧤 <b>Bowler:</b> {bw_name}\n\n"
-        f"👉 <b>{b_name}, choose your shot:</b>"
-    )
-
+    msg += f"<b>🎮 {current_batsman_name} choose your shot :-</b>"
     try:
-        await query.edit_message_text(panel_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-    except Exception:
-        try:
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    except Exception as e:
+        if "Message is not modified" not in str(e):
             if query.message:
-                await query.message.delete()
-        except Exception:
-            pass
-        if chat_id:
-            await context.bot.send_message(chat_id=chat_id, text=panel_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+                await query.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 
 
