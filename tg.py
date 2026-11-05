@@ -3141,7 +3141,8 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
             await close_db(db)
         await query.answer("⏳ Game already started!", show_alert=True)
         return
-    game = CricketGame(game_id, creator_id, creator_name, user_id, user_name, bet, mode)
+    game = CricketGame(game_id, creator_id, creator_name, user_id, user_name, bet)
+    game.mode = mode
     cricket_games[game_id] = game
     del cricket_lobby[game_id]
 
