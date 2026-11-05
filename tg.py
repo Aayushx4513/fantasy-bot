@@ -3082,82 +3082,61 @@ async def cricket_mode_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except Exception:
+        pass
+
+    data = query.data
+    parts = data.split("_")
+    game_id = int(parts[2])
+
+    if game_id not in cricket_games:
+        await query.edit_message_text("❌ Game expired!", parse_mode="HTML")
+        return
+
+    game = cricket_games[game_id]
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
-    data = query.data
-    game_id = int(data.split("_")[2])
 
-    # 🔥 Check if game already started
-    if game_id in cricket_games:
-        await query.answer("⏳ Game already started!", show_alert=True)
+    if user_id == game.player1_id:
+        await query.answer("You cannot join your own match!", show_alert=True)
         return
 
-    # Check if lobby exists
-    if game_id not in cricket_lobby:
-        await query.answer("❌ Game expired!", show_alert=True)
+    if game.player2_id is not None:
+        await query.answer("Match is already full!", show_alert=True)
         return
 
-    lobby = cricket_lobby[game_id]
-    creator_id = lobby["creator_id"]
-    creator_name = lobby["creator_name"]
-    bet = lobby["bet"]
-    chat_id = lobby["chat_id"]
-    mode = lobby.get("mode", "default")
-
-    if creator_id == user_id:
-        await query.answer("You cannot join your own game!", show_alert=True)
-        return
-
-    if bet > 0:
-        db = await get_db()
-        balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-        if balance is None:
-            await query.answer("❌ Send /start first!", show_alert=True)
-            await close_db(db)
-            return
-        if balance < bet:
-            await query.answer(f"❌ Need {bet} credits!", show_alert=True)
-            await close_db(db)
-            return
-        await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, creator_id)
-        await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, user_id)
-        await close_db(db)
-
-    # 🔥 Double-check: game already created by someone else? (race condition)
-    if game_id in cricket_games:
-        # Refund if bet was deducted
-        if bet > 0:
-            db = await get_db()
-            await db.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", bet, user_id)
-            await close_db(db)
-        await query.answer("⏳ Game already started!", show_alert=True)
-        return
-
-    game = CricketGame(game_id, creator_id, creator_name, bet, chat_id, mode)
-    game.is_superover = lobby.get("is_superover", False)
-    game.is_superover = lobby.get("is_superover", False)
     game.player2_id = user_id
     game.player2_name = user_name
-    game.game_active = True
-    cricket_games[game_id] = game
 
-    # 🔥 Remove lobby only after game created
-    if game_id in cricket_lobby:
-        del cricket_lobby[game_id]
+    keyboard = [
+        [
+            InlineKeyboardButton("🪙 HEADS", callback_data=f"cricket_toss_{game_id}_heads"),
+            InlineKeyboardButton("🪙 TAILS", callback_data=f"cricket_toss_{game_id}_tails")
+        ]
+    ]
 
-    await query.edit_message_text(
-        f"*🏏 CRICKET GAME*\n\n"
-        f"*{creator_name}* vs *{user_name}*\n"
-        + (f"🪙 Bet: {bet} | Prize: {bet*2}\n" if bet > 0 else "")
-        + f"\n*🪙 TOSS TIME!*\n\n"
-        f"*{creator_name}, choose:*",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("HEADS", callback_data=f"cricket_toss_{game_id}_heads")],
-            [InlineKeyboardButton("TAILS", callback_data=f"cricket_toss_{game_id}_tails")]
-        ]),
-        parse_mode="Markdown"
+    p1 = html.escape(str(game.player1_name))
+    p2 = html.escape(str(game.player2_name))
+
+    text = (
+        f"🏏 <b>MATCH READY!</b>\n\n"
+        f"👤 <b>Host:</b> {p1}\n"
+        f"👤 <b>Opponent:</b> {p2}\n\n"
+        f"📋 <b>Mode:</b> {game.mode.upper()}\n"
+        f"🪙 <b>Bet:</b> {game.bet:,}\n\n"
+        f"👉 <b>{p1}, choose Heads or Tails for the Toss:</b>"
     )
+
+    try:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    except Exception:
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        await context.bot.send_message(chat_id=query.message.chat.id, text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -3256,9 +3235,10 @@ async def cricket_toss_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     game = cricket_games[game_id]
     if update.effective_user.id != game.player1_id:
-        await query.answer("Wait for host!", show_alert=True)
+        await query.answer("❌ Only host can choose Heads or Tails!", show_alert=True)
         return
 
+    import random
     toss = random.choice(["heads", "tails"])
     winner_id = game.player1_id if choice == toss else game.player2_id
     winner_name = game.player1_name if winner_id == game.player1_id else game.player2_name
@@ -3271,15 +3251,22 @@ async def cricket_toss_callback(update: Update, context: ContextTypes.DEFAULT_TY
         ]
     ]
 
+    w_name = html.escape(str(winner_name))
     text = (
-        f"🏏 <b>Match Started!</b>\n\n"
-        f"🪙 <b>TOSS: {toss.upper()}!</b>\n"
-        f"🏆 <b>{html.escape(winner_name)} won the toss!</b>\n\n"
-        f"📋 <b>{game.mode.upper()} MODE</b>\n\n"
-        f"👉 <b>{html.escape(winner_name)}, choose:</b>"
+        f"🏏 <b>TOSS RESULT</b>\n\n"
+        f"🪙 <b>Coin landed on: {toss.upper()}!</b>\n"
+        f"🏆 <b>{w_name} won the toss!</b>\n\n"
+        f"👉 <b>{w_name}, choose to Bat or Bowl:</b>"
     )
 
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    try:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    except Exception:
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        await context.bot.send_message(chat_id=query.message.chat.id, text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 
 async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
