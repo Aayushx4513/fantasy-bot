@@ -50,7 +50,7 @@ print(f"✅ Loaded {len(TRIVIA_QUESTIONS)} trivia questions")
 IST = timezone(timedelta(hours=5, minutes=30))
 
 # ============ TOKEN & ADMINS ============
-TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAHOv5MAEqjQbnvFmgO_GNeinc4GvjTgHtE")
+TOKEN = os.environ.get("BOT_TOKEN", "8265192837:AAFMIBEQdvyVGTb9QiJ3CHuXnNDB48x1k5Q")
 ADMIN_IDS = [7687078555, 1315564307, 7361215114, 8637977698]
 
 # ============ DATABASE URL ============
@@ -3276,29 +3276,39 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     chat_id = query.message.chat.id
     manual_board = live_matches.get(chat_id)
     manual_active = bool(manual_board and manual_board.get("active"))
+    
     if manual_active:
         actual_bowler = manual_board.get("bowler_id")
-        if not actual_bowler:
+        actual_batter = manual_board.get("batter_id")
+        if not actual_bowler or not actual_batter:
             actual_bowler = game.current_bowler
+            actual_batter = game.current_batsman
+            manual_board["bowler_id"] = actual_bowler
+            manual_board["batter_id"] = actual_batter
+
         if user_id != actual_bowler:
             await query.answer("❌ Not your turn! You are the batter.", show_alert=True)
             return
+        if game.pending_bat_number is None:
+            await query.answer("❌ Wait for the batsman to play!", show_alert=True)
+            return
         game.current_bowler = actual_bowler
-        game.current_batsman = manual_board.get("batter_id") or game.current_batsman
-        manual_board["batter_id"] = game.current_batsman
+        game.current_batsman = actual_batter
     else:
         if user_id != game.current_bowler:
             await query.answer("Not your turn!", show_alert=True)
             return
-    if game.waiting_for != "bowl":
-        await query.answer("Wait!", show_alert=True)
-        return
+        if game.waiting_for != "bowl":
+            await query.answer("Wait!", show_alert=True)
+            return
+            
     if manual_active:
-        current_batsman_name = manual_board.get("batter") or "Waiting..."
-        current_bowler_name = update.effective_user.first_name
+        current_batsman_name = html.escape(manual_board.get("batter") or (game.player1_name if game.current_batsman == game.player1_id else game.player2_name))
+        current_bowler_name = html.escape(update.effective_user.first_name)
     else:
-        current_batsman_name = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
-        current_bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
+        current_batsman_name = html.escape(game.player1_name if game.current_batsman == game.player1_id else game.player2_name)
+        current_bowler_name = html.escape(game.player1_name if game.current_bowler == game.player1_id else game.player2_name)
+        
     bat_number = game.pending_bat_number
     game.pending_bat_number = None
     game.balls += 1
@@ -3307,6 +3317,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     deliveries = game.get_deliveries()
     bowl_number = deliveries[delivery_key]["out_on"]
     is_out = (bat_number == bowl_number)
+
     if manual_active:
         if "player_stats" not in manual_board: manual_board["player_stats"] = {}
         if current_batsman_name not in manual_board["player_stats"]: manual_board["player_stats"][current_batsman_name] = {"runs": 0, "balls": 0}
@@ -3315,6 +3326,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         manual_board["balls"] += 1
         is_wicket_event = False
         is_over_event = False
+        
         if is_out:
             manual_board["player_stats"][current_bowler_name]["wkts"] += 1
             manual_board["wkts"] += 1
@@ -3334,6 +3346,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             manual_board["player_stats"][current_bowler_name]["runs_given"] += bat_number
             manual_board["runs"] += bat_number
             manual_board["batter"] = current_batsman_name
+            
         if not is_out:
             current_runs = manual_board["player_stats"][current_batsman_name]["runs"]
             if current_runs >= 50 and current_runs - bat_number < 50:
@@ -3348,8 +3361,9 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 caption_100 = f"🏆 ✅ <b>CENTURY!</b> ✅ 🏆\n\n👑 <b>ABSOLUTE MAGNIFICENT!</b>\n<b>{current_batsman_name}</b> <b>smashes a brilliant 100!</b>\n\n📊 <b>Score:</b> {manual_board['runs']}/{manual_board['wkts']} ({manual_board['balls']//6}.{manual_board['balls']%6} Ov)"
                 try: await context.bot.send_animation(chat_id=chat_id, animation=chosen_century, caption=caption_100, parse_mode="HTML")
                 except: pass
+
         if manual_board["innings"] == 2 and manual_board["target"] and manual_board["runs"] >= manual_board["target"]:
-            summary = f"🏆 ✅ <b>MATCH ENDED!</b> ✅ 🏆\n\n🏏 <b>{manual_board['batting_team']}</b> <b>won the match!</b>\n\n"
+            summary = f"🏆 ✅ <b>MATCH ENDED!</b> ✅ 🏆\n\n🏏 <b>{html.escape(manual_board['batting_team'])}</b> <b>won the match!</b>\n\n"
             batsmen = [(name, stats) for name, stats in manual_board["player_stats"].items() if stats.get("balls", 0) > 0]
             batsmen.sort(key=lambda x: x[1]["runs"], reverse=True)
             bowlers = [(name, stats) for name, stats in manual_board["player_stats"].items() if stats.get("wkts", 0) > 0]
@@ -3372,30 +3386,32 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             del cricket_games[game_id]
             await query.edit_message_text("🏆 Match Ended!", parse_mode="HTML")
             return
+
         max_wkts = manual_board.get("wickets", 3)
         max_overs = manual_board.get("overs", 5)
         is_all_out = manual_board["wkts"] >= max_wkts
         is_overs_done = manual_board["balls"] >= (max_overs * 6)
+        
         if (is_all_out or is_overs_done) and manual_board["innings"] == 1:
             is_over_event = True
             manual_board["target"] = manual_board["runs"] + 1
-            old_batter = manual_board.get("batter_id") or game.current_batsman
-            old_bowler = manual_board.get("bowler_id") or game.current_bowler
-            new_batter = old_bowler
-            new_bowler = old_batter
+            old_b = manual_board.get("batter_id") or game.current_batsman
+            old_bw = manual_board.get("bowler_id") or game.current_bowler
+            new_b = old_bw
+            new_bw = old_b
             manual_board["innings"] = 2
             manual_board["batting_team"], manual_board["bowling_team"] = manual_board["bowling_team"], manual_board["batting_team"]
             manual_board["runs"] = 0
             manual_board["wkts"] = 0
             manual_board["balls"] = 0
-            manual_board["batter"] = None
-            manual_board["bowler"] = None
-            manual_board["batter_id"] = new_batter
-            manual_board["bowler_id"] = new_bowler
+            manual_board["batter_id"] = new_b
+            manual_board["bowler_id"] = new_bw
+            manual_board["batter"] = game.player1_name if new_b == game.player1_id else game.player2_name
+            manual_board["bowler"] = game.player1_name if new_bw == game.player1_id else game.player2_name
             game.innings = 2
             game.target = manual_board["target"]
-            game.current_batsman = new_batter
-            game.current_bowler = new_bowler
+            game.current_batsman = new_b
+            game.current_bowler = new_bw
             game.score = 0
             game.wickets = 0
             game.balls = 0
@@ -3403,13 +3419,17 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             game.pending_bat_number = None
             game.current_over_shots = []
             game.waiting_for = "bat"
+            
         if manual_board["balls"] % 6 == 0 and not is_over_event:
             is_over_event = True
             manual_board["bowler"] = None
+            
         if is_wicket_event or is_over_event:
             title = "☝️ ✅ <b>WICKET!</b> ✅ ☝️" if is_wicket_event else "⏱️ ✅ <b>END OF OVER</b> ✅ ⏱️"
             if manual_board["innings"] == 2 and manual_board["runs"] == 0 and manual_board["wkts"] == 0 and manual_board["balls"] == 0: title = "🔄 ✅ <b>INNINGS CHANGED!</b> ✅ 🔄"
-            score_txt = f"{title}\n\n🏏 <b>Batting:</b> {manual_board['batting_team']}\n📊 <b>Score:</b> {manual_board['runs']}/{manual_board['wkts']} ({manual_board['balls']//6}.{manual_board['balls']%6} Ov)\n🏃 <b>Batter:</b> {manual_board['batter'] or 'Waiting...'}\n🧤 <b>Bowler:</b> {manual_board['bowler'] or 'Waiting...'}\n"
+            batter_txt = html.escape(manual_board['batter'] or 'Waiting...')
+            bowler_txt = html.escape(manual_board['bowler'] or 'Waiting...')
+            score_txt = f"{title}\n\n🏏 <b>Batting:</b> {html.escape(manual_board['batting_team'])}\n📊 <b>Score:</b> {manual_board['runs']}/{manual_board['wkts']} ({manual_board['balls']//6}.{manual_board['balls']%6} Ov)\n🏃 <b>Batter:</b> {batter_txt}\n🧤 <b>Bowler:</b> {bowler_txt}\n"
             if manual_board['target']: score_txt += f"🎯 <b>Target:</b> {manual_board['target']}"
             try:
                 new_msg = await context.bot.send_message(chat_id, score_txt, parse_mode="HTML")
@@ -3421,6 +3441,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                     manual_board["pinned_msg_id"] = new_msg.message_id
                 except: pass
             except: pass
+
     if is_out:
         if game.score == 0:
             try:
@@ -3448,6 +3469,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             game.player2_match_runs += runs
             await update_cricket_stats_realtime(game.player2_id, game.player2_name, runs, 0, game.player2_match_runs)
+            
     if not hasattr(game, "current_over_shots"): game.current_over_shots = []
     game.current_over_shots.append(str(bat_number))
     msg += f"<b>📊 Score: {game.score}/{game.wickets}</b>\n"
@@ -3456,6 +3478,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         msg += f"<b>🎯 This Over: {shots_display}</b>\n\n"
     else: msg += f"\n"
     if game.balls % 6 == 0: game.current_over_shots = []
+    
     if manual_active:
         game.waiting_for = "bat"
         if not manual_board.get("batter_id"):
@@ -3473,10 +3496,11 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         if row: keyboard.append(row)
         msg += f"<b>🎮 Choose your shot :-</b>"
         try: await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-        except: 
-            try: await query.edit_message_text("Game state updated. Please check the new message.", reply_markup=InlineKeyboardMarkup(keyboard))
-            except: pass
+        except Exception as e:
+            if "Message is not modified" not in str(e):
+                await query.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         return
+
     innings_balls = 6 if getattr(game, 'is_superover', False) else 60
     if game.innings == 1 and (game.wickets >= 1 or game.balls >= innings_balls):
         first_batsman = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
@@ -3506,6 +3530,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         if row: keyboard.append(row)
         await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         return
+        
     if game.innings == 2 and game.score >= game.target:
         game.game_active = False
         winner_id = game.current_batsman
@@ -3533,6 +3558,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await query.edit_message_text(summary, parse_mode="HTML")
         del cricket_games[game_id]
         return
+        
     if game.innings == 2 and game.wickets >= 1:
         game.game_active = False
         winner_id = game.current_bowler
@@ -3572,6 +3598,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await query.edit_message_text(summary, parse_mode="HTML")
         del cricket_games[game_id]
         return
+        
     game.waiting_for = "bat"
     bat_numbers = game.get_bat_numbers()
     keyboard = []
@@ -3583,7 +3610,14 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             row = []
     if row: keyboard.append(row)
     msg += f"<b>🎮 {current_batsman_name} choose your shot :-</b>"
-    await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    
+    try:
+        await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    except Exception as e:
+        if "Message is not modified" not in str(e):
+            await query.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
+
 
 async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -3600,30 +3634,35 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     chat_id = query.message.chat.id
     manual_board = live_matches.get(chat_id)
     manual_active = bool(manual_board and manual_board.get("active"))
+    
     if manual_active:
         actual_batter = manual_board.get("batter_id")
-        if not actual_batter:
+        actual_bowler = manual_board.get("bowler_id")
+        if not actual_batter or not actual_bowler:
             actual_batter = game.current_batsman
+            actual_bowler = game.current_bowler
             manual_board["batter_id"] = actual_batter
+            manual_board["bowler_id"] = actual_bowler
+
         if user_id != actual_batter:
             await query.answer("❌ Not your turn! You are the bowler.", show_alert=True)
             return
         game.current_batsman = actual_batter
-        game.current_bowler = manual_board.get("bowler_id") or game.current_bowler
-        manual_board["batter_id"] = actual_batter
-        manual_board["bowler_id"] = game.current_bowler
+        game.current_bowler = actual_bowler
         manual_board["batter"] = update.effective_user.first_name
     else:
         if user_id != game.current_batsman:
             await query.answer("Not your turn!", show_alert=True)
             return
-    if game.waiting_for != "bat":
-        await query.answer("Wait for your turn!", show_alert=True)
-        return
+        if game.waiting_for != "bat":
+            await query.answer("Wait for your turn!", show_alert=True)
+            return
+            
     game.pending_bat_number = shot
     game.waiting_for = "bowl"
-    batsman_name = update.effective_user.first_name
-    bowler_name = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
+    
+    batsman_name = html.escape(update.effective_user.first_name)
+    bowler_name = html.escape(game.player1_name if game.current_bowler == game.player1_id else game.player2_name)
     deliveries = game.get_deliveries()
     keyboard = []
     row = []
@@ -3632,17 +3671,17 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         if len(row) == 3:
             keyboard.append(row)
             row = []
-    if row: keyboard.append(row)
+    if row:
+        keyboard.append(row)
     innings_tag = "FIRST INNINGS" if game.innings == 1 else f"TARGET : {game.target}"
     overs_display = game.get_overs(1) if game.innings == 1 else game.get_overs(2)
+    text = f"<b>🏏 Over {overs_display} ({innings_tag})</b>\n\n<b>🏏 Batter:</b> {batsman_name}\n<b>🧤 Bowler:</b> {bowler_name}\n\n<b>✅ {batsman_name} has selected a number.</b>\n\n<b>🧤 {bowler_name}, it's your turn to bowl.</b>"
+    
     try:
-        await query.edit_message_text(
-            f"<b>🏏 Over {overs_display} ({innings_tag})</b>\n\n<b>🏏 Batter:</b> {batsman_name}\n<b>🧤 Bowler:</b> {bowler_name}\n\n<b>✅ {batsman_name} has selected a number.</b>\n\n<b>🧤 {bowler_name}, it's your turn to bowl.</b>",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML"
-        )
-    except:
-        await query.edit_message_text("Batsman played. Bowler, please bowl.", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    except Exception as e:
+        if "Message is not modified" not in str(e):
+            await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 
 # ============ NUMPUZ GAME ==========
