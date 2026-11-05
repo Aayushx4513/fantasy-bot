@@ -3637,9 +3637,11 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     parts = data.split("_")
     game_id = int(parts[2])
     shot = int(parts[3])
+    
     if game_id not in cricket_games:
         await query.edit_message_text("❌ Game expired!", parse_mode="HTML")
         return
+        
     game = cricket_games[game_id]
     user_id = update.effective_user.id
     chat_id = query.message.chat.id
@@ -3647,16 +3649,10 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     manual_active = bool(manual_board and manual_board.get("active"))
     
     if manual_active:
-        # Match start pe agar batter/bowler set nahi hai to game object se copy karo
         if not manual_board.get("batter_id"):
             manual_board["batter_id"] = game.current_batsman
         if not manual_board.get("bowler_id"):
             manual_board["bowler_id"] = game.current_bowler
-            
-        # Agar abhi bhi koi miss ho to player IDs se bind karo
-        if not manual_board.get("batter_id"):
-            manual_board["batter_id"] = game.player1_id
-            manual_board["bowler_id"] = game.player2_id
 
         actual_batter = manual_board["batter_id"]
         actual_bowler = manual_board["bowler_id"]
@@ -3675,8 +3671,10 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     game.pending_bat_number = shot
     game.waiting_for = "bowl"
     
-    batsman_name = html.escape(update.effective_user.first_name)
-    bowler_name = html.escape(game.player1_name if game.current_bowler == game.player1_id else game.player2_name)
+    b_name = html.escape(str(update.effective_user.first_name or "Batter"))
+    bowler_id = game.current_bowler
+    bw_name = html.escape(str(game.player1_name if bowler_id == game.player1_id else game.player2_name))
+    
     deliveries = game.get_deliveries()
     keyboard = []
     row = []
@@ -3688,23 +3686,30 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     if row:
         keyboard.append(row)
         
-    innings_tag = "FIRST INNINGS" if game.innings == 1 else f"TARGET : {game.target}"
     overs_display = game.get_overs(1) if game.innings == 1 else game.get_overs(2)
+    innings_tag = "FIRST INNINGS" if game.innings == 1 else f"TARGET : {game.target}"
+    
     text = (
-        f"<b>🏏 Over {overs_display} ({innings_tag})</b>\n\n"
-        f"<b>🏏 Batter:</b> {batsman_name}\n"
-        f"<b>🧤 Bowler:</b> {bowler_name}\n\n"
-        f"<b>✅ {batsman_name} has selected a number.</b>\n\n"
-        f"<b>🧤 {bowler_name}, it's your turn to bowl.</b>"
+        f"🏏 <b>Over {overs_display} ({innings_tag})</b>\n\n"
+        f"🏏 <b>Batter:</b> {b_name}\n"
+        f"🧤 <b>Bowler:</b> {bw_name}\n\n"
+        f"✅ <b>{b_name} has selected a number.</b>\n\n"
+        f"🧤 <b>{bw_name}, it's your turn to bowl.</b>"
     )
     
     try:
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
     except Exception as e:
         try:
-            await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+            await query.message.delete()
         except:
             pass
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
 
 
 # ============ NUMPUZ GAME ==========
