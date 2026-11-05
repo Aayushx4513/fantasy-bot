@@ -3266,6 +3266,62 @@ async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_
             pass
         await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
+async def cricket_toss_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import html
+    import random
+    query = update.callback_query
+    try:
+        await query.answer()
+    except Exception:
+        pass
+
+    data = query.data
+    parts = data.split("_")
+    game_id = int(parts[2])
+    choice = parts[3]
+
+    if game_id not in cricket_games:
+        await query.edit_message_text("❌ Game expired!", parse_mode="HTML")
+        return
+
+    game = cricket_games[game_id]
+    if update.effective_user.id != game.player1_id:
+        await query.answer("❌ Only host can choose Heads or Tails!", show_alert=True)
+        return
+
+    toss = random.choice(["heads", "tails"])
+    winner_id = game.player1_id if choice == toss else game.player2_id
+    winner_name = game.player1_name if winner_id == game.player1_id else game.player2_name
+    game.toss_winner = winner_id
+
+    keyboard = [
+        [
+            InlineKeyboardButton("🏏 BAT", callback_data=f"cricket_choice_{game_id}_bat"),
+            InlineKeyboardButton("🎯 BOWL", callback_data=f"cricket_choice_{game_id}_bowl")
+        ]
+    ]
+
+    w_name = html.escape(str(winner_name or "Player"))
+    chat_id = query.message.chat_id if query.message else update.effective_chat.id
+
+    text = (
+        f"🏏 <b>TOSS RESULT</b>\n\n"
+        f"🪙 <b>Coin landed on: {toss.upper()}!</b>\n"
+        f"🏆 <b>{w_name} won the toss!</b>\n\n"
+        f"👉 <b>{w_name}, choose to Bat or Bowl:</b>"
+    )
+
+    try:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    except Exception:
+        try:
+            if query.message:
+                await query.message.delete()
+        except Exception:
+            pass
+        if chat_id:
+            await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
 async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     import html
     import random
