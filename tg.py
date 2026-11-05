@@ -3223,6 +3223,16 @@ async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_
         else:
             game.current_batsman = game.player1_id
 
+    # 🔥 SYNC WITH MANUAL BOARD (STMATCH) AGAR ACTIVE HAI
+    chat_id = query.message.chat.id
+    if 'live_matches' in globals() and chat_id in live_matches:
+        manual_board = live_matches[chat_id]
+        if manual_board and manual_board.get("active"):
+            manual_board["batter_id"] = game.current_batsman
+            manual_board["bowler_id"] = game.current_bowler
+            manual_board["batter"] = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
+            manual_board["bowler"] = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
+
     game.score = 0
     game.wickets = 0
     game.balls = 0
@@ -3260,6 +3270,7 @@ async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
+
 
 async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -3636,28 +3647,31 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     manual_active = bool(manual_board and manual_board.get("active"))
     
     if manual_active:
-        # Agar manual board me IDs set nahi hain toh game se le lo
+        # Match start pe agar batter/bowler set nahi hai to game object se copy karo
         if not manual_board.get("batter_id"):
             manual_board["batter_id"] = game.current_batsman
         if not manual_board.get("bowler_id"):
             manual_board["bowler_id"] = game.current_bowler
+            
+        # Agar abhi bhi koi miss ho to player IDs se bind karo
+        if not manual_board.get("batter_id"):
+            manual_board["batter_id"] = game.player1_id
+            manual_board["bowler_id"] = game.player2_id
 
         actual_batter = manual_board["batter_id"]
+        actual_bowler = manual_board["bowler_id"]
 
-        # Turn check
         if user_id != actual_batter:
             await query.answer("❌ Not your turn! You are the bowler.", show_alert=True)
             return
 
-        game.current_batsman = manual_board["batter_id"]
-        game.current_bowler = manual_board["bowler_id"]
+        game.current_batsman = actual_batter
+        game.current_bowler = actual_bowler
         manual_board["batter"] = update.effective_user.first_name
     else:
-        # Normal 1v1 match turn check
         if user_id != game.current_batsman:
             await query.answer("Not your turn!", show_alert=True)
             return
-            
     game.pending_bat_number = shot
     game.waiting_for = "bowl"
     
@@ -3673,15 +3687,24 @@ async def cricket_bat_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             row = []
     if row:
         keyboard.append(row)
+        
     innings_tag = "FIRST INNINGS" if game.innings == 1 else f"TARGET : {game.target}"
     overs_display = game.get_overs(1) if game.innings == 1 else game.get_overs(2)
-    text = f"<b>🏏 Over {overs_display} ({innings_tag})</b>\n\n<b>🏏 Batter:</b> {batsman_name}\n<b>🧤 Bowler:</b> {bowler_name}\n\n<b>✅ {batsman_name} has selected a number.</b>\n\n<b>🧤 {bowler_name}, it's your turn to bowl.</b>"
+    text = (
+        f"<b>🏏 Over {overs_display} ({innings_tag})</b>\n\n"
+        f"<b>🏏 Batter:</b> {batsman_name}\n"
+        f"<b>🧤 Bowler:</b> {bowler_name}\n\n"
+        f"<b>✅ {batsman_name} has selected a number.</b>\n\n"
+        f"<b>🧤 {bowler_name}, it's your turn to bowl.</b>"
+    )
     
     try:
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
     except Exception as e:
-        if "Message is not modified" not in str(e):
+        try:
             await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        except:
+            pass
 
 
 # ============ NUMPUZ GAME ==========
