@@ -3143,8 +3143,9 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
             await close_db(db)
         await query.answer("⏳ Game already started!", show_alert=True)
         return
-    game = CricketGame(game_id, creator_id, creator_name, user_id, user_name, bet)
-    game.mode = mode
+    game = CricketGame(game_id, creator_id, creator_name, bet, chat_id, mode)
+    game.player2_id = user_id
+    game.player2_name = user_name
     cricket_games[game_id] = game
     del cricket_lobby[game_id]
 
@@ -3178,6 +3179,7 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
         except Exception:
             pass
         await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+
 
 
 async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
