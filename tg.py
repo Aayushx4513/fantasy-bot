@@ -1,3 +1,4 @@
+import html
 from telegram.ext import TypeHandler
 from telegram.ext import ApplicationHandlerStop
 import re as _re
@@ -3265,6 +3266,8 @@ async def cricket_choice_callback(update: Update, context: ContextTypes.DEFAULT_
 
 
 async def cricket_toss_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import html
+    import random
     query = update.callback_query
     try:
         await query.answer()
@@ -3285,12 +3288,10 @@ async def cricket_toss_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer("❌ Only host can choose Heads or Tails!", show_alert=True)
         return
 
-    import random
     toss = random.choice(["heads", "tails"])
     winner_id = game.player1_id if choice == toss else game.player2_id
     winner_name = game.player1_name if winner_id == game.player1_id else game.player2_name
     game.toss_winner = winner_id
-
     keyboard = [
         [
             InlineKeyboardButton("🏏 BAT", callback_data=f"cricket_choice_{game_id}_bat"),
@@ -3298,7 +3299,9 @@ async def cricket_toss_callback(update: Update, context: ContextTypes.DEFAULT_TY
         ]
     ]
 
-    w_name = html.escape(str(winner_name))
+    w_name = html.escape(str(winner_name or "Player"))
+    chat_id = query.message.chat_id if query.message else update.effective_chat.id
+
     text = (
         f"🏏 <b>TOSS RESULT</b>\n\n"
         f"🪙 <b>Coin landed on: {toss.upper()}!</b>\n"
@@ -3308,12 +3311,14 @@ async def cricket_toss_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     try:
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-    except Exception:
+    except Exception as e:
+        print(f"⚠️ [DEBUG TOSS] Edit failed: {e}. Sending new message...", flush=True)
         try:
-            await query.message.delete()
+            if query.message:
+                await query.message.delete()
         except Exception:
             pass
-        await context.bot.send_message(chat_id=query.message.chat.id, text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        await context.bot.send_message(chat_id=chat_id, text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 
 async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
