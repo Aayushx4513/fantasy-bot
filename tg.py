@@ -3442,7 +3442,6 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     is_out = (bat_number == bowl_number)
     runs_scored = 0 if is_out else bat_number
 
-    # 🔥 FIX: is ball ke batter/bowler yahin save kar lo (innings swap se pehle)
     ball_batsman_id = game.current_batsman
     ball_bowler_id = game.current_bowler
     manual_end = None
@@ -3473,10 +3472,6 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
             is_duck = (bat_stats["runs"] == 0)
             if is_duck and chat_id:
-                duck_gifs = [
-                    "https://media.giphy.com/media/26ybvVb95UctQhvjy/giphy.gif",
-                    "https://media.giphy.com/media/3o7TKSjRrfIPjeiVyM/giphy.gif"
-                ]
                 chosen_duck = random.choice(duck_gifs)
                 m_balls_val = manual_board.get("balls", 0)
                 caption_duck = (
@@ -3501,10 +3496,6 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
             m_balls_val = manual_board.get("balls", 0)
             if prev_runs < 50 and new_runs >= 50 and chat_id:
-                fifty_gifs = [
-                    "https://media.giphy.com/media/l41JRsph73VokN6ik/giphy.gif",
-                    "https://media.giphy.com/media/3o7TKMGpxxJ2n27888/giphy.gif"
-                ]
                 chosen_fifty = random.choice(fifty_gifs)
                 caption_50 = (
                     f"🏏 ✅ <b>FIFTY UP!</b> ✅ 🏏\n\n"
@@ -3517,7 +3508,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                     pass
 
             if prev_runs < 100 and new_runs >= 100 and chat_id:
-                chosen_century = "https://media.giphy.com/media/d2Z9QYzA2aidiWn6/giphy.gif"
+                chosen_century = random.choice(century_gifs)
                 caption_100 = (
                     f"🏆 ✅ <b>CENTURY!</b> ✅ 🏆\n\n"
                     f"👑 <b>SENSATIONAL 100 by {current_batsman_name}!</b>\n\n"
@@ -3530,7 +3521,6 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
         m_balls = manual_board.get("balls", 0)
 
-        # 🔥 Chase successful
         if manual_board.get("innings") == 2 and manual_board.get("target") and manual_board.get("runs", 0) >= manual_board["target"]:
             manual_end = (
                 f"🏏 <b>{html.escape(str(manual_board['batting_team']))}</b> <b>won the match!</b>",
@@ -3543,7 +3533,6 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             is_all_out = manual_board.get("wkts", 0) >= max_wkts
             is_overs_done = manual_board.get("balls", 0) >= (max_overs * 6)
 
-            # 🔥 NEW: 2nd innings khatam, chase fail
             if manual_board.get("innings") == 2 and manual_board.get("target") and (is_all_out or is_overs_done):
                 if manual_board["runs"] == manual_board["target"] - 1:
                     manual_end = ("🤝 <b>MATCH TIED!</b>", None)
@@ -3553,7 +3542,6 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                         ball_bowler_id
                     )
 
-            # 1st innings khatam
             elif (is_all_out or is_overs_done) and manual_board.get("innings") == 1:
                 is_over_event = True
                 innings_changed_now = True
@@ -3683,14 +3671,9 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     # ============ MANUAL MODE ============
     if manual_active:
-        # 🔥 Match khatam (chase success / chase fail / tie)
         if manual_end:
             result_line, winner_id = manual_end
             await manual_finish(context, chat_id, manual_board, game, game_id, result_line, winner_id)
-            try:
-                await query.edit_message_text("🏆 <b>Match Ended!</b>", parse_mode="HTML")
-            except Exception:
-                pass
             return
 
         game.waiting_for = "bat"
@@ -3719,7 +3702,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                     await query.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         return
 
-    # ============ NORMAL MATCH (same as before) ============
+    # ============ NORMAL MATCH ============
     innings_balls = 6 if getattr(game, 'is_superover', False) else 60
     if game.innings == 1 and (game.wickets >= 1 or game.balls >= innings_balls):
         first_batsman = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
@@ -12599,6 +12582,22 @@ async def sendhere_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML"
         )
 
+
+duck_gifs = [
+    "CgACAgUAAyEFAATqVpOyAAIIZmrq9lLL8LeiX0XAXPKY9GKZGNjmAAJNJAACtRhZV5xQZ3KafSUePQQ",
+    "CgACAgUAAyEFAATqVpOyAAIIZWrq9lKuMyQ0b1X2uUlq0B2VKKqeAAJOJAACtRhZVwAB16lEjKjP7T0E",
+    "CgACAgQAAyEFAATqVpOyAAIIcmrq91XXSmajpJgrf5mSswdqn5fpAAJgFwACLyjAUc-7vVRW5qAYPQQ"
+]
+
+fifty_gifs = [
+    "CgACAgUAAx0CYwTJMQABB7voaurl_yILR8RBzrqgPs1Jr1_ft9EAArgiAAJQaFBX3FwHsSBtKB49BA",
+    "CgACAgUAAyEFAATqVpOyAAIIcWrq91TdUxh28NFdwtwLC8zKNSS9AAJMJAACtRhZV2FRJaS1yFalPQQ"
+]
+
+century_gifs = [
+    "CgACAgUAAx0CYwTJMQABB7vsaurmFZQDhQmzATEy4m_5HwQECkYAArkiAAJQaFBXE1cxYDzPPS49BA",
+    "CgACAgUAAyEFAATqVpOyAAIIcGrq91Ttj8-ZDAylMor5zg6SuM07AAJLJAACtRhZV6bLje3eJ735PQQ"
+]
 
 # Manual Live Match State
 live_matches = {}
