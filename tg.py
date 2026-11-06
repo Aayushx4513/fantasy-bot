@@ -3673,6 +3673,10 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     if manual_active:
         if manual_end:
             result_line, winner_id = manual_end
+            try:
+                await query.edit_message_text(msg, parse_mode="HTML")
+            except Exception as e:
+                print(f"last ball edit error: {e}")
             await manual_finish(context, chat_id, manual_board, game, game_id, result_line, winner_id)
             return
 
@@ -12584,20 +12588,19 @@ async def sendhere_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 duck_gifs = [
-    "CgACAgUAAyEFAATqVpOyAAIIZmrq9lLL8LeiX0XAXPKY9GKZGNjmAAJNJAACtRhZV5xQZ3KafSUePQQ",
-    "CgACAgUAAyEFAATqVpOyAAIIZWrq9lKuMyQ0b1X2uUlq0B2VKKqeAAJOJAACtRhZVwAB16lEjKjP7T0E",
-    "CgACAgQAAyEFAATqVpOyAAIIcmrq91XXSmajpJgrf5mSswdqn5fpAAJgFwACLyjAUc-7vVRW5qAYPQQ"
+    "CgACAgUAAyEFAATqVpOyAAIKO2rt9wJ2by3Tm6K3L4J7JhiOC-1NAAJNJAACtRhZV5xQZ3KafSUePQQ",
+    "CgACAgQAAyEFAATqVpOyAAIKP2rt9ybefhS9WC5DsHhY2SkV64sGAAJgFwACLyjAUc-7vVRW5qAYPQQ"
 ]
 
+
 fifty_gifs = [
-    "CgACAgUAAx0CYwTJMQABB7voaurl_yILR8RBzrqgPs1Jr1_ft9EAArgiAAJQaFBX3FwHsSBtKB49BA",
-    "CgACAgUAAyEFAATqVpOyAAIIcWrq91TdUxh28NFdwtwLC8zKNSS9AAJMJAACtRhZV2FRJaS1yFalPQQ"
+    "CgACAgUAAyEFAATqVpOyAAIKLGrt891_kD7KkJqOgGfwX32dhkqdAAK4IgACUGhQV9xcB7EgbSgePQQ"
 ]
 
 century_gifs = [
-    "CgACAgUAAx0CYwTJMQABB7vsaurmFZQDhQmzATEy4m_5HwQECkYAArkiAAJQaFBXE1cxYDzPPS49BA",
-    "CgACAgUAAyEFAATqVpOyAAIIcGrq91Ttj8-ZDAylMor5zg6SuM07AAJLJAACtRhZV6bLje3eJ735PQQ"
+    "CgACAgUAAyEFAATqVpOyAAIKK2rt89vhZV49i9gkCegy2Co5oDEBAAK5IgACUGhQVxNXMWA8zz0uPQQ"
 ]
+
 
 # Manual Live Match State
 live_matches = {}
