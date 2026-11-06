@@ -3346,47 +3346,42 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     manual_board = live_matches.get(chat_id) if 'live_matches' in globals() else None
     manual_active = bool(manual_board and manual_board.get("active"))
 
-    # Debounce / Duplicate delivery protection
-    if game.waiting_for == "bat":
+    # Valid turn checks
+    if game.pending_bat_number is None:
+        await query.answer("❌ Wait for the batsman to play shot first!", show_alert=True)
         return
 
     if manual_active:
-        actual_bowler = manual_board.get("bowler_id")
+        actual_bowler = manual_board.get("bowler_id") or game.current_bowler
         if user_id != actual_bowler:
-            await query.answer("❌ Not your turn! You are the batter.", show_alert=True)
-            return
-        if game.pending_bat_number is None:
-            await query.answer("❌ Wait for the batsman to play!", show_alert=True)
+            await query.answer("❌ Not your turn! You are not the bowler.", show_alert=True)
             return
         game.current_bowler = actual_bowler
-        game.current_batsman = manual_board.get("batter_id")
+        game.current_batsman = manual_board.get("batter_id") or game.current_batsman
+        current_batsman_name = html.escape(str(manual_board.get("batter") or (game.player1_name if game.current_batsman == game.player1_id else game.player2_name)))
+        current_bowler_name = html.escape(str(update.effective_user.first_name or "Bowler"))
     else:
         if user_id != game.current_bowler:
-            await query.answer("Not your turn!", show_alert=True)
+            await query.answer("❌ Not your turn to bowl!", show_alert=True)
             return
-        if game.waiting_for != "bowl":
-            await query.answer("Wait!", show_alert=True)
-            return
-
-    if manual_active:
-        current_batsman_name = html.escape(manual_board.get("batter") or "Waiting...")
-        current_bowler_name = html.escape(update.effective_user.first_name or "Bowler")
-    else:
         current_batsman_name = html.escape(str(game.player1_name if game.current_batsman == game.player1_id else game.player2_name))
         current_bowler_name = html.escape(str(game.player1_name if game.current_bowler == game.player1_id else game.player2_name))
 
     bat_number = game.pending_bat_number
     game.pending_bat_number = None
-    game.balls += 1
-    if game.innings == 1:
-        game.innings1_balls += 1
-    else:
-        game.innings2_balls += 1
 
     deliveries = game.get_deliveries()
     bowl_number = deliveries[delivery_key]["out_on"]
     is_out = (bat_number == bowl_number)
     runs_scored = 0 if is_out else bat_number
+
+    # Save last ball count for proper display before reset
+    ball_before_inns_calc = game.balls + 1
+    game.balls += 1
+    if game.innings == 1:
+        game.innings1_balls += 1
+    else:
+        game.innings2_balls += 1
     if manual_active:
         if "player_stats" not in manual_board:
             manual_board["player_stats"] = {}
@@ -3411,16 +3406,14 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             batsman_total_runs = manual_board["player_stats"][current_batsman_name]["runs"]
             if batsman_total_runs == 0 and chat_id:
                 duck_gifs = [
-                    "CgACAgUAAyEFAATqVpOyAAIIZmrq9lLL8LeiX0XAXPKY9GKZGNjmAAJNJAACtRhZV5xQZ3KafSUePQQ",
-                    "CgACAgUAAyEFAATqVpOyAAIIZWrq9lKuMyQ0b1X2uUlq0B2VKKqeAAJOJAACtRhZVwAB16lEjKjP7T0E",
-                    "CgACAgQAAyEFAATqVpOyAAIIcmrq91XXSmajpJgrf5mSswdqn5fpAAJgFwACLyjAUc-7vVRW5qAYPQQ"
+                    "https://media.giphy.com/media/26ybvVb95UctQhvjy/giphy.gif",
+                    "https://media.giphy.com/media/3o7TKSjRrfIPjeiVyM/giphy.gif"
                 ]
                 chosen_duck = random.choice(duck_gifs)
                 m_balls_val = manual_board.get("balls", 0)
                 caption_duck = (
                     f"🦆 ✅ <b>DUCK OUT!</b> ✅ 🦆\n\n"
-                    f"🏏 <b>{current_batsman_name}</b> walks back without scoring a single run! "
-                    f"<b>{current_bowler_name}</b> gets the wicket!\n\n"
+                    f"🏏 <b>{current_batsman_name}</b> walks back on 0! <b>{current_bowler_name}</b> strikes!\n\n"
                     f"📊 <b>Score:</b> {manual_board['runs']}/{manual_board['wkts']} ({m_balls_val // 6}.{m_balls_val % 6} Ov)"
                 )
                 try:
@@ -3431,23 +3424,23 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             manual_board["batter"] = None
             manual_board["batter_id"] = None
         else:
+            prev_runs = manual_board["player_stats"][current_batsman_name]["runs"]
             manual_board["player_stats"][current_batsman_name]["runs"] += bat_number
             manual_board["player_stats"][current_bowler_name]["runs_given"] += bat_number
             manual_board["runs"] = manual_board.get("runs", 0) + bat_number
             manual_board["batter"] = current_batsman_name
+            new_runs = manual_board["player_stats"][current_batsman_name]["runs"]
 
-            current_runs = manual_board["player_stats"][current_batsman_name]["runs"]
             m_balls_val = manual_board.get("balls", 0)
-            if current_runs >= 50 and (current_runs - bat_number) < 50 and chat_id:
+            if prev_runs < 50 and new_runs >= 50 and chat_id:
                 fifty_gifs = [
-                    "CgACAgUAAx0CYwTJMQABB7voaurl_yILR8RBzrqgPs1Jr1_ft9EAArgiAAJQaFBX3FwHsSBtKB49BA",
-                    "CgACAgUAAyEFAATqVpOyAAIIcWrq91TdUxh28NFdwtwLC8zKNSS9AAJMJAACtRhZV2FRJaS1yFalPQQ"
+                    "https://media.giphy.com/media/l41JRsph73VokN6ik/giphy.gif",
+                    "https://media.giphy.com/media/3o7TKMGpxxJ2n27888/giphy.gif"
                 ]
                 chosen_fifty = random.choice(fifty_gifs)
                 caption_50 = (
                     f"🏏 ✅ <b>FIFTY UP!</b> ✅ 🏏\n\n"
-                    f"🔥 <b>WHAT A KNOCK by {current_batsman_name}!</b>\n"
-                    f"🎯 <b>He completes his half-century!</b>\n\n"
+                    f"🔥 <b>WHAT A KNOCK by {current_batsman_name}!</b> Completes half-century!\n\n"
                     f"📊 <b>Score:</b> {manual_board['runs']}/{manual_board['wkts']} ({m_balls_val // 6}.{m_balls_val % 6} Ov)"
                 )
                 try:
@@ -3455,16 +3448,14 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 except Exception:
                     pass
 
-            if current_runs >= 100 and (current_runs - bat_number) < 100 and chat_id:
+            if prev_runs < 100 and new_runs >= 100 and chat_id:
                 century_gifs = [
-                    "CgACAgUAAx0CYwTJMQABB7vsaurmFZQDhQmzATEy4m_5HwQECkYAArkiAAJQaFBXE1cxYDzPPS49BA",
-                    "CgACAgUAAyEFAATqVpOyAAIIcGrq91Ttj8-ZDAylMor5zg6SuM07AAJLJAACtRhZV6bLje3eJ735PQQ"
+                    "https://media.giphy.com/media/d2Z9QYzA2aidiWn6/giphy.gif"
                 ]
                 chosen_century = random.choice(century_gifs)
                 caption_100 = (
                     f"🏆 ✅ <b>CENTURY!</b> ✅ 🏆\n\n"
-                    f"👑 <b>ABSOLUTE MAGNIFICENT!</b>\n"
-                    f"<b>{current_batsman_name}</b> <b>smashes a brilliant 100!</b>\n\n"
+                    f"👑 <b>SENSATIONAL 100 by {current_batsman_name}!</b>\n\n"
                     f"📊 <b>Score:</b> {manual_board['runs']}/{manual_board['wkts']} ({m_balls_val // 6}.{m_balls_val % 6} Ov)"
                 )
                 try:
@@ -3472,7 +3463,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 except Exception:
                     pass
 
-        # Target Chased in manual match: Finish Match with Summary
+        # Target Chased in manual match: Finish
         if manual_board.get("innings") == 2 and manual_board.get("target") and manual_board.get("runs", 0) >= manual_board["target"]:
             summary = (
                 f"🏆 ✅ <b>MATCH ENDED!</b> ✅ 🏆\n\n"
@@ -3524,6 +3515,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         if (is_all_out or is_overs_done) and manual_board.get("innings") == 1:
             is_over_event = True
             manual_board["target"] = manual_board.get("runs", 0) + 1
+
             old_b = manual_board.get("batter_id") or game.current_batsman
             old_bw = manual_board.get("bowler_id") or game.current_bowler
             new_b = old_bw
@@ -3534,7 +3526,6 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             manual_board["runs"] = 0
             manual_board["wkts"] = 0
             manual_board["balls"] = 0
-            # Innings change hone par 'Waiting...' show hoga
             manual_board["batter"] = None
             manual_board["bowler"] = None
             manual_board["batter_id"] = new_b
@@ -3611,11 +3602,13 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             await update_cricket_stats_realtime(game.player2_id, game.player2_name, 0, 1, 0)
 
         game.wickets += 1
-        msg = f"<b>🏏 Over {game.get_overs(game.innings)}</b>\n\n<b>{current_batsman_name} played: {bat_number}  | {current_bowler_name} bowled: {bowl_number}</b>\n\n<b>❌ OUT!</b>\n\n"
+        ov_display = f"{ball_before_inns_calc // 6}.{ball_before_inns_calc % 6}"
+        msg = f"<b>🏏 Over {ov_display}</b>\n\n<b>{current_batsman_name} played: {bat_number}  | {current_bowler_name} bowled: {bowl_number}</b>\n\n<b>❌ OUT!</b>\n\n"
     else:
         runs = bat_number
         game.score += runs
-        msg = f"<b>🏏 Over {game.get_overs(game.innings)}</b>\n\n<b>{current_batsman_name} played: {bat_number}  | {current_bowler_name} bowled: {bowl_number}</b>\n\n<b>✅ {runs} runs!</b>\n\n"
+        ov_display = f"{ball_before_inns_calc // 6}.{ball_before_inns_calc % 6}"
+        msg = f"<b>🏏 Over {ov_display}</b>\n\n<b>{current_batsman_name} played: {bat_number}  | {current_bowler_name} bowled: {bowl_number}</b>\n\n<b>✅ {runs} runs!</b>\n\n"
         if game.current_batsman == game.player1_id:
             game.player1_match_runs += runs
             await update_cricket_stats_realtime(game.player1_id, game.player1_name, runs, 0, game.player1_match_runs)
@@ -3634,10 +3627,10 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         msg += "\n"
 
-    if game.balls % 6 == 0:
+    if game.balls > 0 and game.balls % 6 == 0:
         game.current_over_shots = []
 
-    # Manual mode batting choices return
+    # Manual mode batting shot selection
     if manual_active:
         game.waiting_for = "bat"
         if not manual_board.get("batter_id"):
@@ -3670,6 +3663,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     if game.innings == 1 and (game.wickets >= 1 or game.balls >= innings_balls):
         first_batsman = game.player1_name if game.current_batsman == game.player1_id else game.player2_name
         first_bowler = game.player1_name if game.current_bowler == game.player1_id else game.player2_name
+        last_ov = f"{game.balls // 6}.{game.balls % 6}"
         game.innings = 2
         game.current_over_shots = []
         game.target = game.score + 1
@@ -3689,7 +3683,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         bowler_name = html.escape(str(game.player1_name if game.current_bowler == game.player1_id else game.player2_name))
 
         msg = (
-            f"<b>🏏 Over {game.get_overs(1)} (FIRST INNINGS ENDED)</b>\n\n"
+            f"<b>🏏 Over {last_ov} (FIRST INNINGS ENDED)</b>\n\n"
             f"<b>{first_batsman} played: {bat_number}  | {first_bowler} bowled: {bowl_number}</b>\n\n"
             f"<b>📊 Score: {innings_score}/{first_innings_wickets}</b>\n"
             f"<b>🎯 Target: {game.target} runs</b>\n\n"
