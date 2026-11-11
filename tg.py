@@ -12605,6 +12605,14 @@ century_gifs = [
     "CgACAgEAAx0CYwTJMQABB9L-au4EwLRDeSuJCg-V5QfYvmpNlHgAAvQIAAJadXBHmcczV5-T-n09BA"
 ]
 
+async def gifid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    m = update.message.reply_to_message
+    if m and m.animation:
+        await update.message.reply_text(f"<code>{m.animation.file_id}</code>", parse_mode="HTML")
+    else:
+        await update.message.reply_text("Reply to a GIF with /gifid")
+
+
 # Manual Live Match State
 live_matches = {}
 
@@ -12993,6 +13001,7 @@ async def main():
     app.add_handler(CommandHandler("fav", fav))
     app.add_handler(CommandHandler("unfav", unfav))
     app.add_handler(CommandHandler("reset_auction", reset_auction))
+    app.add_handler(CommandHandler("gifid", gifid))
     # ============ CLCRICKET ==========
     app.add_handler(CommandHandler("CLcricket", clcricket))
     app.add_handler(CallbackQueryHandler(cricket_mode_callback, pattern="^cricket_mode_"))
