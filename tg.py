@@ -3472,7 +3472,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
             is_duck = (bat_stats["runs"] == 0)
             if is_duck and chat_id:
-                await send_gif(context, chat_id, chosen_duck, caption_duck)
+                chosen_duck = random.choice(duck_gifs)
                 m_balls_val = manual_board.get("balls", 0)
                 caption_duck = (
                     f"🦆 ✅ <b>DUCK OUT!</b> ✅ 🦆\n\n"
@@ -3496,7 +3496,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
             m_balls_val = manual_board.get("balls", 0)
             if prev_runs < 50 and new_runs >= 50 and chat_id:
-                await send_gif(context, chat_id, fifty_gifs, caption_50)
+                chosen_fifty = random.choice(fifty_gifs)
                 caption_50 = (
                     f"🏏 ✅ <b>FIFTY UP!</b> ✅ 🏏\n\n"
                     f"🔥 <b>WHAT A KNOCK by {current_batsman_name}!</b> Completes half-century!\n\n"
@@ -3508,7 +3508,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                     pass
 
             if prev_runs < 100 and new_runs >= 100 and chat_id:
-                await send_gif(context, chat_id, century_gifs, caption_100)
+                chosen_century = random.choice(century_gifs)
                 caption_100 = (
                     f"🏆 ✅ <b>CENTURY!</b> ✅ 🏆\n\n"
                     f"👑 <b>SENSATIONAL 100 by {current_batsman_name}!</b>\n\n"
@@ -12604,21 +12604,6 @@ century_gifs = [
     "CgACAgUAAyEFAATqVpOyAAIKK2rt89vhZV49i9gkCegy2Co5oDEBAAK5IgACUGhQVxNXMWA8zz0uPQQ",
     "CgACAgEAAx0CYwTJMQABB9L-au4EwLRDeSuJCg-V5QfYvmpNlHgAAvQIAAJadXBHmcczV5-T-n09BA"
 ]
-
-async def send_gif(context, chat_id, gifs, caption):
-    import random
-    pool = list(gifs) if isinstance(gifs, (list, tuple)) else [gifs]
-    random.shuffle(pool)
-    for gif in pool:
-        try:
-            await context.bot.send_animation(chat_id=chat_id, animation=gif, caption=caption, parse_mode="HTML")
-            return
-        except Exception as e:
-            print(f"❌ GIF send failed ({gif[:15]}...): {type(e).__name__}: {e}")
-    try:
-        await context.bot.send_message(chat_id, caption, parse_mode="HTML")
-    except Exception:
-        pass
 
 # Manual Live Match State
 live_matches = {}
