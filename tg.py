@@ -3654,12 +3654,11 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
     game.current_over_shots.append(str(bat_number))
 
     if shown is None:
-        if manual_active:
-            shown = (manual_board.get("runs", 0), manual_board.get("wkts", 0))
-        else:
-            shown = (game.score, game.wickets)
+        shown = (game.score, game.wickets)
 
-    msg += f"<b>📊 Score: {shown[0]}/{shown[1]}</b>\n"
+    over_runs = sum(int(x) for x in game.current_over_shots[:-1]) + (0 if is_out else bat_number)
+    msg += f"<b>📊 Score: {over_runs}/{shown[1]}</b>\n"
+
     if game.current_over_shots:
         shots_display = ', '.join(game.current_over_shots)
         msg += f"<b>🎯 This Over: {shots_display}</b>\n\n"
