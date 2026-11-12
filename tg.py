@@ -3329,6 +3329,7 @@ def get_pstats(board, name):
     s.setdefault("balls", 0)
     s.setdefault("wkts", 0)
     s.setdefault("runs_given", 0)
+    s.setdefault("stint_runs", 0)
     return s
 
 
@@ -12655,6 +12656,7 @@ async def st_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
     live_matches[chat_id]["setup_msg_id"] = msg.message_id
 
 async def setup_batting_team(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text: return
     chat_id = update.message.chat.id
     if chat_id not in live_matches: return
     board = live_matches[chat_id]
