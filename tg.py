@@ -3626,7 +3626,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
         game.over_runs = 0
         game.over_wkts = 0
 
-    ov_balls = board_ball_no if board_ball_no is not None else ball_before_inns_calc
+    ov_balls = ball_before_inns_calc
     ov_display = f"{ov_balls // 6}.{ov_balls % 6}"
 
     if is_out:
