@@ -13154,6 +13154,8 @@ async def main():
         # ============ STATS ==========
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("mystats", mystats))
+    from mycard import make_mycard
+    app.add_handler(CommandHandler("mycard", make_mycard(get_db, close_db)))
     app.add_handler(CallbackQueryHandler(stats_callback, pattern="^stats_"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, setup_batting_team), group=7)
     app.add_handler(MessageHandler(filters.ALL, track_all_activity), group=0)
