@@ -13,8 +13,13 @@ def _font(size, bold=True):
             pass
     return ImageFont.load_default()
 
+_SC = dict(zip("ᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘǫʀꜱᴛᴜᴠᴡʏᴢ", "ABCDEFGHIJKLMNOPQRSTUVWYZ"))
+
 def _clean(name):
-    n = re.sub(r"[^A-Za-z0-9 _.\-]", "", str(name or "")).strip()
+    import unicodedata
+    n = unicodedata.normalize("NFKC", str(name or ""))
+    n = "".join(_SC.get(c, c) for c in n)
+    n = re.sub(r"[^A-Za-z0-9 _.\-]", "", n).strip()
     return (n or "PLAYER")[:16].upper()
 
 def build_card(name, st, avatar_bytes=None):
@@ -61,6 +66,11 @@ def make_mycard(get_db, close_db):
         if not update.message:
             return
         u = update.effective_user
+        wait_msg = None
+        try:
+            wait_msg = await update.message.reply_text("⏳ Generating your player card...\nPlease wait a moment.")
+        except Exception:
+            pass
         db = None
         st = {}
         try:
@@ -83,6 +93,11 @@ def make_mycard(get_db, close_db):
         try:
             buf = build_card(u.first_name, st, avatar)
             await update.message.reply_photo(buf, caption="Your CL Bot player card")
+            if wait_msg:
+                try:
+                    await wait_msg.delete()
+                except Exception:
+                    pass
         except Exception as e:
             print(f"mycard error: {e}")
             await update.message.reply_text("Card banane me error aaya.")
