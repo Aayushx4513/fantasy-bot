@@ -12937,6 +12937,17 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 # ============ MAIN ==========
+
+async def get_file_id_reply(update, context):
+    m = update.message
+    if not m or update.effective_chat.type != "private":
+        return
+    f = m.video or m.animation
+    if not f:
+        return
+    kind = "VIDEO" if m.video else "GIF"
+    await m.reply_text(f"{kind} file_id:\n\n{f.file_id}")
+
 async def main():
     await init_db()
 
@@ -13154,6 +13165,7 @@ async def main():
         # ============ STATS ==========
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("mystats", mystats))
+    app.add_handler(MessageHandler(filters.VIDEO | filters.ANIMATION, get_file_id_reply), group=9)
     from mycard import make_mycard
     app.add_handler(CommandHandler("mycard", make_mycard(get_db, close_db)))
     app.add_handler(CallbackQueryHandler(stats_callback, pattern="^stats_"))
