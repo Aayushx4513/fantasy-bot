@@ -1,3 +1,4 @@
+from media import send_media, mention
 import html
 from telegram.ext import TypeHandler
 from telegram.ext import ApplicationHandlerStop
@@ -3334,6 +3335,7 @@ def get_pstats(board, name):
 
 
 async def manual_finish(context, chat_id, board, game, game_id, result_line, winner_id=None):
+    await send_media(context.bot, chat_id, "summary")
     summary = f"🏆 ✅ <b>MATCH ENDED!</b> ✅ 🏆\n\n{result_line}\n\n"
     stats = board.get("player_stats", {})
     batsmen = [(n, s) for n, s in stats.items() if s.get("balls", 0) > 0]
@@ -3474,19 +3476,35 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
             is_duck = (bat_stats["stint_runs"] == 0)
             if is_duck and chat_id:
-                chosen_duck = random.choice(duck_gifs)
                 m_balls_val = manual_board.get("balls", 0)
                 caption_duck = (
                     f"🦆 ✅ <b>DUCK OUT!</b> ✅ 🦆\n\n"
-                    f"🏏 <b>{current_batsman_name}</b> walks back on 0! <b>{current_bowler_name}</b> strikes!\n\n"
+                    f"🏏 <b>{mention(ball_batsman_id, current_batsman_name)}</b> walks back on 0! <b>{mention(ball_bowler_id, current_bowler_name)}</b> strikes!\n\n"
                     f"📊 <b>Score:</b> {manual_board['runs']}/{manual_board['wkts']} ({m_balls_val // 6}.{m_balls_val % 6} Ov)"
                 )
                 try:
-                    await context.bot.send_animation(chat_id=chat_id, animation=chosen_duck, caption=caption_duck, parse_mode="HTML")
+                    await send_media(context.bot, chat_id, "duck", caption_duck)
                 except Exception:
                     pass
 
             bat_stats["stint_runs"] = 0
+            if chat_id and not is_duck:
+                _bt = mention(ball_batsman_id, current_batsman_name)
+                _bw = mention(ball_bowler_id, current_bowler_name)
+                _mb = manual_board.get("balls", 0)
+                _sc = f"{manual_board.get('runs', 0)}/{manual_board.get('wkts', 0)} ({_mb // 6}.{_mb % 6} Ov)"
+                _sr = bat_stats.get("stint_runs", bat_stats["runs"])
+                _sb = bat_stats.get("stint_balls", bat_stats["balls"])
+                if bowl_stats["wkts"] == 5:
+                    await send_media(context.bot, chat_id, "fifer",
+                        f"🔥 ✅ <b>FIFER!</b> ✅ 🔥\n\n🎯 <b>{_bw}</b> takes 5 wickets!\n\n📊 <b>Score:</b> {_sc}")
+                elif _sr >= 50:
+                    await send_media(context.bot, chat_id, "wellplayed",
+                        f"👏 ✅ <b>WELL PLAYED!</b> ✅ 👏\n\n🏏 <b>{_bt}</b> walks back after a brilliant {_sr} ({_sb} balls).\n\n📊 <b>Score:</b> {_sc}")
+                else:
+                    await send_media(context.bot, chat_id, "wicket",
+                        f"☝️ ✅ <b>WICKET!</b> ✅ ☝️\n\n🏏 <b>{_bt}</b> is out! <b>{_bw}</b> strikes!\n\n📊 <b>Score:</b> {_sc}")
+
             manual_board["batter"] = None
             manual_board["batter_id"] = None
         else:
@@ -3500,26 +3518,24 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
             m_balls_val = manual_board.get("balls", 0)
             if prev_runs < 50 and new_runs >= 50 and chat_id:
-                chosen_fifty = random.choice(fifty_gifs)
                 caption_50 = (
                     f"🏏 ✅ <b>FIFTY UP!</b> ✅ 🏏\n\n"
-                    f"🔥 <b>WHAT A KNOCK by {current_batsman_name}!</b> Completes half-century!\n\n"
+                    f"🔥 <b>WHAT A KNOCK by {mention(ball_batsman_id, current_batsman_name)}!</b> Completes half-century!\n\n"
                     f"📊 <b>Score:</b> {manual_board['runs']}/{manual_board['wkts']} ({m_balls_val // 6}.{m_balls_val % 6} Ov)"
                 )
                 try:
-                    await context.bot.send_animation(chat_id=chat_id, animation=chosen_fifty, caption=caption_50, parse_mode="HTML")
+                    await send_media(context.bot, chat_id, "fifty", caption_50, pin=True)
                 except Exception:
                     pass
 
             if prev_runs < 100 and new_runs >= 100 and chat_id:
-                chosen_century = random.choice(century_gifs)
                 caption_100 = (
                     f"🏆 ✅ <b>CENTURY!</b> ✅ 🏆\n\n"
-                    f"👑 <b>SENSATIONAL 100 by {current_batsman_name}!</b>\n\n"
+                    f"👑 <b>SENSATIONAL 100 by {mention(ball_batsman_id, current_batsman_name)}!</b>\n\n"
                     f"📊 <b>Score:</b> {manual_board['runs']}/{manual_board['wkts']} ({m_balls_val // 6}.{m_balls_val % 6} Ov)"
                 )
                 try:
-                    await context.bot.send_animation(chat_id=chat_id, animation=chosen_century, caption=caption_100, parse_mode="HTML")
+                    await send_media(context.bot, chat_id, "century", caption_100, pin=True)
                 except Exception:
                     pass
 
@@ -12595,22 +12611,8 @@ async def sendhere_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML"
         )
 
-duck_gifs = [
-    "CgACAgEAAyEFAATqVpOyAAIKmWrz2pIrOwAB_ob-JCewoUTocBDSXwACpwkAAoAycUd6gCajw2CkCj0E",
-    "CgACAgQAAyEFAATqVpOyAAIKmmrz2pTNtVRRQf3-0ZlPp1HJGTsSAAJoIwAC3FQJUgABAoyxReJwrj0E",
-    "CgACAgUAAyEFAATqVpOyAAIKmGrz2pGfE_FEybF1-7wzps3PXd0KAAJNJAACtRhZV0kj6LV75RfxPQQ",
-    "CgACAgQAAyEFAATqVpOyAAIKqmrz230oJJn6eEGl-owtl960rFk2AAJgFwACLyjAUThvpZiH5QT0PQQ"
-]
 
-fifty_gifs = [
-    "CgACAgEAAyEFAATqVpOyAAIKlWrz2oyVpKrlGUuPz25kyl-f1FxSAAKmCQACgDJxRxfCgac9W-lePQQ",
-    "CgACAgUAAyEFAATqVpOyAAIKl2rz2pCuQejDs2I8YLnXPrpw-h3RAAKLFAACvvWgVAr3UL3FstZvPQQ"
-]
 
-century_gifs = [
-    "CgACAgUAAyEFAATqVpOyAAIKm2rz2tze9_KzhTygVIlJeZdjOXKkAAK5IgACUGhQV0w_KtBfYfeuPQQ",
-    "CgACAgEAAyEFAATqVpOyAAIKlmrz2o5ChiyJ1E8djvfh3rnug3P7AAL0CAACWnVwR_ECJ8D2K64NPQQ"
-]
 
 
 
