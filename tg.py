@@ -2876,8 +2876,8 @@ async def update_cricket_stats_realtime(user_id, name, runs_added=0, wickets_add
         if current_match_runs > new_highest:
             new_highest = current_match_runs
         await db.execute(
-            "UPDATE cricket_stats SET runs = $1, wickets = $2, highest_score = $3, ducks = $4 WHERE user_id = $5",
-            new_runs, new_wickets, new_highest, new_ducks, user_id
+            "UPDATE cricket_stats SET runs = $1, wickets = $2, highest_score = $3, ducks = $4, name = COALESCE($6, name) WHERE user_id = $5",
+            new_runs, new_wickets, new_highest, new_ducks, user_id, (name or None)
         )
     else:
         await db.execute(
@@ -2891,9 +2891,9 @@ async def update_wins_losses_realtime(user_id, name, won):
     stats = await db.fetchrow("SELECT * FROM cricket_stats WHERE user_id = $1", user_id)
     if stats:
         if won:
-            await db.execute("UPDATE cricket_stats SET wins = wins + 1 WHERE user_id = $1", user_id)
+            await db.execute("UPDATE cricket_stats SET wins = wins + 1, name = COALESCE($2, name) WHERE user_id = $1", user_id, (name or None))
         else:
-            await db.execute("UPDATE cricket_stats SET losses = losses + 1 WHERE user_id = $1", user_id)
+            await db.execute("UPDATE cricket_stats SET losses = losses + 1, name = COALESCE($2, name) WHERE user_id = $1", user_id, (name or None))
     else:
         await db.execute("INSERT INTO cricket_stats (user_id, name, wins, losses) VALUES ($1, $2, $3, $4)", user_id, name, 1 if won else 0, 0 if won else 1)
     await close_db(db)
