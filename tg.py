@@ -3492,14 +3492,16 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 except Exception:
                     pass
 
+            _sr_out = bat_stats["stint_runs"]
+            _sb_out = bat_stats.get("stint_balls", bat_stats["balls"])
             bat_stats["stint_runs"] = 0
             if chat_id and not is_duck:
                 _bt = mention(ball_batsman_id, current_batsman_name)
                 _bw = mention(ball_bowler_id, current_bowler_name)
                 _mb = manual_board.get("balls", 0)
                 _sc = f"{manual_board.get('runs', 0)}/{manual_board.get('wkts', 0)} ({_mb // 6}.{_mb % 6} Ov)"
-                _sr = bat_stats.get("stint_runs", bat_stats["runs"])
-                _sb = bat_stats.get("stint_balls", bat_stats["balls"])
+                _sr = _sr_out
+                _sb = _sb_out
                 if bowl_stats["wkts"] == 5:
                     await send_media(context.bot, chat_id, "fifer",
                         f"🔥 ✅ <b>FIFER!</b> ✅ 🔥\n\n🎯 <b>{_bw}</b> takes 5 wickets!\n\n📊 <b>Score:</b> {_sc}")
