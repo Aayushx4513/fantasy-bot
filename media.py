@@ -111,4 +111,4 @@ async def send_media(bot, chat_id, kind, caption=None, pin=False):
         return False
     if pin and chat_id < 0:
         await _pin_it(bot, chat_id, msg)
-    return True
+    return msg

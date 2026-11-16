@@ -3335,7 +3335,6 @@ def get_pstats(board, name):
 
 
 async def manual_finish(context, chat_id, board, game, game_id, result_line, winner_id=None):
-    await send_media(context.bot, chat_id, "summary")
     summary = f"🏆 ✅ <b>MATCH ENDED!</b> ✅ 🏆\n\n{result_line}\n\n"
     stats = board.get("player_stats", {})
     batsmen = [(n, s) for n, s in stats.items() if s.get("balls", 0) > 0]
@@ -3354,7 +3353,13 @@ async def manual_finish(context, chat_id, board, game, game_id, result_line, win
         summary += "> None\n"
 
     try:
-        new_msg = await context.bot.send_message(chat_id, summary, parse_mode="HTML")
+        new_msg = None
+        if len(summary) <= 1000:
+            new_msg = await send_media(context.bot, chat_id, "summary", summary)
+        else:
+            await send_media(context.bot, chat_id, "summary")
+        if not new_msg:
+            new_msg = await context.bot.send_message(chat_id, summary, parse_mode="HTML")
         if board.get("pinned_msg_id"):
             try:
                 await context.bot.unpin_chat_message(chat_id, board["pinned_msg_id"])
