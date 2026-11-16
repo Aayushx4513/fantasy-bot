@@ -3495,7 +3495,7 @@ async def cricket_bowl_callback(update: Update, context: ContextTypes.DEFAULT_TY
             _sr_out = bat_stats["stint_runs"]
             _sb_out = bat_stats.get("stint_balls", bat_stats["balls"])
             bat_stats["stint_runs"] = 0
-            if chat_id and not is_duck:
+            if chat_id and (not is_duck or bowl_stats["wkts"] == 5):
                 _bt = mention(ball_batsman_id, current_batsman_name)
                 _bw = mention(ball_bowler_id, current_bowler_name)
                 _mb = manual_board.get("balls", 0)
