@@ -166,9 +166,11 @@ async def get_db():
             DATABASE_URL,
             min_size=1,
             max_size=10,
-            statement_cache_size=0
+            statement_cache_size=0,
+            command_timeout=15,
+            max_inactive_connection_lifetime=60
         )
-    return await db_pool.acquire()
+    return await db_pool.acquire(timeout=10)
 
 async def close_db(db):
     """Release connection back to pool"""
@@ -3122,20 +3124,34 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer("You cannot join your own game!", show_alert=True)
         return
 
+    cricket_lobby.pop(game_id, None)
     if bet > 0:
-        db = await get_db()
-        balance = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
-        if balance is None:
-            await query.answer("❌ Send /start first!", show_alert=True)
-            await close_db(db)
+        db = None
+        err = None
+        try:
+            db = await get_db()
+            ub = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", user_id)
+            cb = await db.fetchval("SELECT balance FROM users WHERE user_id = $1", creator_id)
+            if ub is None:
+                err = "❌ Send /start first!"
+            elif ub < bet:
+                err = f"❌ Need {bet} credits!"
+            elif cb is None or cb < bet:
+                err = "❌ Host does not have enough credits anymore!"
+            else:
+                async with db.transaction():
+                    await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, creator_id)
+                    await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, user_id)
+        except Exception as e:
+            print(f"join bet error: {e}", flush=True)
+            err = "❌ Something went wrong, please try again."
+        finally:
+            if db:
+                await close_db(db)
+        if err:
+            cricket_lobby[game_id] = lobby
+            await query.answer(err, show_alert=True)
             return
-        if balance < bet:
-            await query.answer(f"❌ Need {bet} credits!", show_alert=True)
-            await close_db(db)
-            return
-        await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, creator_id)
-        await db.execute("UPDATE users SET balance = balance - $1 WHERE user_id = $2", bet, user_id)
-        await close_db(db)
 
     if game_id in cricket_games:
         if bet > 0:
@@ -3148,7 +3164,7 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
     game.player2_id = user_id
     game.player2_name = user_name
     cricket_games[game_id] = game
-    del cricket_lobby[game_id]
+    cricket_lobby.pop(game_id, None)
 
     keyboard = [
         [
