@@ -2953,9 +2953,13 @@ class CricketGame:
         rem_balls = balls % 6
         return f"{overs}.{rem_balls}"
 
+def safe_name(n):
+    n = str(n or "Player")
+    return n.replace("&", "＆").replace("<", "＜").replace(">", "＞")
+
 async def oneover(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    user_name = update.effective_user.first_name
+    user_name = safe_name(update.effective_user.first_name)
     chat_id = update.message.chat.id
     
     user_name_escaped = escape_md(user_name)
@@ -3008,7 +3012,7 @@ async def oneover(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def clcricket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    user_name = update.effective_user.first_name
+    user_name = safe_name(update.effective_user.first_name)
     chat_id = update.message.chat.id
     
     # 🔥 ESCAPE NAME
@@ -3046,10 +3050,10 @@ async def clcricket(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"*👑 Host:* {user_name_escaped}\n"  # 🔥 ESCAPED NAME
         f"{bet_text}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"*⚡ Select Mode*",
+        f"*⚡ Select Mode (or JOIN directly for Default)*",
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton("1-3 Mode", callback_data=f"cricket_mode_{game_id}_1-3"), InlineKeyboardButton("No 5 Mode", callback_data=f"cricket_mode_{game_id}_1-5")],
-            [InlineKeyboardButton("1-9 Mode", callback_data=f"cricket_mode_{game_id}_1-9"), InlineKeyboardButton("Default Mode", callback_data=f"cricket_mode_{game_id}_default")]
+            [InlineKeyboardButton("1-9 Mode", callback_data=f"cricket_mode_{game_id}_1-9"), InlineKeyboardButton("🟢 JOIN GAME", callback_data=f"cricket_join_{game_id}", api_kwargs={"style": "success"})]
         ]),
         parse_mode="Markdown"
     )
@@ -3080,7 +3084,7 @@ async def cricket_mode_callback(update: Update, context: ContextTypes.DEFAULT_TY
         f"{bet_text}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"*⚡ Waiting for opponent...*",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔵 JOIN GAME", callback_data=f"cricket_join_{game_id}")]]),
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🟢 JOIN GAME", callback_data=f"cricket_join_{game_id}", api_kwargs={"style": "success"})]]),
         parse_mode="Markdown"
     )
 
@@ -3095,7 +3099,7 @@ async def cricket_join_callback(update: Update, context: ContextTypes.DEFAULT_TY
         print(f"⚠️ query.answer error: {e}", flush=True)
 
     user_id = update.effective_user.id
-    user_name = update.effective_user.first_name or "Player"
+    user_name = safe_name(update.effective_user.first_name or "Player")
     data = query.data
 
     try:
