@@ -10051,155 +10051,93 @@ async def penalty_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ============ TRANSFER CRICKET STATS ============
 
-async def transferstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+stats_clipboard = {}
+
+async def copystats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Admin only!")
         return
-
-    source_id = 7687078555
-    target_id = 8637977698
-
-    # Extra stats to add
-    extra_runs = 51
-    extra_wickets = 8
-    extra_highest = 16
-    extra_wins = 1
-    extra_losses = 0
-    extra_ducks = 1
-
-    db = await get_db()
-
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text("Usage: /copystats <user_id>")
+        return
+    src = int(context.args[0])
+    db = None
+    row = None
     try:
-        # Fetch SOURCE stats
-        source = await db.fetchrow(
-            """
-            SELECT runs, wickets, highest_score, wins, losses, ducks
-            FROM cricket_stats
-            WHERE user_id = $1
-            """,
-            source_id
-        )
-
-        # Fetch TARGET stats
-        target = await db.fetchrow(
-            """
-            SELECT runs, wickets, highest_score, wins, losses, ducks
-            FROM cricket_stats
-            WHERE user_id = $1
-            """,
-            target_id
-        )
-
-        if not source:
-            await update.message.reply_text(
-                f"❌ Source ID `{source_id}` stats not found!",
-                parse_mode="Markdown"
-            )
-            return
-
-        if not target:
-            await update.message.reply_text(
-                f"❌ Target ID `{target_id}` stats not found!",
-                parse_mode="Markdown"
-            )
-            return
-
-        # SOURCE + TARGET + EXTRA
-        total_runs = (
-            source["runs"]
-            + target["runs"]
-            + extra_runs
-        )
-
-        total_wickets = (
-            source["wickets"]
-            + target["wickets"]
-            + extra_wickets
-        )
-
-        total_highest = max(
-            source["highest_score"],
-            target["highest_score"],
-            extra_highest
-        )
-
-        total_wins = (
-            source["wins"]
-            + target["wins"]
-            + extra_wins
-        )
-
-        total_losses = (
-            source["losses"]
-            + target["losses"]
-            + extra_losses
-        )
-
-        total_ducks = (
-            source["ducks"]
-            + target["ducks"]
-            + extra_ducks
-        )
-
-        # Update TARGET
-        await db.execute(
-            """
-            UPDATE cricket_stats
-            SET
-                runs = $1,
-                wickets = $2,
-                highest_score = $3,
-                wins = $4,
-                losses = $5,
-                ducks = $6
-            WHERE user_id = $7
-            """,
-            total_runs,
-            total_wickets,
-            total_highest,
-            total_wins,
-            total_losses,
-            total_ducks,
-            target_id
-        )
-
-        # Delete SOURCE after successful transfer
-        await db.execute(
-            """
-            DELETE FROM cricket_stats
-            WHERE user_id = $1
-            """,
-            source_id
-        )
-
-        await update.message.reply_text(
-            "✅ *STATS TRANSFERRED SUCCESSFULLY!*\n\n"
-            "👤 *SIMON*\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            f"🏏 Runs: *{total_runs}*\n"
-            f"🎯 Wickets: *{total_wickets}*\n"
-            f"⭐ Highest Score: *{total_highest}*\n"
-            f"✅ Wins: *{total_wins}*\n"
-            f"❌ Losses: *{total_losses}*\n"
-            f"🦆 Ducks: *{total_ducks}*\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"🔄 Source: `{source_id}`\n"
-            f"➡️ Target: `{target_id}`",
-            parse_mode="Markdown"
-        )
-
+        db = await get_db()
+        row = await db.fetchrow(
+            "SELECT name, runs, wickets, wins, losses, highest_score, ducks FROM cricket_stats WHERE user_id = $1", src)
     except Exception as e:
-        import traceback
-        print("========== TRANSFER STATS ERROR ==========")
-        traceback.print_exc()
-
-        await update.message.reply_text(
-            f"❌ Error: `{type(e).__name__}: {e}`",
-            parse_mode="Markdown"
-        )
-
+        print(f"copystats error: {e}")
+        await update.message.reply_text("❌ Database error, try again.")
+        return
     finally:
-        await close_db(db)
+        if db:
+            await close_db(db)
+    if not row:
+        await update.message.reply_text(f"❌ No stats found for ID {src}")
+        return
+    data = dict(row)
+    data["src"] = src
+    stats_clipboard[update.effective_user.id] = data
+    await update.message.reply_text(
+        f"✅ STATS COPIED\n\n"
+        f"👤 {data['name'] or 'Unknown'} ({src})\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🏏 Runs: {data['runs']}\n🎯 Wickets: {data['wickets']}\n⭐ Highest: {data['highest_score']}\n"
+        f"✅ Wins: {data['wins']}\n❌ Losses: {data['losses']}\n🦆 Ducks: {data['ducks']}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"Now use /pastestats <target_id>"
+    )
+
+async def pastestats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Admin only!")
+        return
+    clip = stats_clipboard.get(update.effective_user.id)
+    if not clip:
+        await update.message.reply_text("❌ Nothing copied. Use /copystats <user_id> first.")
+        return
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text("Usage: /pastestats <target_user_id>")
+        return
+    target = int(context.args[0])
+    if target == clip["src"]:
+        await update.message.reply_text("❌ Source and target are the same ID.")
+        return
+    db = None
+    try:
+        db = await get_db()
+        before = await db.fetchrow(
+            "SELECT runs, wickets, wins, losses, highest_score, ducks FROM cricket_stats WHERE user_id = $1", target)
+        await db.execute(
+            """
+            INSERT INTO cricket_stats (user_id, name, runs, wickets, wins, losses, highest_score, ducks)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (user_id) DO UPDATE SET
+                runs = EXCLUDED.runs, wickets = EXCLUDED.wickets, wins = EXCLUDED.wins,
+                losses = EXCLUDED.losses, highest_score = EXCLUDED.highest_score, ducks = EXCLUDED.ducks
+            """,
+            target, clip["name"], clip["runs"], clip["wickets"], clip["wins"], clip["losses"],
+            clip["highest_score"], clip["ducks"])
+    except Exception as e:
+        print(f"pastestats error: {e}")
+        await update.message.reply_text("❌ Database error, nothing changed.")
+        return
+    finally:
+        if db:
+            await close_db(db)
+    old = (f"Runs {before['runs']}, Wkts {before['wickets']}, High {before['highest_score']}, "
+           f"W {before['wins']}, L {before['losses']}, Ducks {before['ducks']}") if before else "no previous stats"
+    await update.message.reply_text(
+        f"✅ STATS PASTED\n\n"
+        f"From: {clip['src']}  ➡️  To: {target}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"🏏 Runs: {clip['runs']}\n🎯 Wickets: {clip['wickets']}\n⭐ Highest: {clip['highest_score']}\n"
+        f"✅ Wins: {clip['wins']}\n❌ Losses: {clip['losses']}\n🦆 Ducks: {clip['ducks']}\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"Previous target stats: {old}"
+    )
 
 # ============ LOCK BID (ADMIN) ============
 # ============ LOCK BID (ADMIN) ============
@@ -13028,7 +12966,8 @@ async def main():
     app.add_handler(CallbackQueryHandler(tower_callback, pattern="^tower_"))
     app.add_handler(CommandHandler("fix_duplicates", fix_duplicates))
     app.add_handler(CommandHandler("ping", ping))
-    app.add_handler(CommandHandler("transferstats", transferstats))
+    app.add_handler(CommandHandler("copystats", copystats))
+    app.add_handler(CommandHandler("pastestats", pastestats))
     # ============ PLAYER AUCTION ==========
     app.add_handler(CommandHandler("add_player", add_player))
     app.add_handler(CommandHandler("players", players))
@@ -13082,7 +13021,6 @@ async def main():
     # ============ HILO GAME ==========
     app.add_handler(CommandHandler("hilo", hilo))
     app.add_handler(CallbackQueryHandler(hilo_callback, pattern="^hilo_"))
-    app.add_handler(CommandHandler("transferstats", transferstats))
     # ============ LOTTERY ==========
     app.add_handler(CommandHandler("lottery", lottery))
     app.add_handler(CommandHandler("buy_ticket", buy_ticket))
